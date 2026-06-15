@@ -1,6 +1,7 @@
 package com.etiya.replayfix.integration;
 
 import com.etiya.replayfix.config.ReplayFixProperties;
+import com.etiya.replayfix.model.AiConnectionTestResult;
 import com.etiya.replayfix.model.IntegrationModels.GeneratedFile;
 import com.etiya.replayfix.model.IntegrationModels.GenerationResult;
 import com.etiya.replayfix.model.IntegrationModels.RootCauseResult;
@@ -11,6 +12,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -31,21 +33,115 @@ public class OpenAiCompatibleClient implements AiClient {
     }
 
     @Override
+    public AiConnectionTestResult testConnection() {
+        var cfg = properties.getIntegrations().getAi();
+
+        if (!cfg.isEnabled()) {
+            return new AiConnectionTestResult(
+                    false,
+                    cfg.getModel(),
+                    0,
+                    "AI integration is disabled."
+            );
+        }
+
+        long startedAt = System.currentTimeMillis();
+
+        try {
+            JsonNode response = chat("""
+                    Return strict JSON only:
+
+                    {
+                      "ok": true,
+                      "message": "ReplayFix AI connectivity test"
+                    }
+
+                    Do not include markdown or additional explanation.
+                    """);
+
+            JsonNode content = parseContent(response);
+
+            boolean success =
+                    content.path("ok").asBoolean(false);
+
+            String message =
+                    content.path("message")
+                            .asText("AI endpoint responded.");
+
+            return new AiConnectionTestResult(
+                    success,
+                    cfg.getModel(),
+                    System.currentTimeMillis() - startedAt,
+                    message
+            );
+
+        } catch (Exception exception) {
+            return new AiConnectionTestResult(
+                    false,
+                    cfg.getModel(),
+                    System.currentTimeMillis() - startedAt,
+                    rootCauseMessage(exception)
+            );
+        }
+    }
+
+    @Override
     public RootCauseResult analyzeRootCause(String evidenceJson) {
         if (!properties.getIntegrations().getAi().isEnabled()) {
             return new RootCauseResult(
-                    "Dry-run root cause analysis",
-                    "Enable the internal AI endpoint for code-aware analysis.",
-                    0.50,
-                    List.of("Dry-run Jira issue", "Dry-run Loki log"),
-                    List.of("Create a deterministic regression test", "Review validation and null paths"),
+                    "AI analysis is disabled",
+                    "The deterministic ReplayFix report remains the active hypothesis.",
+                    0.0,
+                    List.of(
+                            "AI_INPUT_BUNDLE was generated but not sent to a model."
+                    ),
+                    List.of(
+                            "Review the deterministic root-cause report.",
+                            "Enable the approved internal AI endpoint when available."
+                    ),
                     "{}"
             );
         }
 
-        String prompt = "Analyze the incident evidence and return strict JSON with " +
-                "summary, probableRootCause, confidence, evidence[] and remediationActions[]. Evidence: " +
-                evidenceJson;
+        String prompt = """
+You are reviewing a structured software incident evidence bundle.
+
+Return strict JSON only:
+
+{
+  "summary": "...",
+  "probableRootCause": "...",
+  "confidence": 0.0,
+  "evidence": [
+    "..."
+  ],
+  "remediationActions": [
+    "..."
+  ]
+}
+
+Rules:
+
+1. Use only the supplied evidence bundle.
+2. Do not invent source files, line numbers, services, deployments,
+   database records or configuration values.
+3. The probable root cause must remain a hypothesis until a regression
+   test reproduces the failure.
+4. If Loki, Tempo or source-code evidence is missing, explicitly state
+   that limitation.
+5. If the evidence is contradictory, lower confidence and describe the
+   contradiction.
+6. Evidence items must refer to concrete sections in the bundle, such as:
+   deterministicReport, timelineEvents, correlations, tempo or knowledge.
+7. Do not recommend automatic merge or production deployment.
+8. Human approval is mandatory.
+9. Return confidence between 0.0 and 0.95.
+10. If no matching logs and no trace are available, confidence must not
+    exceed 0.60.
+
+Evidence bundle:
+
+""" + evidenceJson;
 
         JsonNode response = chat(prompt);
         JsonNode content = parseContent(response);
@@ -103,36 +199,140 @@ public class OpenAiCompatibleClient implements AiClient {
 
     private JsonNode chat(String prompt) {
         var cfg = properties.getIntegrations().getAi();
-        Map<String, Object> request = Map.of(
-                "model", cfg.getModel(),
-                "temperature", cfg.getTemperature(),
-                "max_tokens", cfg.getMaxOutputTokens(),
-                "messages", List.of(
-                        Map.of("role", "system", "content", "You are ReplayFix. Return strict JSON only."),
-                        Map.of("role", "user", "content", prompt)
+
+        Map<String, Object> request =
+                new LinkedHashMap<>();
+
+        request.put(
+                "model",
+                cfg.getModel()
+        );
+
+        request.put(
+                "temperature",
+                cfg.getTemperature()
+        );
+
+        request.put(
+                "max_tokens",
+                cfg.getMaxOutputTokens()
+        );
+
+        request.put(
+                "messages",
+                List.of(
+                        Map.of(
+                                "role",
+                                "system",
+                                "content",
+                                "You are ReplayFix. "
+                                        + "Return strict JSON only."
+                        ),
+                        Map.of(
+                                "role",
+                                "user",
+                                "content",
+                                prompt
+                        )
                 )
         );
 
-        JsonNode node = webClientBuilder.baseUrl(cfg.getBaseUrl()).build().post()
+        JsonNode response = webClientBuilder
+                .baseUrl(
+                        cfg.getBaseUrl()
+                                .replaceAll("/+$", "")
+                )
+                .build()
+                .post()
                 .uri(cfg.getChatPath())
-                .headers(h -> h.addAll(HttpSupport.headers(cfg)))
+                .headers(headers ->
+                        headers.addAll(
+                                HttpSupport.headers(cfg)
+                        )
+                )
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(request)
                 .retrieve()
+                .onStatus(
+                        status -> status.isError(),
+                        clientResponse ->
+                                clientResponse
+                                        .bodyToMono(String.class)
+                                        .defaultIfEmpty("")
+                                        .map(body ->
+                                                new IllegalStateException(
+                                                        "AI request failed. HTTP "
+                                                                + clientResponse
+                                                                .statusCode()
+                                                                + " Response: "
+                                                                + truncate(
+                                                                body,
+                                                                2_000
+                                                        )
+                                                )
+                                        )
+                )
                 .bodyToMono(JsonNode.class)
                 .block(cfg.getTimeout());
 
-        if (node == null) throw new IllegalStateException("AI endpoint returned an empty response");
-        return node;
+        if (response == null) {
+            throw new IllegalStateException(
+                    "AI endpoint returned an empty response"
+            );
+        }
+
+        return response;
     }
 
     private JsonNode parseContent(JsonNode response) {
-        String content = response.path("choices").path(0).path("message").path("content").asText("{}");
-        content = content.replaceFirst("^```json\\\\s*", "").replaceFirst("```$", "");
+        JsonNode contentNode = response
+                .path("choices")
+                .path(0)
+                .path("message")
+                .path("content");
+
+        if (contentNode.isObject()) {
+            return contentNode;
+        }
+
+        String content = contentNode.asText("");
+
+        if (content.isBlank()
+                && response.has("output_text")) {
+            content = response
+                    .path("output_text")
+                    .asText("");
+        }
+
+        if (content.isBlank()
+                && response.has("summary")) {
+            return response;
+        }
+
+        content = content.trim()
+                .replaceFirst(
+                        "^```json\\s*",
+                        ""
+                )
+                .replaceFirst(
+                        "^```\\s*",
+                        ""
+                )
+                .replaceFirst(
+                        "\\s*```$",
+                        ""
+                )
+                .trim();
+
         try {
             return objectMapper.readTree(content);
-        } catch (Exception e) {
-            throw new IllegalStateException("AI response is not valid JSON: " + content, e);
+
+        } catch (Exception exception) {
+            throw new IllegalStateException(
+                    "AI response is not valid JSON: "
+                            + truncate(content, 2_000),
+                    exception
+            );
         }
     }
 
@@ -156,5 +356,32 @@ public class OpenAiCompatibleClient implements AiClient {
         List<String> values = new ArrayList<>();
         array.forEach(node -> values.add(node.asText()));
         return values;
+    }
+
+    private String rootCauseMessage(
+            Throwable throwable
+    ) {
+        Throwable root = throwable;
+
+        while (root.getCause() != null) {
+            root = root.getCause();
+        }
+
+        return root.getClass().getSimpleName()
+                + ": "
+                + root.getMessage();
+    }
+
+    private String truncate(
+            String value,
+            int maxLength
+    ) {
+        if (value == null) {
+            return "";
+        }
+
+        return value.length() <= maxLength
+                ? value
+                : value.substring(0, maxLength);
     }
 }

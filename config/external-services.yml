@@ -21,6 +21,7 @@ replayfix:
     tempo:
       enabled: ${TEMPO_ENABLED:false}
       base-url: ${TEMPO_BASE_URL:https://tempo.internal.example}
+      api-path: ${TEMPO_API_PATH:/api/datasources/proxy/uid/TEMPO_UID}
       auth-type: ${TEMPO_AUTH_TYPE:BEARER}
       token: ${TEMPO_TOKEN:}
       timeout: 60s
@@ -35,6 +36,7 @@ replayfix:
       auth-type: ${BITBUCKET_AUTH_TYPE:BEARER}
       username: ${BITBUCKET_USERNAME:}
       token: ${BITBUCKET_TOKEN:}
+      git-executable: ${BITBUCKET_GIT_EXECUTABLE:git}
       timeout: 60s
 
     confluence:
@@ -67,13 +69,29 @@ replayfix:
     jenkins:
       enabled: ${JENKINS_ENABLED:false}
       base-url: ${JENKINS_BASE_URL:https://jenkins.internal.example}
-      job-name: ${JENKINS_JOB_NAME:replayfix-validation}
       auth-type: ${JENKINS_AUTH_TYPE:BASIC}
       username: ${JENKINS_USERNAME:}
       token: ${JENKINS_TOKEN:}
       poll-interval: 10s
       max-wait: 20m
-      timeout: 30s
+      timeout: 60s
+
+      applications:
+        backend:
+          build-job-url: ${JENKINS_BACKEND_BUILD_JOB_URL:}
+          image-job-url: ${JENKINS_BACKEND_IMAGE_JOB_URL:}
+
+        batch-backend:
+          build-job-url: ${JENKINS_BATCH_BACKEND_BUILD_JOB_URL:}
+          image-job-url: ${JENKINS_BATCH_BACKEND_IMAGE_JOB_URL:}
+
+        ntf:
+          build-job-url: ${JENKINS_NTF_BUILD_JOB_URL:}
+          image-job-url: ${JENKINS_NTF_IMAGE_JOB_URL:}
+
+        loyalty:
+          build-job-url: ${JENKINS_LOYALTY_BUILD_JOB_URL:}
+          image-job-url: ${JENKINS_LOYALTY_IMAGE_JOB_URL:}
 
     kubernetes:
       enabled: ${KUBERNETES_ENABLED:false}

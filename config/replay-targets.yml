@@ -45,3 +45,68 @@ replayfix:
         source-branch: main
         branch-prefix: replayfix/
         reviewer-users: []
+
+  repository-resolution:
+    minimum-score: 30
+    max-candidates: 4
+    mappings:
+      backend:
+        aliases:
+          - bss-backend
+          - bss-backend-batch
+          - backend
+          - customerorder
+          - customer-order
+          - bar
+          - payment
+          - camunda
+          - dce-commercebackend
+        endpoint-prefixes:
+          - /customerorder
+          - /DCE-CommerceBackend
+        keywords:
+          - omintegration
+          - recurring_payment_callback
+          - status 12
+          - unauthorized
+      bookmark-order-management-esb:
+        aliases:
+          - wso2
+          - esb
+          - order-management
+          - order management
+          - omintegration
+        endpoint-prefixes:
+          - /customerorder/omintegration
+        keywords:
+          - integration
+          - mediation
+          - sequence
+          - proxy service
+      ntf-engine:
+        aliases:
+          - ntf
+          - ntf-engine
+          - notification
+          - notify
+        endpoint-prefixes:
+          - /notification
+          - /notify
+        keywords:
+          - notification
+          - sms
+          - email
+          - message
+      loyalty-engine:
+        aliases:
+          - loyalty
+          - loyalty-engine
+          - reward
+          - campaign
+        endpoint-prefixes:
+          - /loyalty
+        keywords:
+          - loyalty
+          - reward
+          - campaign
+          - benefit

@@ -31,20 +31,36 @@ public class AdaptiveLokiSearchService {
         int perQueryLimit,
         int maxTotalLogs
     ) {
-        List<LokiSearchAttempt> attempts = new ArrayList<>();
+        return search(
+                plan.queries(),
+                start,
+                end,
+                perQueryLimit,
+                maxTotalLogs
+        );
+    }
+
+    public AdaptiveLokiSearchResult search(
+        List<LokiQueryCandidate> queryCandidates,
+        Instant start,
+        Instant end,
+        int perQueryLimit,
+        int maxTotalLogs
+    ) {
+        List<LokiSearchAttempt> attempts =
+                new ArrayList<>();
 
         Map<String, LokiLogEntry> uniqueLogs =
-            new LinkedHashMap<>();
+                new LinkedHashMap<>();
 
         List<LokiQueryCandidate> orderedQueries =
-            plan.queries()
-                .stream()
-                .sorted(
-                    Comparator.comparingInt(
-                        LokiQueryCandidate::priority
-                    ).reversed()
-                )
-                .toList();
+                queryCandidates.stream()
+                        .sorted(
+                                Comparator.comparingInt(
+                                        LokiQueryCandidate::priority
+                                ).reversed()
+                        )
+                        .toList();
 
         for (LokiQueryCandidate candidate : orderedQueries) {
 

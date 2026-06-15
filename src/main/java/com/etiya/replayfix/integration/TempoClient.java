@@ -1,7 +1,13 @@
 package com.etiya.replayfix.integration;
 
-import com.etiya.replayfix.model.IntegrationModels.TempoTrace;
+import com.etiya.replayfix.model.TempoTraceResult;
+
+import java.time.Instant;
 
 public interface TempoClient {
-    TempoTrace getTrace(String traceId);
+    TempoTraceResult getTrace(
+            String traceId,
+            Instant start,
+            Instant end
+    );
 }

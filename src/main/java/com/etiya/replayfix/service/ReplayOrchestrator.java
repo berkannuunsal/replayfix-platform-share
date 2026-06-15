@@ -5,8 +5,13 @@ import com.etiya.replayfix.config.ReplayFixProperties;
 import com.etiya.replayfix.domain.EvidenceType;
 import com.etiya.replayfix.domain.ReplayCaseEntity;
 import com.etiya.replayfix.domain.ReplayCaseStatus;
+import com.etiya.replayfix.model.BitbucketRepositoryInfo;
 import com.etiya.replayfix.integration.*;
+import com.etiya.replayfix.model.AdaptiveLokiSearchResult;
 import com.etiya.replayfix.model.IntegrationModels;
+import com.etiya.replayfix.model.IncidentVersionResolution;
+import com.etiya.replayfix.model.SourceCheckoutResult;
+import com.etiya.replayfix.model.SourceContextResult;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 
@@ -35,6 +40,16 @@ public class ReplayOrchestrator {
     private final IncidentSignalExtractor incidentSignalExtractor;
     private final LokiQueryPlanner lokiQueryPlanner;
     private final AdaptiveLokiSearchService adaptiveLokiSearchService;
+    private final LokiCorrelationExtractor lokiCorrelationExtractor;
+    private final SecondPassLokiQueryPlanner secondPassLokiQueryPlanner;
+    private final IncidentTimelineBuilder incidentTimelineBuilder;
+    private final TempoEnrichmentService tempoEnrichmentService;
+    private final DeterministicRootCauseReportBuilder deterministicRootCauseReportBuilder;
+    private final SourceCodeContextService sourceCodeContextService;
+    private final AiEvidenceBundleBuilder aiEvidenceBundleBuilder;
+    private final RepositoryResolverService repositoryResolverService;
+    private final RepositoryCheckoutService repositoryCheckoutService;
+    private final IncidentVersionResolverService incidentVersionResolverService;
 
     public ReplayOrchestrator(
             ReplayFixProperties properties,
@@ -53,7 +68,17 @@ public class ReplayOrchestrator {
             JiraAdfTextExtractor jiraAdfTextExtractor,
             IncidentSignalExtractor incidentSignalExtractor,
             LokiQueryPlanner lokiQueryPlanner,
-            AdaptiveLokiSearchService adaptiveLokiSearchService
+            AdaptiveLokiSearchService adaptiveLokiSearchService,
+            LokiCorrelationExtractor lokiCorrelationExtractor,
+            SecondPassLokiQueryPlanner secondPassLokiQueryPlanner,
+            IncidentTimelineBuilder incidentTimelineBuilder,
+            TempoEnrichmentService tempoEnrichmentService,
+            DeterministicRootCauseReportBuilder deterministicRootCauseReportBuilder,
+            SourceCodeContextService sourceCodeContextService,
+            AiEvidenceBundleBuilder aiEvidenceBundleBuilder,
+            RepositoryResolverService repositoryResolverService,
+            RepositoryCheckoutService repositoryCheckoutService,
+            IncidentVersionResolverService incidentVersionResolverService
     ) {
         this.properties = properties;
         this.caseService = caseService;
@@ -72,6 +97,16 @@ public class ReplayOrchestrator {
         this.incidentSignalExtractor = incidentSignalExtractor;
         this.lokiQueryPlanner = lokiQueryPlanner;
         this.adaptiveLokiSearchService = adaptiveLokiSearchService;
+        this.lokiCorrelationExtractor = lokiCorrelationExtractor;
+        this.secondPassLokiQueryPlanner = secondPassLokiQueryPlanner;
+        this.incidentTimelineBuilder = incidentTimelineBuilder;
+        this.tempoEnrichmentService = tempoEnrichmentService;
+        this.deterministicRootCauseReportBuilder = deterministicRootCauseReportBuilder;
+        this.sourceCodeContextService = sourceCodeContextService;
+        this.aiEvidenceBundleBuilder = aiEvidenceBundleBuilder;
+        this.repositoryResolverService = repositoryResolverService;
+        this.repositoryCheckoutService = repositoryCheckoutService;
+        this.incidentVersionResolverService = incidentVersionResolverService;
     }
 
     public StepResponse collectContext(UUID id) {
@@ -143,17 +178,99 @@ public class ReplayOrchestrator {
                     true
             );
 
-            if (replayCase.getTraceId() != null
-                    && !replayCase.getTraceId().isBlank()) {
-                var trace = tempoClient.getTrace(replayCase.getTraceId());
-                evidenceService.save(
-                        id,
-                        EvidenceType.TEMPO_TRACE,
-                        "tempo",
-                        trace.rawJson(),
-                        true
-                );
-            }
+            var correlationSignals =
+                    lokiCorrelationExtractor.extract(
+                            searchResult.logs()
+                    );
+
+            evidenceService.save(
+                    id,
+                    EvidenceType.LOKI_CORRELATION_SIGNALS,
+                    "replayfix-correlation-extractor",
+                    objectMapper.writeValueAsString(
+                            correlationSignals
+                    ),
+                    true
+            );
+
+            var secondPassQueries =
+                    secondPassLokiQueryPlanner.plan(
+                            correlationSignals,
+                            signals.serviceHints()
+                    );
+
+            var secondPassResult =
+                    secondPassQueries.isEmpty()
+                            ? new AdaptiveLokiSearchResult(
+                                    List.of(),
+                                    List.of()
+                            )
+                            : adaptiveLokiSearchService.search(
+                                    secondPassQueries,
+                                    center.minus(
+                                            60,
+                                            ChronoUnit.MINUTES
+                                    ),
+                                    center.plus(
+                                            60,
+                                            ChronoUnit.MINUTES
+                                    ),
+                                    50,
+                                    Math.min(
+                                            300,
+                                            properties.getPolicy()
+                                                    .getMaxLogLines()
+                                    )
+                            );
+
+            evidenceService.save(
+                    id,
+                    EvidenceType.LOKI_SECOND_PASS,
+                    "loki-correlation-search",
+                    objectMapper.writeValueAsString(
+                            secondPassResult
+                    ),
+                    true
+            );
+
+            var incidentTimeline =
+                    incidentTimelineBuilder.build(
+                            searchResult,
+                            secondPassResult
+                    );
+
+            evidenceService.save(
+                    id,
+                    EvidenceType.INCIDENT_TIMELINE,
+                    "replayfix-timeline-builder",
+                    objectMapper.writeValueAsString(
+                            incidentTimeline
+                    ),
+                    true
+            );
+
+            var tempoEnrichment =
+                    tempoEnrichmentService.enrich(
+                            correlationSignals,
+                            center.minus(
+                                    60,
+                                    ChronoUnit.MINUTES
+                            ),
+                            center.plus(
+                                    60,
+                                    ChronoUnit.MINUTES
+                            )
+                    );
+
+            evidenceService.save(
+                    id,
+                    EvidenceType.TEMPO_ENRICHMENT,
+                    "tempo-enrichment",
+                    objectMapper.writeValueAsString(
+                            tempoEnrichment
+                    ),
+                    true
+            );
 
             String knowledgeQuery =
                 issue.summary()
@@ -164,9 +281,12 @@ public class ReplayOrchestrator {
                     + " "
                     + String.join(" ", signals.errorCodes());
 
-            for (var knowledge : knowledgeClient.search(
-                knowledgeQuery
-            )) {
+            var knowledgeResults =
+                    knowledgeClient.search(
+                            knowledgeQuery
+                    );
+
+            for (var knowledge : knowledgeResults) {
                 evidenceService.save(
                         id,
                         EvidenceType.CONFLUENCE_PAGE,
@@ -176,7 +296,155 @@ public class ReplayOrchestrator {
                 );
             }
 
-            var rootCause = aiClient.analyzeRootCause(evidenceJson(id));
+            var deterministicReport =
+                    deterministicRootCauseReportBuilder.build(
+                            issue,
+                            plainDescription,
+                            signals,
+                            searchResult,
+                            correlationSignals,
+                            secondPassResult,
+                            incidentTimeline,
+                            tempoEnrichment
+                    );
+
+            evidenceService.save(
+                    id,
+                    EvidenceType.DETERMINISTIC_ROOT_CAUSE,
+                    "replayfix-deterministic-analysis",
+                    objectMapper.writeValueAsString(
+                            deterministicReport
+                    ),
+                    true
+            );
+
+            var bitbucketRepositories =
+                    properties.getIntegrations()
+                            .getBitbucket()
+                            .isEnabled()
+                            ? bitbucketClient.listRepositories()
+                            : List.<BitbucketRepositoryInfo>of();
+
+            var repositoryResolution =
+                    repositoryResolverService.resolve(
+                            bitbucketRepositories,
+                            issue,
+                            plainDescription,
+                            signals,
+                            incidentTimeline
+                    );
+
+            evidenceService.save(
+                    id,
+                    EvidenceType.REPOSITORY_RESOLUTION,
+                    "replayfix-repository-resolver",
+                    objectMapper.writeValueAsString(
+                            repositoryResolution
+                    ),
+                    true
+            );
+
+            SourceCheckoutResult sourceCheckout = null;
+            IncidentVersionResolution incidentVersion = null;
+            SourceContextResult sourceContext;
+
+            if (properties.getPolicy()
+                    .isAllowSourceCheckout()
+                    && repositoryResolution.hasSelection()) {
+
+                sourceCheckout =
+                        repositoryCheckoutService.checkout(id);
+
+                incidentVersion =
+                        incidentVersionResolverService
+                                .resolveAndCheckout(
+                                        replayCase,
+                                        sourceCheckout
+                                );
+
+                evidenceService.save(
+                        id,
+                        EvidenceType.INCIDENT_VERSION,
+                        "replayfix-version-resolver",
+                        objectMapper.writeValueAsString(
+                                incidentVersion
+                        ),
+                        true
+                );
+
+                sourceContext =
+                        sourceCodeContextService.collectFromRoot(
+                                Path.of(
+                                        sourceCheckout.workspace()
+                                ),
+                                sourceCheckout.repositorySlug(),
+                                issue,
+                                plainDescription,
+                                signals,
+                                incidentTimeline
+                        );
+
+            } else {
+                sourceContext =
+                        sourceCodeContextService.collect(
+                                replayCase,
+                                target(replayCase),
+                                issue,
+                                plainDescription,
+                                signals,
+                                incidentTimeline
+                        );
+            }
+
+            evidenceService.save(
+                    id,
+                    EvidenceType.SOURCE_CONTEXT,
+                    "replayfix-source-context",
+                    objectMapper.writeValueAsString(
+                            sourceContext
+                    ),
+                    true
+            );
+
+            var aiInputBundle =
+                    aiEvidenceBundleBuilder.build(
+                            issue,
+                            plainDescription,
+                            deterministicReport,
+                            correlationSignals,
+                            incidentTimeline,
+                            tempoEnrichment,
+                            knowledgeResults,
+                            sourceContext.excerpts()
+                    );
+
+            String aiInputJson =
+                    objectMapper.writeValueAsString(
+                            aiInputBundle
+                    );
+
+            int maxAiCharacters =
+                    properties.getPolicy()
+                            .getMaxAiInputCharacters();
+
+            if (aiInputJson.length() > maxAiCharacters) {
+                throw new IllegalStateException(
+                        "AI evidence bundle exceeds configured limit: "
+                                + aiInputJson.length()
+                                + " > "
+                                + maxAiCharacters
+                );
+            }
+
+            evidenceService.save(
+                    id,
+                    EvidenceType.AI_INPUT_BUNDLE,
+                    "replayfix-ai-bundle-builder",
+                    aiInputJson,
+                    true
+            );
+
+            var rootCause = aiClient.analyzeRootCause(aiInputJson);
             evidenceService.save(
                     id,
                     EvidenceType.AI_ROOT_CAUSE,
@@ -191,23 +459,120 @@ public class ReplayOrchestrator {
                     null
             );
 
+            Map<String, Object> details =
+                    new LinkedHashMap<>();
+
+            details.put(
+                    "firstPassQueryCount",
+                    searchResult.attempts().size()
+            );
+
+            details.put(
+                    "firstPassLogCount",
+                    searchResult.logs().size()
+            );
+
+            details.put(
+                    "correlationValueCount",
+                    correlationSignals.totalCount()
+            );
+
+            details.put(
+                    "secondPassQueryCount",
+                    secondPassResult.attempts().size()
+            );
+
+            details.put(
+                    "secondPassLogCount",
+                    secondPassResult.logs().size()
+            );
+
+            details.put(
+                    "timelineEventCount",
+                    incidentTimeline.eventCount()
+            );
+
+            details.put(
+                    "tempoRequestedTraceCount",
+                    tempoEnrichment.requestedTraceCount()
+            );
+
+            details.put(
+                    "tempoFoundTraceCount",
+                    tempoEnrichment.foundTraceCount()
+            );
+
+            details.put(
+                    "rootCauseClassification",
+                    deterministicReport.classification()
+            );
+
+            details.put(
+                    "deterministicConfidence",
+                    deterministicReport.confidence()
+            );
+
+            details.put(
+                    "probableCause",
+                    deterministicReport.probableCause()
+            );
+
+            details.put(
+                    "aiConfidence",
+                    rootCause.confidence()
+            );
+
+            details.put(
+                    "sourceScannedFileCount",
+                    sourceContext.scannedFileCount()
+            );
+
+            details.put(
+                    "sourceExcerptCount",
+                    sourceContext.excerpts().size()
+            );
+
+            if (sourceContext.warning() != null
+                    && !sourceContext.warning().isBlank()) {
+                details.put(
+                        "sourceContextWarning",
+                        sourceContext.warning()
+                );
+            }
+
+            details.put(
+                    "primaryRepository",
+                    repositoryResolution.primaryRepositorySlug()
+            );
+
+            details.put(
+                    "repositoryCandidateCount",
+                    repositoryResolution.candidates().size()
+            );
+
+            if (incidentVersion != null) {
+                details.put(
+                        "incidentVersionStrategy",
+                        incidentVersion.strategy()
+                );
+
+                details.put(
+                        "incidentCommitSha",
+                        incidentVersion.resolvedCommitSha()
+                );
+
+                details.put(
+                        "incidentVersionExactMatch",
+                        incidentVersion.exactMatch()
+                );
+            }
+
             return StepResponse.success(
                     id,
                     "collect-context",
-                    "Incident context and adaptive Loki search completed.",
-                    Map.of(
-                            "logCount",
-                            searchResult.logs().size(),
-
-                            "queryCount",
-                            searchResult.attempts().size(),
-
-                            "confidence",
-                            rootCause.confidence(),
-
-                            "rootCause",
-                            rootCause.probableRootCause()
-                    )
+                    "Incident context, correlation, timeline, Tempo and "
+                            + "deterministic root-cause analysis completed.",
+                    details
             );
         } catch (Exception e) {
             String errorMessage = rootCauseMessage(e);

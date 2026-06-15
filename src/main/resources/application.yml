@@ -40,9 +40,12 @@ replayfix:
   cleanup-after: ${REPLAYFIX_CLEANUP_AFTER:6h}
   policy:
     allow-production-read: ${REPLAYFIX_ALLOW_PRODUCTION_READ:false}
+    allow-source-checkout: ${REPLAYFIX_ALLOW_SOURCE_CHECKOUT:false}
+    source-history-depth: ${REPLAYFIX_SOURCE_HISTORY_DEPTH:500}
     allow-generated-code-write: ${REPLAYFIX_ALLOW_GENERATED_CODE_WRITE:false}
     allow-git-push: ${REPLAYFIX_ALLOW_GIT_PUSH:false}
     allow-pull-request-creation: ${REPLAYFIX_ALLOW_PR_CREATION:false}
     require-human-approval: true
+    allow-ai-source-code: ${REPLAYFIX_ALLOW_AI_SOURCE_CODE:false}
     max-log-lines: 1000
     max-ai-input-characters: 100000

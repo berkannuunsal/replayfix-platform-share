@@ -45,6 +45,9 @@ public class ReplayFixProperties {
         private boolean allowGitPush;
         private boolean allowPullRequestCreation;
         private boolean requireHumanApproval = true;
+        private boolean allowSourceCheckout;
+        private int sourceHistoryDepth = 500;
+        private boolean allowAiSourceCode;
         private int maxLogLines = 1000;
         private int maxAiInputCharacters = 100000;
 
@@ -58,6 +61,12 @@ public class ReplayFixProperties {
         public void setAllowPullRequestCreation(boolean value) { this.allowPullRequestCreation = value; }
         public boolean isRequireHumanApproval() { return requireHumanApproval; }
         public void setRequireHumanApproval(boolean value) { this.requireHumanApproval = value; }
+        public boolean isAllowSourceCheckout() { return allowSourceCheckout; }
+        public void setAllowSourceCheckout(boolean value) { this.allowSourceCheckout = value; }
+        public int getSourceHistoryDepth() { return sourceHistoryDepth; }
+        public void setSourceHistoryDepth(int value) { this.sourceHistoryDepth = value; }
+        public boolean isAllowAiSourceCode() { return allowAiSourceCode; }
+        public void setAllowAiSourceCode(boolean value) { this.allowAiSourceCode = value; }
         public int getMaxLogLines() { return maxLogLines; }
         public void setMaxLogLines(int value) { this.maxLogLines = value; }
         public int getMaxAiInputCharacters() { return maxAiInputCharacters; }
@@ -127,6 +136,7 @@ public class ReplayFixProperties {
         private String provider = "DATA_CENTER";
         private String projectKey = "";
         private String workspace = "";
+        private String gitExecutable = "git";
 
         public String getProvider() { return provider; }
         public void setProvider(String provider) { this.provider = provider; }
@@ -134,6 +144,8 @@ public class ReplayFixProperties {
         public void setProjectKey(String projectKey) { this.projectKey = projectKey; }
         public String getWorkspace() { return workspace; }
         public void setWorkspace(String workspace) { this.workspace = workspace; }
+        public String getGitExecutable() { return gitExecutable; }
+        public void setGitExecutable(String gitExecutable) { this.gitExecutable = gitExecutable; }
     }
 
     public static class Ai extends Endpoint {
@@ -156,6 +168,8 @@ public class ReplayFixProperties {
         private String jobName = "replayfix-validation";
         private Duration pollInterval = Duration.ofSeconds(10);
         private Duration maxWait = Duration.ofMinutes(20);
+        private Map<String, JenkinsApplication> applications =
+                new LinkedHashMap<>();
 
         public String getJobName() { return jobName; }
         public void setJobName(String jobName) { this.jobName = jobName; }
@@ -163,6 +177,35 @@ public class ReplayFixProperties {
         public void setPollInterval(Duration value) { this.pollInterval = value; }
         public Duration getMaxWait() { return maxWait; }
         public void setMaxWait(Duration value) { this.maxWait = value; }
+        public Map<String, JenkinsApplication> getApplications() {
+            return applications;
+        }
+        public void setApplications(
+                Map<String, JenkinsApplication> applications
+        ) {
+            this.applications = applications;
+        }
+    }
+
+    public static class JenkinsApplication {
+        private String buildJobUrl = "";
+        private String imageJobUrl = "";
+
+        public String getBuildJobUrl() {
+            return buildJobUrl;
+        }
+
+        public void setBuildJobUrl(String buildJobUrl) {
+            this.buildJobUrl = buildJobUrl;
+        }
+
+        public String getImageJobUrl() {
+            return imageJobUrl;
+        }
+
+        public void setImageJobUrl(String imageJobUrl) {
+            this.imageJobUrl = imageJobUrl;
+        }
     }
 
     public static class Kubernetes {
@@ -212,6 +255,7 @@ public class ReplayFixProperties {
     public static class Target {
         private String repository = "";
         private String cloneUrl = "";
+        private String localSourcePath = "";
         private String image = "";
         private int containerPort = 8080;
         private String healthPath = "/actuator/health";
@@ -229,6 +273,8 @@ public class ReplayFixProperties {
         public void setRepository(String value) { this.repository = value; }
         public String getCloneUrl() { return cloneUrl; }
         public void setCloneUrl(String value) { this.cloneUrl = value; }
+        public String getLocalSourcePath() { return localSourcePath; }
+        public void setLocalSourcePath(String value) { this.localSourcePath = value; }
         public String getImage() { return image; }
         public void setImage(String value) { this.image = value; }
         public int getContainerPort() { return containerPort; }
