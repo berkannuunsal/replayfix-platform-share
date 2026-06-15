@@ -1,0 +1,21 @@
+spring:
+  datasource:
+    url: "jdbc:h2:file:C:/Users/berkan.unsal/Desktop/Discipline_Huddle/ReplayFix/replayfix-platform/replayfix-platform/data/replayfix;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;AUTO_SERVER=TRUE"
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: update
+
+  flyway:
+    enabled: false
+
+replayfix:
+  mode: DRY_RUN
+  workspace-dir: ./work
+
+server:
+  port: 8088

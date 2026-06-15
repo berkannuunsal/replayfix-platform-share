@@ -1,0 +1,92 @@
+# All external systems are isolated in this file.
+# Put real secrets in environment variables or a secret manager.
+
+replayfix:
+  integrations:
+    jira:
+      enabled: ${JIRA_ENABLED}
+      base-url: ${JIRA_BASE_URL}
+      auth-type: ${JIRA_AUTH_TYPE}
+      username: ${JIRA_USERNAME}
+      token: ${JIRA_TOKEN}
+      timeout: 30s
+
+    loki:
+      enabled: ${LOKI_ENABLED:false}
+      base-url: ${LOKI_BASE_URL:https://loki.internal.example}
+      auth-type: ${LOKI_AUTH_TYPE:BEARER}
+      token: ${LOKI_TOKEN:}
+      timeout: 60s
+
+    tempo:
+      enabled: ${TEMPO_ENABLED:false}
+      base-url: ${TEMPO_BASE_URL:https://tempo.internal.example}
+      auth-type: ${TEMPO_AUTH_TYPE:BEARER}
+      token: ${TEMPO_TOKEN:}
+      timeout: 60s
+
+    bitbucket:
+      enabled: ${BITBUCKET_ENABLED:false}
+      # DATA_CENTER or CLOUD
+      provider: ${BITBUCKET_PROVIDER:DATA_CENTER}
+      base-url: ${BITBUCKET_BASE_URL:https://bitbucket.internal.example}
+      project-key: ${BITBUCKET_PROJECT_KEY:PROJECT}
+      workspace: ${BITBUCKET_WORKSPACE:}
+      auth-type: ${BITBUCKET_AUTH_TYPE:BEARER}
+      username: ${BITBUCKET_USERNAME:}
+      token: ${BITBUCKET_TOKEN:}
+      timeout: 60s
+
+    confluence:
+      enabled: ${CONFLUENCE_ENABLED:false}
+      base-url: ${CONFLUENCE_BASE_URL:https://your-company.atlassian.net}
+      auth-type: ${CONFLUENCE_AUTH_TYPE:BASIC}
+      username: ${CONFLUENCE_USERNAME:}
+      token: ${CONFLUENCE_TOKEN:}
+      timeout: 30s
+
+    rovo:
+      enabled: ${ROVO_ENABLED:false}
+      base-url: ${ROVO_BASE_URL:https://rovo.internal.example}
+      api-path: ${ROVO_API_PATH:/api/search}
+      auth-type: ${ROVO_AUTH_TYPE:BEARER}
+      token: ${ROVO_TOKEN:}
+      timeout: 30s
+
+    ai:
+      enabled: ${AI_ENABLED:false}
+      base-url: ${AI_BASE_URL:https://internal-llm.example}
+      chat-path: ${AI_CHAT_PATH:/v1/chat/completions}
+      model: ${AI_MODEL:internal-code-model}
+      auth-type: ${AI_AUTH_TYPE:BEARER}
+      token: ${AI_TOKEN:}
+      temperature: 0.1
+      max-output-tokens: 4000
+      timeout: 120s
+
+    jenkins:
+      enabled: ${JENKINS_ENABLED:false}
+      base-url: ${JENKINS_BASE_URL:https://jenkins.internal.example}
+      job-name: ${JENKINS_JOB_NAME:replayfix-validation}
+      auth-type: ${JENKINS_AUTH_TYPE:BASIC}
+      username: ${JENKINS_USERNAME:}
+      token: ${JENKINS_TOKEN:}
+      poll-interval: 10s
+      max-wait: 20m
+      timeout: 30s
+
+    kubernetes:
+      enabled: ${KUBERNETES_ENABLED:false}
+      kubectl-path: ${KUBECTL_PATH:kubectl}
+      context: ${KUBERNETES_CONTEXT:}
+      registry-pull-secret: ${KUBERNETES_REGISTRY_PULL_SECRET:}
+      postgres-image: ${REPLAY_POSTGRES_IMAGE:postgres:15-alpine}
+      curl-image: ${REPLAY_CURL_IMAGE:curlimages/curl:8.10.1}
+      mock-image: ${REPLAY_MOCK_IMAGE:}
+
+    source-database:
+      enabled: ${SOURCE_DB_ENABLED:false}
+      production: ${SOURCE_DB_PRODUCTION:false}
+      jdbc-url: ${SOURCE_DB_URL:}
+      username: ${SOURCE_DB_USERNAME:}
+      password: ${SOURCE_DB_PASSWORD:}

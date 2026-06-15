@@ -1,0 +1,48 @@
+spring:
+  application:
+    name: replayfix-platform
+  config:
+    import:
+      - optional:file:./config/external-services.yml
+      - optional:file:./config/replay-targets.yml
+      - optional:file:./config/log-parsers.yml
+  datasource:
+    url: ${REPLAYFIX_DB_URL:jdbc:postgresql://localhost:5433/replayfix}
+    username: ${REPLAYFIX_DB_USERNAME:replayfix}
+    password: ${REPLAYFIX_DB_PASSWORD:replayfix}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
+server:
+  port: ${SERVER_PORT:8088}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+replayfix:
+  mode: ${REPLAYFIX_MODE:DRY_RUN}
+  workspace-dir: ${REPLAYFIX_WORKSPACE:./work}
+  namespace-prefix: ${REPLAYFIX_NAMESPACE_PREFIX:replayfix}
+  cleanup-after: ${REPLAYFIX_CLEANUP_AFTER:6h}
+  policy:
+    allow-production-read: ${REPLAYFIX_ALLOW_PRODUCTION_READ:false}
+    allow-generated-code-write: ${REPLAYFIX_ALLOW_GENERATED_CODE_WRITE:false}
+    allow-git-push: ${REPLAYFIX_ALLOW_GIT_PUSH:false}
+    allow-pull-request-creation: ${REPLAYFIX_ALLOW_PR_CREATION:false}
+    require-human-approval: true
+    max-log-lines: 1000
+    max-ai-input-characters: 100000

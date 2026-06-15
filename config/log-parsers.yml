@@ -1,0 +1,31 @@
+# Regex patterns for plain-text logs.
+# Extend these for each BSS, WSO2, Camunda, UI and integration application.
+
+replayfix:
+  log-parsers:
+    bss:
+      order-id-patterns:
+        - 'orderId[=: ]+(?<value>[A-Za-z0-9-]+)'
+        - '"orderId"\s*:\s*"(?<value>[^"]+)"'
+      trace-id-patterns:
+        - 'traceId[=: ]+(?<value>[A-Za-z0-9-]+)'
+      exception-patterns:
+        - '(?<value>[A-Za-z0-9_.]+Exception)'
+      version-patterns:
+        - '(?:version|imageTag)[=: ]+(?<value>[A-Za-z0-9._-]+)'
+
+    wso2:
+      order-id-patterns:
+        - 'orderId[=: ]+(?<value>[A-Za-z0-9-]+)'
+      trace-id-patterns:
+        - '(?:MessageID|traceId)[=: ]+(?<value>[A-Za-z0-9:._-]+)'
+      exception-patterns:
+        - '(?<value>[A-Za-z0-9_.]+Exception)'
+
+    camunda:
+      order-id-patterns:
+        - '(?:businessKey|orderId)[=: ]+(?<value>[A-Za-z0-9-]+)'
+      trace-id-patterns:
+        - '(?:processInstanceId|traceId)[=: ]+(?<value>[A-Za-z0-9-]+)'
+      exception-patterns:
+        - '(?<value>[A-Za-z0-9_.]+Exception)'

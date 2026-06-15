@@ -1,0 +1,13 @@
+.env
+.idea/
+target/
+work/
+data/
+log/
+logs/
+*.log
+*.mv.db
+*.lock.db
+jira-*.json
+loki-*.json
+datasources.json

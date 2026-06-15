@@ -1,0 +1,49 @@
+{
+  "info": {
+    "name": "ReplayFix Platform",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8088"
+    },
+    {
+      "key": "caseId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Config Status",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/v1/config/status"
+      }
+    },
+    {
+      "name": "Create Case",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"jiraKey\": \"DEMO-1234\",\n  \"targetKey\": \"sample-order-service\",\n  \"orderId\": \"DEMO-ORDER-1\"\n}"
+        },
+        "url": "{{baseUrl}}/api/v1/cases"
+      }
+    },
+    {
+      "name": "Run All",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/v1/cases/{{caseId}}/run-all"
+      }
+    }
+  ]
+}
