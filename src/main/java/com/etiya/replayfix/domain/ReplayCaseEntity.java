@@ -25,6 +25,15 @@ public class ReplayCaseEntity {
     @Column(name = "incident_time")
     private Instant incidentTime;
 
+    @Column(name = "application_name", length = 150)
+    private String applicationName;
+
+    @Column(name = "environment", length = 50)
+    private String environment;
+
+    @Column(name = "synthetic", nullable = false)
+    private boolean synthetic = false;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 50)
     private ReplayCaseStatus status;
@@ -99,6 +108,12 @@ public class ReplayCaseEntity {
     public void setPullRequestUrl(String value) { this.pullRequestUrl = value; }
     public String getLastError() { return lastError; }
     public void setLastError(String value) { this.lastError = value; }
+    public String getApplicationName() { return applicationName; }
+    public void setApplicationName(String value) { this.applicationName = value; }
+    public String getEnvironment() { return environment; }
+    public void setEnvironment(String value) { this.environment = value; }
+    public boolean isSynthetic() { return synthetic; }
+    public void setSynthetic(boolean value) { this.synthetic = value; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
     public long getVersion() { return version; }

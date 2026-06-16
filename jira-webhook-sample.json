@@ -1,0 +1,38 @@
+{
+  "timestamp": "2026-06-16T12:00:00.000Z",
+  "webhookEvent": "jira:issue_created",
+  "user": {
+    "accountId": "557058:12345678-1234-1234-1234-123456789abc",
+    "displayName": "Berkan Unsal",
+    "emailAddress": "berkan.unsal@etiya.com"
+  },
+  "issue": {
+    "id": "123456",
+    "key": "FIZZMS-8346",
+    "fields": {
+      "summary": "BAR deactivation unauthorized issue - HTTP 401 during order completion",
+      "description": "Customer order fails with 401 Unauthorized error when trying to complete BAR deactivation workflow",
+      "issuetype": {
+        "name": "Bug",
+        "id": "10001"
+      },
+      "project": {
+        "key": "FIZZMS",
+        "name": "Fizz Mobile Services",
+        "id": "10000"
+      },
+      "status": {
+        "name": "Open",
+        "id": "1"
+      },
+      "priority": {
+        "name": "High",
+        "id": "2"
+      },
+      "created": "2026-06-16T12:00:00.000Z"
+    }
+  },
+  "changelog": {
+    "items": []
+  }
+}

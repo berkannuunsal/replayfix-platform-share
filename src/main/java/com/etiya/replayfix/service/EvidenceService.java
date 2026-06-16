@@ -49,6 +49,12 @@ public class EvidenceService {
         return repository.findByCaseIdOrderByCreatedAtAsc(caseId);
     }
 
+    public EvidenceEntity find(UUID caseId, UUID evidenceId) {
+        return repository.findById(evidenceId)
+                .filter(e -> e.getCaseId().equals(caseId))
+                .orElseThrow(() -> new IllegalArgumentException("Evidence not found: " + evidenceId));
+    }
+
     private String hash(String content) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")

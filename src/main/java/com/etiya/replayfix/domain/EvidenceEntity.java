@@ -37,6 +37,12 @@ public class EvidenceEntity {
     @Column(name = "content_hash", length = 128)
     private String contentHash;
 
+    @Column(columnDefinition = "text")
+    private String body;
+
+    @Column
+    private Double confidence;
+
     @Column(nullable = false)
     private boolean sanitized;
 
@@ -62,6 +68,10 @@ public class EvidenceEntity {
     public void setContentLocation(String value) { this.contentLocation = value; }
     public String getContentHash() { return contentHash; }
     public void setContentHash(String value) { this.contentHash = value; }
+    public String getBody() { return body; }
+    public void setBody(String value) { this.body = value; }
+    public Double getConfidence() { return confidence; }
+    public void setConfidence(Double value) { this.confidence = value; }
     public boolean isSanitized() { return sanitized; }
     public void setSanitized(boolean value) { this.sanitized = value; }
     public Instant getCreatedAt() { return createdAt; }

@@ -38,6 +38,17 @@ replayfix:
   workspace-dir: ${REPLAYFIX_WORKSPACE:./work}
   namespace-prefix: ${REPLAYFIX_NAMESPACE_PREFIX:replayfix}
   cleanup-after: ${REPLAYFIX_CLEANUP_AFTER:6h}
+  demo:
+    enabled: ${REPLAYFIX_DEMO_ENABLED:false}
+    allow-reset: ${REPLAYFIX_DEMO_ALLOW_RESET:false}
+  notifications:
+    webhook:
+      enabled: ${REPLAYFIX_NOTIFICATION_WEBHOOK_ENABLED:false}
+      url: ${REPLAYFIX_NOTIFICATION_WEBHOOK_URL:}
+      secret: ${REPLAYFIX_NOTIFICATION_WEBHOOK_SECRET:}
+      connect-timeout-seconds: 10
+      read-timeout-seconds: 20
+      max-attempts: 3
   policy:
     allow-production-read: ${REPLAYFIX_ALLOW_PRODUCTION_READ:false}
     allow-source-checkout: ${REPLAYFIX_ALLOW_SOURCE_CHECKOUT:false}
@@ -55,6 +66,7 @@ replayfix:
     ai-bundle-max-tempo-chars: ${REPLAYFIX_AI_BUNDLE_MAX_TEMPO_CHARS:15000}
     ai-bundle-max-jira-chars: ${REPLAYFIX_AI_BUNDLE_MAX_JIRA_CHARS:15000}
     allow-test-execution: ${REPLAYFIX_ALLOW_TEST_EXECUTION:false}
+    allow-jira-comment-write: ${REPLAYFIX_ALLOW_JIRA_COMMENT_WRITE:false}
     maven-executable: ${REPLAYFIX_MAVEN_EXECUTABLE:mvn}
     local-test-timeout-seconds: ${REPLAYFIX_LOCAL_TEST_TIMEOUT_SECONDS:600}
     local-test-max-output-chars: ${REPLAYFIX_LOCAL_TEST_MAX_OUTPUT_CHARS:100000}
@@ -85,3 +97,20 @@ replayfix:
       max-page-chars: ${REPLAYFIX_CONFLUENCE_MAX_PAGE_CHARS:30000}
       max-total-chars: ${REPLAYFIX_CONFLUENCE_MAX_TOTAL_CHARS:80000}
       allowed-space-keys: ${REPLAYFIX_CONFLUENCE_ALLOWED_SPACE_KEYS:}
+    jira-webhook:
+      enabled: ${REPLAYFIX_JIRA_WEBHOOK_ENABLED:false}
+      secret: ${JIRA_WEBHOOK_SECRET:}
+      allowed-event-types:
+        - jira:issue_created
+        - jira:issue_updated
+      allowed-project-keys: ${REPLAYFIX_JIRA_WEBHOOK_ALLOWED_PROJECTS:FIZZMS}
+      allowed-issue-types: ${REPLAYFIX_JIRA_WEBHOOK_ALLOWED_ISSUE_TYPES:Bug,Defect}
+      allowed-statuses: ${REPLAYFIX_JIRA_WEBHOOK_ALLOWED_STATUSES:Open,To Do,In Progress}
+      max-body-chars: ${REPLAYFIX_JIRA_WEBHOOK_MAX_BODY_CHARS:1000000}
+      replay-window-seconds: ${REPLAYFIX_JIRA_WEBHOOK_REPLAY_WINDOW_SECONDS:300}
+      auto-preview-enabled: ${REPLAYFIX_JIRA_AUTO_PREVIEW_ENABLED:true}
+  targets:
+    fizzms-backend:
+      repository: fizzms-api
+      clone-url: ${REPLAYFIX_FIZZMS_CLONE_URL:}
+      local-source-path: ${REPLAYFIX_FIZZMS_LOCAL_SOURCE_PATH:}

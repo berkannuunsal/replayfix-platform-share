@@ -9,6 +9,7 @@ import com.etiya.replayfix.model.ApprovalRequestView;
 import com.etiya.replayfix.model.PatternInformedTestSourceCandidate;
 import com.etiya.replayfix.model.TestSourceReadiness;
 import com.etiya.replayfix.repository.ApprovalRequestRepository;
+import com.etiya.replayfix.repository.ReplayCaseRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,17 +34,23 @@ public class ApprovalService {
     private final EvidenceService evidenceService;
     private final AuditService auditService;
     private final ObjectMapper objectMapper;
+    private final ReplayFixNotificationService notificationService;
+    private final ReplayCaseRepository caseRepository;
 
     public ApprovalService(
             ApprovalRequestRepository repository,
             EvidenceService evidenceService,
             AuditService auditService,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            ReplayFixNotificationService notificationService,
+            ReplayCaseRepository caseRepository
     ) {
         this.repository = repository;
         this.evidenceService = evidenceService;
         this.auditService = auditService;
         this.objectMapper = objectMapper;
+        this.notificationService = notificationService;
+        this.caseRepository = caseRepository;
     }
 
     @Transactional
@@ -658,10 +665,97 @@ public class ApprovalService {
                     approved
                             ? "PATTERN_INFORMED_TEST_SOURCE_APPROVED"
                             : "PATTERN_INFORMED_TEST_SOURCE_REJECTED";
+            case JIRA_EVIDENCE_SUMMARY ->
+                    approved
+                            ? "JIRA_EVIDENCE_SUMMARY_APPROVED"
+                            : "JIRA_EVIDENCE_SUMMARY_REJECTED";
             default ->
                     approved
                             ? "APPROVAL_GRANTED"
                             : "APPROVAL_REJECTED";
         };
+    }
+
+    @Transactional
+    public ApprovalRequestView createJiraEvidenceSummaryApproval(
+            UUID caseId,
+            UUID previewEvidenceId,
+            String actor,
+            String comment
+    ) {
+        String normalizedActor = requireActor(actor);
+
+        EvidenceEntity previewEvidence = evidenceService.find(caseId, previewEvidenceId);
+
+        if (previewEvidence.getEvidenceType() != EvidenceType.REPLAY_OUTPUT) {
+            throw new IllegalArgumentException("Evidence is not REPLAY_OUTPUT type");
+        }
+
+        if (!"jira-evidence-summary-preview".equals(previewEvidence.getSource())) {
+            throw new IllegalArgumentException("Evidence source is not jira-evidence-summary-preview");
+        }
+
+        var existingPending = repository
+                .findFirstByCaseIdAndTargetTypeAndTargetEvidenceIdAndStatusOrderByRequestedAtDesc(
+                        caseId,
+                        ApprovalTargetType.JIRA_EVIDENCE_SUMMARY,
+                        previewEvidenceId,
+                        ApprovalStatus.PENDING
+                );
+
+        if (existingPending.isPresent()) {
+            return toView(existingPending.get());
+        }
+
+        ApprovalRequestEntity entity = new ApprovalRequestEntity();
+        entity.setId(UUID.randomUUID());
+        entity.setCaseId(caseId);
+        entity.setTargetType(ApprovalTargetType.JIRA_EVIDENCE_SUMMARY);
+        entity.setTargetEvidenceId(previewEvidenceId);
+        entity.setTargetEvidenceType(previewEvidence.getEvidenceType().name());
+        entity.setTargetEvidenceSource(previewEvidence.getSource());
+        entity.setRequestedBy(normalizedActor);
+        entity.setRequestComment(comment);
+        entity.setStatus(ApprovalStatus.PENDING);
+        entity.setRequestedAt(Instant.now());
+
+        entity = repository.save(entity);
+        
+        final ApprovalRequestEntity savedEntity = entity;
+
+        auditService.record(
+                caseId,
+                "JIRA_EVIDENCE_SUMMARY_APPROVAL_REQUESTED",
+                normalizedActor,
+                "Approval requested for evidence preview " + previewEvidenceId
+        );
+
+        caseRepository.findById(caseId).ifPresent(caseEntity -> {
+            notificationService.notifyApprovalRequested(savedEntity, caseEntity);
+        });
+
+        return toView(savedEntity);
+    }
+
+    @Transactional(readOnly = true)
+    public ApprovalRequestEntity requireApprovedJiraEvidenceSummary(
+            UUID caseId,
+            UUID previewEvidenceId
+    ) {
+        return repository
+                .findFirstByCaseIdAndTargetTypeAndTargetEvidenceIdAndStatusOrderByRequestedAtDesc(
+                        caseId,
+                        ApprovalTargetType.JIRA_EVIDENCE_SUMMARY,
+                        previewEvidenceId,
+                        ApprovalStatus.APPROVED
+                )
+                .orElseThrow(() ->
+                        new IllegalStateException(
+                                "Approved Jira evidence summary not found. caseId="
+                                        + caseId
+                                        + ", previewEvidenceId="
+                                        + previewEvidenceId
+                        )
+                );
     }
 }

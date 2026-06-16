@@ -31,8 +31,14 @@ public class AuditEventEntity {
         createdAt = Instant.now();
     }
 
+    public UUID getId() { return id; }
+    public UUID getCaseId() { return caseId; }
     public void setCaseId(UUID value) { this.caseId = value; }
+    public String getAction() { return action; }
     public void setAction(String value) { this.action = value; }
+    public String getActor() { return actor; }
     public void setActor(String value) { this.actor = value; }
+    public String getDetails() { return details; }
     public void setDetails(String value) { this.details = value; }
+    public Instant getCreatedAt() { return createdAt; }
 }

@@ -19,6 +19,7 @@ public class ReplayFixProperties {
     private Duration cleanupAfter = Duration.ofHours(6);
     private Policy policy = new Policy();
     private Integrations integrations = new Integrations();
+    private Notifications notifications = new Notifications();
     private Map<String, Target> targets = new LinkedHashMap<>();
     private Map<String, LogParser> logParsers = new LinkedHashMap<>();
 
@@ -34,6 +35,8 @@ public class ReplayFixProperties {
     public void setPolicy(Policy policy) { this.policy = policy; }
     public Integrations getIntegrations() { return integrations; }
     public void setIntegrations(Integrations integrations) { this.integrations = integrations; }
+    public Notifications getNotifications() { return notifications; }
+    public void setNotifications(Notifications notifications) { this.notifications = notifications; }
     public Map<String, Target> getTargets() { return targets; }
     public void setTargets(Map<String, Target> targets) { this.targets = targets; }
     public Map<String, LogParser> getLogParsers() { return logParsers; }
@@ -56,6 +59,7 @@ public class ReplayFixProperties {
         private int aiBundleMaxTempoChars = 15000;
         private int aiBundleMaxJiraChars = 15000;
         private boolean allowTestExecution;
+        private boolean allowJiraCommentWrite;
         private String mavenExecutable = "mvn";
         private long localTestTimeoutSeconds = 600;
         private int localTestMaxOutputChars = 100000;
@@ -95,6 +99,8 @@ public class ReplayFixProperties {
         public void setAiBundleMaxJiraChars(int value) { this.aiBundleMaxJiraChars = value; }
         public boolean isAllowTestExecution() { return allowTestExecution; }
         public void setAllowTestExecution(boolean value) { this.allowTestExecution = value; }
+        public boolean isAllowJiraCommentWrite() { return allowJiraCommentWrite; }
+        public void setAllowJiraCommentWrite(boolean value) { this.allowJiraCommentWrite = value; }
         public String getMavenExecutable() { return mavenExecutable; }
         public void setMavenExecutable(String value) { this.mavenExecutable = value; }
         public long getLocalTestTimeoutSeconds() { return localTestTimeoutSeconds; }
@@ -120,6 +126,7 @@ public class ReplayFixProperties {
         private Jenkins jenkins = new Jenkins();
         private Kubernetes kubernetes = new Kubernetes();
         private SourceDatabase sourceDatabase = new SourceDatabase();
+        private JiraWebhookEndpoint jiraWebhook = new JiraWebhookEndpoint();
 
         public Endpoint getJira() { return jira; }
         public void setJira(Endpoint jira) { this.jira = jira; }
@@ -141,6 +148,8 @@ public class ReplayFixProperties {
         public void setKubernetes(Kubernetes kubernetes) { this.kubernetes = kubernetes; }
         public SourceDatabase getSourceDatabase() { return sourceDatabase; }
         public void setSourceDatabase(SourceDatabase sourceDatabase) { this.sourceDatabase = sourceDatabase; }
+        public JiraWebhookEndpoint getJiraWebhook() { return jiraWebhook; }
+        public void setJiraWebhook(JiraWebhookEndpoint jiraWebhook) { this.jiraWebhook = jiraWebhook; }
     }
 
     public static class Endpoint {
@@ -462,5 +471,65 @@ public class ReplayFixProperties {
         public void setExceptionPatterns(List<String> value) { this.exceptionPatterns = value; }
         public List<String> getVersionPatterns() { return versionPatterns; }
         public void setVersionPatterns(List<String> value) { this.versionPatterns = value; }
+    }
+
+    public static class JiraWebhookEndpoint {
+        private boolean enabled = false;
+        private String secret = "";
+        private List<String> allowedEventTypes = List.of("jira:issue_created", "jira:issue_updated");
+        private String allowedProjectKeys = "";
+        private String allowedIssueTypes = "";
+        private String allowedStatuses = "";
+        private int maxBodyChars = 1000000;
+        private int replayWindowSeconds = 300;
+        private boolean autoPreviewEnabled = true;
+
+        public boolean isEnabled() { return enabled; }
+        public void setEnabled(boolean value) { this.enabled = value; }
+        public String getSecret() { return secret; }
+        public void setSecret(String value) { this.secret = value; }
+        public List<String> getAllowedEventTypes() { return allowedEventTypes; }
+        public void setAllowedEventTypes(List<String> value) { this.allowedEventTypes = value; }
+        public String getAllowedProjectKeys() { return allowedProjectKeys; }
+        public void setAllowedProjectKeys(String value) { this.allowedProjectKeys = value; }
+        public String getAllowedIssueTypes() { return allowedIssueTypes; }
+        public void setAllowedIssueTypes(String value) { this.allowedIssueTypes = value; }
+        public String getAllowedStatuses() { return allowedStatuses; }
+        public void setAllowedStatuses(String value) { this.allowedStatuses = value; }
+        public int getMaxBodyChars() { return maxBodyChars; }
+        public void setMaxBodyChars(int value) { this.maxBodyChars = value; }
+        public int getReplayWindowSeconds() { return replayWindowSeconds; }
+        public void setReplayWindowSeconds(int value) { this.replayWindowSeconds = value; }
+        public boolean isAutoPreviewEnabled() { return autoPreviewEnabled; }
+        public void setAutoPreviewEnabled(boolean value) { this.autoPreviewEnabled = value; }
+    }
+
+    public static class Notifications {
+        private Webhook webhook = new Webhook();
+
+        public Webhook getWebhook() { return webhook; }
+        public void setWebhook(Webhook value) { this.webhook = value; }
+
+        public static class Webhook {
+            private boolean enabled = false;
+            private String url;
+            private String secret;
+            private int connectTimeoutSeconds = 10;
+            private int readTimeoutSeconds = 20;
+            private int maxAttempts = 3;
+
+            public boolean isEnabled() { return enabled; }
+            public void setEnabled(boolean value) { this.enabled = value; }
+            public String getUrl() { return url; }
+            public void setUrl(String value) { this.url = value; }
+            public String getSecret() { return secret; }
+            public void setSecret(String value) { this.secret = value; }
+            public int getConnectTimeoutSeconds() { return connectTimeoutSeconds; }
+            public void setConnectTimeoutSeconds(int value) { this.connectTimeoutSeconds = value; }
+            public int getReadTimeoutSeconds() { return readTimeoutSeconds; }
+            public void setReadTimeoutSeconds(int value) { this.readTimeoutSeconds = value; }
+            public int getMaxAttempts() { return maxAttempts; }
+            public void setMaxAttempts(int value) { this.maxAttempts = value; }
+        }
     }
 }

@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ReplayFix Incident Commander</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Top Navigation -->
+        <nav class="top-nav">
+            <div class="nav-brand">
+                <h1>⚡ ReplayFix Incident Commander</h1>
+                <span class="env-badge" id="envBadge">LIVE</span>
+            </div>
+            <div class="nav-info" id="navInfo">
+                <span id="caseIdDisplay"></span>
+                <span id="lastRefresh"></span>
+            </div>
+            <div class="nav-actions">
+                <div class="notification-bell">
+                    <button id="notificationBtn" class="btn btn-icon" aria-label="Open notifications">
+                        <span class="icon">🔔</span>
+                        <span id="notificationCount" class="notification-badge hidden">0</span>
+                    </button>
+                    <div id="notificationDropdown" class="notification-dropdown hidden">
+                        <div class="notification-header">
+                            <h3>Notifications</h3>
+                            <span id="notificationTotal">0</span>
+                        </div>
+                        <div id="notificationList" class="notification-list"></div>
+                    </div>
+                </div>
+                <button id="refreshBtn" class="btn btn-secondary" aria-label="Refresh dashboard">
+                    <span class="icon">🔄</span> Refresh
+                </button>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="autoRefreshToggle" aria-label="Toggle auto-refresh">
+                    <span class="slider"></span>
+                    <span class="toggle-label">Auto-refresh</span>
+                </label>
+            </div>
+        </nav>
+
+        <!-- Case List View -->
+        <div id="caseListView" class="container hidden">
+            <div class="page-header">
+                <h2>Recent Cases</h2>
+                <div class="search-box">
+                    <input type="text" id="caseSearch" placeholder="Search by Jira key..." aria-label="Search cases">
+                </div>
+            </div>
+            <div id="caseListContainer" class="case-list"></div>
+        </div>
+
+        <!-- Dashboard View -->
+        <div id="dashboardView" class="container hidden">
+            <!-- Incident Header -->
+            <section id="incidentHeader" class="card">
+                <div class="card-header">
+                    <h2>Incident Overview</h2>
+                    <div class="header-actions">
+                        <button id="openJiraBtn" class="btn btn-link" aria-label="Open in Jira">
+                            📋 Open in Jira
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="incident-meta">
+                        <div class="meta-item">
+                            <label>Jira Key</label>
+                            <span id="jiraKey" class="value-primary"></span>
+                        </div>
+                        <div class="meta-item">
+                            <label>Summary</label>
+                            <span id="issueSummary"></span>
+                        </div>
+                        <div class="meta-item">
+                            <label>Status</label>
+                            <span id="issueStatus" class="badge"></span>
+                        </div>
+                        <div class="meta-item">
+                            <label>Workflow Status</label>
+                            <span id="workflowStatus" class="badge"></span>
+                        </div>
+                    </div>
+                    <div id="workflowAlert" class="alert hidden"></div>
+                </div>
+            </section>
+
+            <!-- Workflow Progress -->
+            <section id="workflowProgress" class="card">
+                <div class="card-header">
+                    <h2>Workflow Progress</h2>
+                    <div class="progress-summary" id="progressSummary"></div>
+                </div>
+                <div class="card-body">
+                    <div id="workflowTimeline" class="workflow-timeline"></div>
+                </div>
+            </section>
+
+            <!-- Evidence Matrix -->
+            <section id="evidenceMatrix" class="card">
+                <div class="card-header">
+                    <h2>Evidence Matrix</h2>
+                </div>
+                <div class="card-body">
+                    <div id="evidenceCards" class="evidence-grid"></div>
+                </div>
+            </section>
+
+            <!-- Root Cause Panel -->
+            <section id="rootCausePanel" class="card">
+                <div class="card-header">
+                    <h2>Root-Cause Analysis</h2>
+                </div>
+                <div class="card-body">
+                    <div id="rootCauseContent">
+                        <div class="rca-item">
+                            <label>Probable Root Cause</label>
+                            <p id="probableRootCause"></p>
+                        </div>
+                        <div class="rca-item">
+                            <label>Confidence</label>
+                            <div class="confidence-display">
+                                <span id="confidencePercent"></span>
+                                <span id="confidenceBand" class="badge"></span>
+                            </div>
+                        </div>
+                        <div class="rca-item">
+                            <label>Analysis Type</label>
+                            <span id="analysisType" class="badge"></span>
+                        </div>
+                        <div class="rca-item" id="fixDirectionSection" class="hidden">
+                            <label>Recommended Fix Direction</label>
+                            <ul id="fixDirectionList"></ul>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Missing Evidence -->
+            <section id="missingEvidenceSection" class="card hidden">
+                <div class="card-header">
+                    <h2>⚠️ Missing Evidence</h2>
+                </div>
+                <div class="card-body">
+                    <ul id="missingEvidenceList" class="missing-list"></ul>
+                </div>
+            </section>
+
+            <!-- Jira Evidence Preview -->
+            <section id="jiraPreviewSection" class="card">
+                <div class="card-header">
+                    <h2>📝 Jira Evidence Snapshot Preview</h2>
+                </div>
+                <div class="card-body">
+                    <div id="previewContent">
+                        <div class="preview-meta" id="previewMeta"></div>
+                        <div class="preview-text" id="previewText"></div>
+                    </div>
+                    <div class="preview-actions">
+                        <button id="copyPreviewBtn" class="btn btn-secondary">📋 Copy Preview</button>
+                        <button id="requestApprovalBtn" class="btn btn-primary">✓ Request Approval</button>
+                        <button id="publishBtn" class="btn btn-success" disabled>🚀 Publish to Jira</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Approval Control Center -->
+            <section id="approvalSection" class="card">
+                <div class="card-header">
+                    <h2>Approval Control Center</h2>
+                </div>
+                <div class="card-body">
+                    <div id="approvalsList" class="approvals-list"></div>
+                </div>
+            </section>
+
+            <!-- Audit Timeline -->
+            <section id="auditSection" class="card">
+                <div class="card-header">
+                    <h2>Audit Timeline</h2>
+                </div>
+                <div class="card-body">
+                    <div id="auditTimeline" class="audit-timeline"></div>
+                </div>
+            </section>
+
+            <!-- Rovo Handoff Panel -->
+            <section id="rovoPanel" class="card">
+                <div class="card-header">
+                    <h2>🤖 Continue in ReplayFix Incident Commander</h2>
+                </div>
+                <div class="card-body">
+                    <div class="rovo-status">
+                        <span class="status-indicator" id="rovoStatus">Not configured</span>
+                    </div>
+                    <div class="rovo-prompt">
+                        <label>Rovo Agent Prompt</label>
+                        <textarea id="rovoPromptText" readonly rows="8">Analyze the current Jira issue.
+
+A comment titled "ReplayFix Evidence Snapshot" contains sanitized runtime evidence collected by ReplayFix. Treat only that comment as ReplayFix runtime evidence.
+
+Use Jira and Confluence to find similar incidents and RCA documentation. Separate facts, inferences, and unknowns. Produce an executive brief, evidence matrix, probable failure chain, root-cause hypotheses, regression-test hypothesis, missing evidence, and one recommended next action.
+
+Do not invent runtime evidence beyond the ReplayFix Evidence Snapshot comment.</textarea>
+                        <button id="copyPromptBtn" class="btn btn-secondary">📋 Copy Prompt</button>
+                    </div>
+                    <div id="rovoWarning" class="alert alert-warning hidden">
+                        ⚠️ Publish the approved ReplayFix Evidence Snapshot before using Rovo.
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- Modals -->
+        <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 id="modalTitle"></h3>
+                    <button class="modal-close" aria-label="Close modal">&times;</button>
+                </div>
+                <div class="modal-body" id="modalBody"></div>
+                <div class="modal-footer" id="modalFooter"></div>
+            </div>
+        </div>
+
+        <!-- Loading Overlay -->
+        <div id="loadingOverlay" class="loading-overlay hidden">
+            <div class="spinner"></div>
+        </div>
+
+        <!-- Toast Notifications -->
+        <div id="toastContainer" class="toast-container"></div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
