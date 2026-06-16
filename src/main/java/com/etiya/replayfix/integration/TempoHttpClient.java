@@ -1,6 +1,8 @@
 package com.etiya.replayfix.integration;
 
 import com.etiya.replayfix.config.ReplayFixProperties;
+import com.etiya.replayfix.model.TempoConnectivityResult;
+import com.etiya.replayfix.model.TempoRawTrace;
 import com.etiya.replayfix.model.TempoTraceResult;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -8,6 +10,8 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.URI;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 
 @Component
 public class TempoHttpClient implements TempoClient {
@@ -131,6 +135,258 @@ public class TempoHttpClient implements TempoClient {
                     "{}"
             );
         }
+    }
+
+    @Override
+    public TempoRawTrace fetchTrace(String traceId) {
+        var cfg = properties.getIntegrations().getTempo();
+
+        if (!cfg.isEnabled()) {
+            return new TempoRawTrace(
+                    traceId,
+                    0,
+                    null,
+                    null,
+                    false,
+                    List.of("Tempo integration is disabled")
+            );
+        }
+
+        if (!isValidTraceId(traceId)) {
+            return new TempoRawTrace(
+                    traceId,
+                    0,
+                    null,
+                    null,
+                    false,
+                    List.of("Invalid trace ID format")
+            );
+        }
+
+        try {
+            String endpoint = buildTraceEndpoint(traceId);
+
+            WebClient.ResponseSpec response = webClientBuilder
+                    .build()
+                    .get()
+                    .uri(endpoint)
+                    .headers(headers ->
+                            headers.addAll(
+                                    HttpSupport.headers(cfg)
+                            )
+                    )
+                    .retrieve();
+
+            int[] statusCode = {200};
+            String[] contentType = {null};
+
+            String raw = response
+                    .toEntity(String.class)
+                    .map(entity -> {
+                        statusCode[0] = entity.getStatusCode().value();
+                        contentType[0] = entity.getHeaders().getContentType() != null
+                                ? entity.getHeaders().getContentType().toString()
+                                : null;
+                        return entity.getBody();
+                    })
+                    .block(cfg.getTimeout());
+
+            List<String> warnings = new ArrayList<>();
+
+            if (isHtmlResponse(contentType[0], raw)) {
+                return new TempoRawTrace(
+                        traceId,
+                        statusCode[0],
+                        contentType[0],
+                        null,
+                        false,
+                        List.of("Tempo endpoint returned HTML instead of trace JSON. " +
+                                "Check base URL, datasource UID, proxy path and authentication.")
+                );
+            }
+
+            boolean found = raw != null && !raw.isBlank() && statusCode[0] == 200;
+
+            if (!found && statusCode[0] == 404) {
+                warnings.add("Trace not found in Tempo");
+            }
+
+            return new TempoRawTrace(
+                    traceId,
+                    statusCode[0],
+                    contentType[0],
+                    raw,
+                    found,
+                    warnings
+            );
+
+        } catch (Exception exception) {
+            return new TempoRawTrace(
+                    traceId,
+                    0,
+                    null,
+                    null,
+                    false,
+                    List.of(rootCauseMessage(exception))
+            );
+        }
+    }
+
+    @Override
+    public TempoConnectivityResult connectivity() {
+        var cfg = properties.getIntegrations().getTempo();
+
+        List<String> warnings = new ArrayList<>();
+
+        boolean baseUrlConfigured = cfg.getBaseUrl() != null
+                && !cfg.getBaseUrl().isBlank();
+
+        boolean datasourceUidConfigured = cfg.getDatasourceUid() != null
+                && !cfg.getDatasourceUid().isBlank();
+
+        boolean tokenConfigured = cfg.getToken() != null
+                && !cfg.getToken().isBlank();
+
+        String accessMode = cfg.getAccessMode() != null
+                ? cfg.getAccessMode()
+                : "UNKNOWN";
+
+        if (!cfg.isEnabled()) {
+            warnings.add("Tempo integration is disabled");
+            return new TempoConnectivityResult(
+                    false,
+                    accessMode,
+                    baseUrlConfigured,
+                    datasourceUidConfigured,
+                    tokenConfigured,
+                    null,
+                    null,
+                    "UNKNOWN",
+                    warnings
+            );
+        }
+
+        if (!baseUrlConfigured) {
+            warnings.add("Base URL is not configured");
+        }
+
+        if ("GRAFANA_PROXY".equals(accessMode) && !datasourceUidConfigured) {
+            warnings.add("Grafana proxy mode requires datasource UID");
+        }
+
+        try {
+            String testTraceId = "00000000000000000000000000000000";
+            String endpoint = buildTraceEndpoint(testTraceId);
+
+            int[] statusCode = {0};
+            String[] contentType = {null};
+
+            try {
+                webClientBuilder
+                        .build()
+                        .get()
+                        .uri(endpoint)
+                        .headers(headers ->
+                                headers.addAll(
+                                        HttpSupport.headers(cfg)
+                                )
+                        )
+                        .retrieve()
+                        .toEntity(String.class)
+                        .map(entity -> {
+                            statusCode[0] = entity.getStatusCode().value();
+                            contentType[0] = entity.getHeaders().getContentType() != null
+                                    ? entity.getHeaders().getContentType().toString()
+                                    : null;
+                            return entity.getBody();
+                        })
+                        .block(cfg.getTimeout());
+
+            } catch (Exception ignored) {
+            }
+
+            boolean isHtml = isHtmlResponse(contentType[0], null);
+
+            if (isHtml) {
+                warnings.add("Endpoint returned HTML, likely Grafana login page");
+            }
+
+            boolean success = !isHtml
+                    && statusCode[0] > 0
+                    && (statusCode[0] == 404 || statusCode[0] == 200);
+
+            String endpointCategory = "GRAFANA_PROXY".equals(accessMode)
+                    ? "GRAFANA_PROXY_TRACE_API"
+                    : "DIRECT_TEMPO_TRACE_API";
+
+            return new TempoConnectivityResult(
+                    success,
+                    accessMode,
+                    baseUrlConfigured,
+                    datasourceUidConfigured,
+                    tokenConfigured,
+                    statusCode[0],
+                    contentType[0],
+                    endpointCategory,
+                    warnings
+            );
+
+        } catch (Exception exception) {
+            warnings.add("Connection failed: " + rootCauseMessage(exception));
+
+            return new TempoConnectivityResult(
+                    false,
+                    accessMode,
+                    baseUrlConfigured,
+                    datasourceUidConfigured,
+                    tokenConfigured,
+                    null,
+                    null,
+                    "UNKNOWN",
+                    warnings
+            );
+        }
+    }
+
+    private String buildTraceEndpoint(String traceId) {
+        var cfg = properties.getIntegrations().getTempo();
+
+        String baseUrl = cfg.getBaseUrl()
+                .replaceAll("/+$", "");
+
+        if ("GRAFANA_PROXY".equals(cfg.getAccessMode())) {
+            String datasourceUid = cfg.getDatasourceUid();
+            return baseUrl + "/api/datasources/proxy/uid/"
+                    + datasourceUid + "/api/traces/" + traceId;
+        } else {
+            return baseUrl + "/api/traces/" + traceId;
+        }
+    }
+
+    private boolean isValidTraceId(String traceId) {
+        if (traceId == null || traceId.isBlank()) {
+            return false;
+        }
+
+        String normalized = traceId.toLowerCase().replaceAll("[\\s\\-_]", "");
+        int length = normalized.length();
+
+        return (length == 16 || length == 32) && normalized.matches("[a-f0-9]+");
+    }
+
+    private boolean isHtmlResponse(String contentType, String body) {
+        if (contentType != null && contentType.toLowerCase().contains("text/html")) {
+            return true;
+        }
+
+        if (body != null) {
+            String lower = body.toLowerCase();
+            return lower.contains("<html")
+                    || lower.contains("<!doctype html")
+                    || lower.contains("grafana");
+        }
+
+        return false;
     }
 
     private String rootCauseMessage(Throwable throwable) {

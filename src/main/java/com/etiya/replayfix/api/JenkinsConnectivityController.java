@@ -2,6 +2,7 @@ package com.etiya.replayfix.api;
 
 import com.etiya.replayfix.config.ReplayFixProperties;
 import com.etiya.replayfix.integration.JenkinsClient;
+import com.etiya.replayfix.model.JenkinsBuildSnapshot;
 import com.etiya.replayfix.model.JenkinsConnectionTestResult;
 import com.etiya.replayfix.model.JenkinsJobSnapshot;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -92,6 +93,62 @@ public class JenkinsConnectivityController {
 
         return Mono.fromCallable(() ->
                 jenkinsClient.readJob(jobUrl)
+        ).subscribeOn(
+                Schedulers.boundedElastic()
+        );
+    }
+
+    @GetMapping(
+            "/jobs/{application}/{jobType}/last-success"
+    )
+    public Mono<JenkinsBuildSnapshot> lastSuccess(
+            @PathVariable String application,
+            @PathVariable String jobType
+    ) {
+        var applications =
+                properties.getIntegrations()
+                        .getJenkins()
+                        .getApplications();
+
+        var applicationConfig =
+                applications.get(application);
+
+        if (applicationConfig == null) {
+            throw new IllegalArgumentException(
+                    "Unknown Jenkins application: "
+                            + application
+            );
+        }
+
+        String jobUrl = switch (
+                jobType.toLowerCase()
+        ) {
+            case "build" ->
+                    applicationConfig.getBuildJobUrl();
+
+            case "image" ->
+                    applicationConfig.getImageJobUrl();
+
+            default ->
+                    throw new IllegalArgumentException(
+                            "Supported job types: build, image"
+                    );
+        };
+
+        if (jobUrl == null || jobUrl.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Job URL is not configured for "
+                            + application
+                            + "/"
+                            + jobType
+            );
+        }
+
+        return Mono.fromCallable(() ->
+                jenkinsClient
+                        .readLastSuccessfulBuild(
+                                jobUrl
+                        )
         ).subscribeOn(
                 Schedulers.boundedElastic()
         );

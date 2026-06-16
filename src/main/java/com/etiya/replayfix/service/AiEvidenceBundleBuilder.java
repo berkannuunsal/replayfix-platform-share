@@ -309,4 +309,75 @@ public class AiEvidenceBundleBuilder {
 
         return sanitized.substring(0, maxLength);
     }
+
+    public AiEvidenceBundle buildValidatedBundle(
+            java.util.UUID caseId,
+            String bundleVersion,
+            java.util.Map<String, String> sections,
+            String incidentCommitSha,
+            String jenkinsCommitSha,
+            java.util.List<String> warnings
+    ) {
+        String combinedEvidenceText =
+                "=== JENKINS-VALIDATED EVIDENCE BUNDLE ===\n"
+                        + "Bundle Version: " + bundleVersion + "\n"
+                        + "Case ID: " + caseId + "\n"
+                        + "Incident Commit: " + (incidentCommitSha != null ? incidentCommitSha : "N/A") + "\n"
+                        + "Jenkins Commit: " + (jenkinsCommitSha != null ? jenkinsCommitSha : "N/A") + "\n"
+                        + "Commit Match: " + (incidentCommitSha != null && incidentCommitSha.equals(jenkinsCommitSha) ? "MATCH" : "MISMATCH") + "\n"
+                        + "\n"
+                        + buildSectionText("JIRA Issue", sections.get("jira"))
+                        + buildSectionText("Loki Query Plan", sections.get("lokiQueryPlan"))
+                        + buildSectionText("Loki Logs", sections.get("lokiLogs"))
+                        + buildSectionText("Tempo Trace", sections.get("tempoTrace"))
+                        + buildSectionText("Repository Resolution", sections.get("repositoryResolution"))
+                        + buildSectionText("Incident Version", sections.get("incidentVersion"))
+                        + buildSectionText("Jenkins Build Context", sections.get("jenkinsContext"))
+                        + buildSectionText("Jenkins Validation", sections.get("jenkinsValidation"))
+                        + buildSectionText("Validated Source Context (Jenkins Commit)", sections.get("validatedSourceContext"))
+                        + buildSectionText("Previous Source Context (Incident Commit)", sections.get("previousSourceContext"))
+                        + buildSectionText("Deterministic Root Cause", sections.get("deterministicRootCause"));
+
+        java.util.List<String> enhancedGuardrails = new java.util.ArrayList<>();
+        enhancedGuardrails.add("This bundle contains evidence from Jenkins-validated source code.");
+        enhancedGuardrails.add("The source context was generated from commit: " + (jenkinsCommitSha != null ? jenkinsCommitSha : "unknown"));
+        if (incidentCommitSha != null && !incidentCommitSha.equals(jenkinsCommitSha)) {
+            enhancedGuardrails.add("WARNING: Jenkins commit differs from incident version commit. Review both contexts.");
+        }
+        enhancedGuardrails.add("Use only evidence contained in this bundle.");
+        enhancedGuardrails.add("Do not invent source files, line numbers, services or configuration values.");
+        enhancedGuardrails.add("Clearly state when evidence is insufficient or contradictory.");
+        enhancedGuardrails.add("Do not recommend automatic merge or production deployment.");
+        enhancedGuardrails.add("Human review is mandatory before code or configuration changes.");
+        if (warnings != null && !warnings.isEmpty()) {
+            enhancedGuardrails.add("Bundle generation warnings: " + String.join("; ", warnings));
+        }
+
+        return new AiEvidenceBundle(
+                "jenkins-validated",
+                "Jenkins-Validated Root Cause Analysis",
+                combinedEvidenceText,
+                null,
+                new CorrelationSignals(
+                        java.util.List.of(),
+                        java.util.List.of(),
+                        java.util.List.of(),
+                        java.util.List.of(),
+                        java.util.List.of(),
+                        java.util.List.of()
+                ),
+                java.util.List.of(),
+                new AiEvidenceBundle.TempoSummary(0, 0, java.util.List.of(), java.util.List.of()),
+                java.util.List.of(),
+                java.util.List.of(),
+                enhancedGuardrails
+        );
+    }
+
+    private String buildSectionText(String sectionName, String content) {
+        if (content == null || content.isBlank()) {
+            return "";
+        }
+        return "\n=== " + sectionName + " ===\n" + content + "\n";
+    }
 }

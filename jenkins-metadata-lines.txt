@@ -1,0 +1,14 @@
+jenkins-build-console.txt: > /usr/bin/git rev-parse refs/remotes/origin/test2^{commit} # timeout=10
+jenkins-build-console.txt:Checking out Revision 6c4690dc1a52bc88f1a3197247cee43be3acbaff (refs/remotes/origin/test2)
+jenkins-build-console.txt: > /usr/bin/git config core.sparsecheckout # timeout=10
+jenkins-build-console.txt: > /usr/bin/git checkout -f 6c4690dc1a52bc88f1a3197247cee43be3acbaff # timeout=10
+jenkins-build-console.txt:Commit message: "Pull request #838: FIZZMS-10109  FMS-169577 // The email content regarding the referral bonus appears to be incorrect"
+jenkins-build-console.txt:[INFO] Running etiya.engine.notification.base.outbox.OutboxAfterCommitListenerTests
+jenkins-build-console.txt:[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s - in etiya.engine.notification.base.outbox.OutboxAfterCommitListenerTests
+jenkins-image-console.txt: > /usr/bin/git rev-parse refs/remotes/origin/test2^{commit} # timeout=10
+jenkins-image-console.txt:Checking out Revision 6c4690dc1a52bc88f1a3197247cee43be3acbaff (refs/remotes/origin/test2)
+jenkins-image-console.txt: > /usr/bin/git config core.sparsecheckout # timeout=10
+jenkins-image-console.txt: > /usr/bin/git checkout -f 6c4690dc1a52bc88f1a3197247cee43be3acbaff # timeout=10
+jenkins-image-console.txt:Commit message: "Pull request #838: FIZZMS-10109  FMS-169577 // The email content regarding the referral bonus appears to be incorrect"
+jenkins-image-console.txt:[INFO] Running etiya.engine.notification.base.outbox.OutboxAfterCommitListenerTests
+jenkins-image-console.txt:[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s - in etiya.engine.notification.base.outbox.OutboxAfterCommitListenerTests

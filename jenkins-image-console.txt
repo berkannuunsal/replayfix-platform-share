@@ -1,0 +1,203 @@
+Started by an SCM change
+Running as SYSTEM
+[EnvInject] - Loading node environment variables.
+Building remotely on JENKINS_SLAVE1_EXPRESS (NVM CDXGEN JDK-15 jenkins_node1_express SKOPEO ANT_1.10 PHP-COMPOSER-173 NVM_NEW JDK-21 ADOPTJDK-8 MAVEN-3.5 MAVEN-3.6 DOCKER MAVEN-3.8 OPENJDK-17 MAVEN-3.0 MAVEN-3.1 MAVEN-3.2 YARN MAVEN-3.3 MAVEN AZURECOPY JDK-1.6 JDK-1.7 JDK-1.8 jenkins_node2_express JDK-11 JDK-10 ARGOCDCLI PYTHON_3.6) in workspace /mnt/data/express/workspace/MODERNIZATION.NTF_BUILD_12
+[WS-CLEANUP] Deleting project workspace...
+[WS-CLEANUP] Deferred wipeout is used...
+[WS-CLEANUP] Done
+The recommended git tool is: NONE
+No credentials specified
+Cloning the remote Git repository
+Cloning repository ssh://git@bitbucket2.etiya.com:7999/dce/ntf-engine.git
+ > /usr/bin/git init /mnt/data/express/workspace/MODERNIZATION.NTF_BUILD_12 # timeout=10
+Fetching upstream changes from ssh://git@bitbucket2.etiya.com:7999/dce/ntf-engine.git
+ > /usr/bin/git --version # timeout=10
+ > git --version # 'git version 2.31.1'
+ > /usr/bin/git fetch --tags --force --progress -- ssh://git@bitbucket2.etiya.com:7999/dce/ntf-engine.git +refs/heads/*:refs/remotes/origin/* # timeout=40
+ > /usr/bin/git config remote.origin.url ssh://git@bitbucket2.etiya.com:7999/dce/ntf-engine.git # timeout=10
+ > /usr/bin/git config --add remote.origin.fetch +refs/heads/*:refs/remotes/origin/* # timeout=10
+Avoid second fetch
+ > /usr/bin/git rev-parse refs/remotes/origin/test2^{commit} # timeout=10
+Checking out Revision 6c4690dc1a52bc88f1a3197247cee43be3acbaff (refs/remotes/origin/test2)
+ > /usr/bin/git config core.sparsecheckout # timeout=10
+ > /usr/bin/git checkout -f 6c4690dc1a52bc88f1a3197247cee43be3acbaff # timeout=10
+Commit message: "Pull request #838: FIZZMS-10109  FMS-169577 // The email content regarding the referral bonus appears to be incorrect"
+ > /usr/bin/git rev-list --no-walk 42c9f1989543cdcbb106d8dbe108c5f7717c2bc2 # timeout=10
+No emails were triggered.
+[MODERNIZATION.NTF_BUILD_12] $ /bin/sh -xe /tmp/jenkins15100596326806244769.sh
+++ date +%Y%m%d-%H%M%S
++ DEPLOYMENT_VERSION=20260611-163819
++ /var/local/maven/apache-maven-3.3.3/bin/mvn clean -U deploy -B -DBSS_VERSION=test2 -DDEPLOYMENT_VERSION=20260611-163819
+[WARNING] 
+[WARNING] Some problems were encountered while building the effective settings
+[WARNING] 'profiles.profile[etiya_nexus].repositories.repository.id' must be unique but found duplicate repository with id departman-4-nexus-admin @ /var/local/maven/apache-maven-3.3.3/conf/settings.xml
+[WARNING] 'profiles.profile[etiya_nexus].pluginRepositories.pluginRepository.id' must be unique but found duplicate repository with id departman-4-nexus-admin @ /var/local/maven/apache-maven-3.3.3/conf/settings.xml
+[WARNING] 
+[INFO] Scanning for projects...
+[WARNING] 
+[WARNING] Some problems were encountered while building the effective model for etiya.engine.notification:NtfEngine:jar:test2
+[WARNING] 'version' contains an expression but should be a constant. @ etiya.engine.notification:NtfEngine:${bss.version}, /mnt/data/express/workspace/MODERNIZATION.NTF_BUILD_12/pom.xml, line 8, column 14
+[WARNING] 
+[WARNING] It is highly recommended to fix these problems because they threaten the stability of your build.
+[WARNING] 
+[WARNING] For this reason, future Maven versions might no longer support building such malformed projects.
+[WARNING] 
+[INFO]                                                                         
+[INFO] ------------------------------------------------------------------------
+[INFO] Building ntf test2
+[INFO] ------------------------------------------------------------------------
+[INFO] Downloading: https://artifact-server4.etiya.com/repository/etiya-repository/com/sendgrid/java-http-client/maven-metadata.xml
+[INFO] Downloaded: https://artifact-server4.etiya.com/repository/etiya-repository/com/sendgrid/java-http-client/maven-metadata.xml (2 KB at 4.0 KB/sec)
+[WARNING] The POM for com.sun.xml.bind:jaxb-core:jar:2.2.11 is invalid, transitive dependencies (if any) will not be available, enable debug logging for more details
+[WARNING] The POM for com.sun.xml.bind:jaxb-impl:jar:2.2.11 is invalid, transitive dependencies (if any) will not be available, enable debug logging for more details
+[INFO] 
+[INFO] --- maven-clean-plugin:3.2.0:clean (default-clean) @ NtfEngine ---
+[INFO] 
+[INFO] --- flatten-maven-plugin:1.3.0:clean (flatten.clean) @ NtfEngine ---
+[INFO] 
+[INFO] --- jacoco-maven-plugin:0.8.7:prepare-agent (prepare-agent) @ NtfEngine ---
+[INFO] argLine set to -javaagent:/maven_repository/org/jacoco/org.jacoco.agent/0.8.7/org.jacoco.agent-0.8.7-runtime.jar=destfile=/mnt/data/express/workspace/MODERNIZATION.NTF_BUILD_12/target/jacoco.exec
+[INFO] 
+[INFO] --- properties-maven-plugin:1.0.0:write-project-properties (default) @ NtfEngine ---
+[INFO] 
+[INFO] --- maven-resources-plugin:3.2.0:resources (default-resources) @ NtfEngine ---
+[INFO] Using 'UTF-8' encoding to copy filtered resources.
+[INFO] Using 'UTF-8' encoding to copy filtered properties files.
+[INFO] Copying 8 resources
+[INFO] Copying 5 resources
+[INFO] 
+[INFO] --- flatten-maven-plugin:1.3.0:flatten (flatten) @ NtfEngine ---
+[INFO] Generating flattened POM of project etiya.engine.notification:NtfEngine:jar:test2...
+[INFO] 
+[INFO] --- maven-compiler-plugin:3.10.1:compile (default-compile) @ NtfEngine ---
+[INFO] Changes detected - recompiling the module!
+[INFO] Compiling 619 source files to /mnt/data/express/workspace/MODERNIZATION.NTF_BUILD_12/target/classes
+[INFO] /mnt/data/express/workspace/MODERNIZATION.NTF_BUILD_12/src/main/java/etiya/engine/notification/base/framework/AbstractConsumerListener.java: Some input files use or override a deprecated API.
+[INFO] /mnt/data/express/workspace/MODERNIZATION.NTF_BUILD_12/src/main/java/etiya/engine/notification/base/framework/AbstractConsumerListener.java: Recompile with -Xlint:deprecation for details.
+[INFO] /mnt/data/express/workspace/MODERNIZATION.NTF_BUILD_12/src/main/java/etiya/engine/notification/base/framework/AbstractConsumerListener.java: Some input files use unchecked or unsafe operations.
+[INFO] /mnt/data/express/workspace/MODERNIZATION.NTF_BUILD_12/src/main/java/etiya/engine/notification/base/framework/AbstractConsumerListener.java: Recompile with -Xlint:unchecked for details.
+[INFO] 
+[INFO] --- maven-resources-plugin:3.2.0:testResources (default-testResources) @ NtfEngine ---
+[INFO] Using 'UTF-8' encoding to copy filtered resources.
+[INFO] Using 'UTF-8' encoding to copy filtered properties files.
+[INFO] Copying 1 resource
+[INFO] 
+[INFO] --- maven-compiler-plugin:3.10.1:testCompile (default-testCompile) @ NtfEngine ---
+[INFO] Changes detected - recompiling the module!
+[INFO] Compiling 17 source files to /mnt/data/express/workspace/MODERNIZATION.NTF_BUILD_12/target/test-classes
+[INFO] 
+[INFO] --- maven-surefire-plugin:2.22.2:test (default-test) @ NtfEngine ---
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running etiya.engine.notification.spring.NtfApplicationTest
+[38;2;0;214;114m███████╗██╗███████╗███████╗
+██╔════╝██║╚══███╔╝╚══███╔╝
+█████╗  ██║  ███╔╝   ███╔╝ 
+██╔══╝  ██║ ███╔╝   ███╔╝  
+██║     ██║███████╗███████╗
+╚═╝     ╚═╝╚══════╝╚══════╝[0m
+2026-06-11 16:38:33.992  WARN 1695046 --- [           main] ory$DuplicateJsonObjectContextCustomizer : 
+
+Found multiple occurrences of org.json.JSONObject on the class path:
+
+	jar:file:/maven_repository/com/vaadin/external/google/android-json/0.0.20131108.vaadin1/android-json-0.0.20131108.vaadin1.jar!/org/json/JSONObject.class
+	jar:file:/maven_repository/org/json/json/20210307/json-20210307.jar!/org/json/JSONObject.class
+
+You may wish to exclude one of them to ensure predictable runtime behavior
+
+2026-06-11 16:38:34.038  INFO 1695046 --- [           main] e.e.n.s.NtfApplicationTest               : Starting NtfApplicationTest using Java 17.0.5 on etiya-ci4-jenkins-slave with PID 1695046 (started by ciuser in /mnt/data/express/workspace/MODERNIZATION.NTF_BUILD_12)
+2026-06-11 16:38:34.044  INFO 1695046 --- [           main] e.e.n.s.NtfApplicationTest               : No active profile set, falling back to 1 default profile: "default"
+2026-06-11 16:38:34.244  INFO 1695046 --- [           main] e.e.n.s.NtfApplicationTest               : Started NtfApplicationTest in 0.858 seconds (JVM running for 2.924)
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.74 s - in etiya.engine.notification.spring.NtfApplicationTest
+[INFO] Running etiya.engine.notification.base.outbox.OutboxPollerServiceTests
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.216 s - in etiya.engine.notification.base.outbox.OutboxPollerServiceTests
+[INFO] Running etiya.engine.notification.base.outbox.OutboxJmsPublisherTests
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.292 s - in etiya.engine.notification.base.outbox.OutboxJmsPublisherTests
+[INFO] Running etiya.engine.notification.base.outbox.FeatureFlagServiceTests
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.052 s - in etiya.engine.notification.base.outbox.FeatureFlagServiceTests
+[INFO] Running etiya.engine.notification.base.outbox.RelayAttemptServiceTests
+2026-06-11 16:38:35.663 ERROR 1695046 --- [           main] e.e.n.b.o.RelayAttemptService            : Outbox message permanently FAILED after 5 retries: id=null
+2026-06-11 16:38:35.666  WARN 1695046 --- [           main] e.e.n.b.o.RelayAttemptService            : Outbox relay attempt 1 failed, will retry: id=null
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.06 s - in etiya.engine.notification.base.outbox.RelayAttemptServiceTests
+[INFO] Running etiya.engine.notification.base.outbox.OutboxWriterServiceTests
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.383 s - in etiya.engine.notification.base.outbox.OutboxWriterServiceTests
+[INFO] Running etiya.engine.notification.base.outbox.OutboxRetentionServiceTests
+2026-06-11 16:38:36.054  INFO 1695046 --- [           main] e.e.n.b.o.OutboxRetentionService         : Outbox retention: deleted 3 DONE rows older than 2026-06-11T14:38:36.054+0300
+2026-06-11 16:38:36.058  INFO 1695046 --- [           main] e.e.n.b.o.OutboxRetentionService         : Outbox retention: deleted 0 DONE rows older than 2026-06-11T14:38:36.057+0300
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s - in etiya.engine.notification.base.outbox.OutboxRetentionServiceTests
+[INFO] Running etiya.engine.notification.base.outbox.OutboxAfterCommitListenerTests
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s - in etiya.engine.notification.base.outbox.OutboxAfterCommitListenerTests
+[INFO] Running etiya.engine.notification.dispatcher.backend.consumer.RecurringNtfConsumerTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.063 s - in etiya.engine.notification.dispatcher.backend.consumer.RecurringNtfConsumerTest
+[INFO] Running etiya.engine.notification.dispatcher.backend.consumer.GraceNtfConsumerTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.01 s - in etiya.engine.notification.dispatcher.backend.consumer.GraceNtfConsumerTest
+[INFO] Running etiya.engine.notification.dispatcher.backend.listener.RoamingAddonQuoteEventListenerTests
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.173 s - in etiya.engine.notification.dispatcher.backend.listener.RoamingAddonQuoteEventListenerTests
+[INFO] Running etiya.engine.notification.dispatcher.backend.listener.FreeTrialDeactivationQuoteEventListenerTests
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s - in etiya.engine.notification.dispatcher.backend.listener.FreeTrialDeactivationQuoteEventListenerTests
+[INFO] Running etiya.engine.notification.dispatcher.backend.listener.recurringPayment.delayed.RecurringPaymentEventListenerTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0 s - in etiya.engine.notification.dispatcher.backend.listener.recurringPayment.delayed.RecurringPaymentEventListenerTest
+[INFO] Running etiya.engine.notification.dispatcher.backend.listener.SimSwapQuoteEventListenerTests
+2026-06-11 16:38:36.345  INFO 1695046 --- [           main] e.e.n.d.b.e.SimSwapQuoteDispatcherEvent  : SimSwapQuoteDispatcherEvent.obtainNotificationDefinition: QUOTE_ESIM_SWAP_SUCCESS_NTF
+2026-06-11 16:38:36.350  INFO 1695046 --- [           main] e.e.n.d.b.e.SimSwapQuoteDispatcherEvent  : SimSwapQuoteDispatcherEvent.obtainNotificationDefinition: QUOTE_ESIM_SWAP_SUCCESS_NTF
+2026-06-11 16:38:36.359  INFO 1695046 --- [           main] e.e.n.d.b.e.SimSwapQuoteDispatcherEvent  : SimSwapQuoteDispatcherEvent.obtainNotificationDefinition: QUOTE_ESIM_SWAP_OTP_NO_PROCESS_NTF
+2026-06-11 16:38:36.364  INFO 1695046 --- [           main] e.e.n.d.b.e.SimSwapQuoteDispatcherEvent  : SimSwapQuoteDispatcherEvent.obtainNotificationDefinition: QUOTE_ESIM_SWAP_OTP_NO_PROCESS_NTF
+2026-06-11 16:38:36.369  INFO 1695046 --- [           main] e.e.n.d.b.e.SimSwapQuoteDispatcherEvent  : SimSwapQuoteDispatcherEvent.obtainNotificationDefinition: QUOTE_ESIM_SWAP_FAULT_NTF
+2026-06-11 16:38:36.374  INFO 1695046 --- [           main] e.e.n.d.b.e.SimSwapQuoteDispatcherEvent  : SimSwapQuoteDispatcherEvent.obtainNotificationDefinition: QUOTE_SIM_SWAP_CANCEL_NTF
+2026-06-11 16:38:36.380  INFO 1695046 --- [           main] e.e.n.d.b.e.SimSwapQuoteDispatcherEvent  : SimSwapQuoteDispatcherEvent.obtainNotificationDefinition: QUOTE_ESIM_SWAP_OTP_NO_PROCESS_NTF
+2026-06-11 16:38:36.384  INFO 1695046 --- [           main] e.e.n.d.b.e.SimSwapQuoteDispatcherEvent  : SimSwapQuoteDispatcherEvent.obtainNotificationDefinition: QUOTE_SIM_SWAP_CANCEL_NTF
+2026-06-11 16:38:36.389  INFO 1695046 --- [           main] e.e.n.d.b.e.SimSwapQuoteDispatcherEvent  : SimSwapQuoteDispatcherEvent.obtainNotificationDefinition: QUOTE_ESIM_SWAP_OTP_YES_PROCESS_NTF
+2026-06-11 16:38:36.393  INFO 1695046 --- [           main] e.e.n.d.b.e.SimSwapQuoteDispatcherEvent  : SimSwapQuoteDispatcherEvent.obtainNotificationDefinition: QUOTE_SIM_SWAP_PROCESS_NTF
+2026-06-11 16:38:36.398  INFO 1695046 --- [           main] e.e.n.d.b.e.SimSwapQuoteDispatcherEvent  : SimSwapQuoteDispatcherEvent.obtainNotificationDefinition: QUOTE_SIM_SWAP_SUCCESS_NTF
+2026-06-11 16:38:36.403  INFO 1695046 --- [           main] e.e.n.d.b.e.SimSwapQuoteDispatcherEvent  : SimSwapQuoteDispatcherEvent.obtainNotificationDefinition: QUOTE_SIM_SWAP_FAULT_NTF
+[INFO] Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.069 s - in etiya.engine.notification.dispatcher.backend.listener.SimSwapQuoteEventListenerTests
+[INFO] Running etiya.engine.notification.dispatcher.backend.service.DispatcherStoreServiceQuoteRoutingTests
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.054 s - in etiya.engine.notification.dispatcher.backend.service.DispatcherStoreServiceQuoteRoutingTests
+[INFO] Running etiya.engine.notification.dispatcher.backend.service.payment.GraceNtfServiceImplTest
+2026-06-11 16:38:36.483  INFO 1695046 --- [           main] e.e.n.d.b.s.p.GraceNtfServiceImpl        : GraceNtfServiceImpl_delayTime: 86400000
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.025 s - in etiya.engine.notification.dispatcher.backend.service.payment.GraceNtfServiceImplTest
+[INFO] Running etiya.engine.notification.dispatcher.backend.service.payment.RecurringNtfServiceImplTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.015 s - in etiya.engine.notification.dispatcher.backend.service.payment.RecurringNtfServiceImplTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 52, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] 
+[INFO] --- maven-jar-plugin:3.3.0:jar (default-jar) @ NtfEngine ---
+[INFO] Building jar: /mnt/data/express/workspace/MODERNIZATION.NTF_BUILD_12/target/NtfEngine-test2.jar
+[INFO] 
+[INFO] --- spring-boot-maven-plugin:2.7.18:repackage (repackage) @ NtfEngine ---
+[INFO] Replacing main artifact with repackaged archive
+[INFO] 
+[INFO] --- spring-boot-maven-plugin:2.7.18:repackage (default) @ NtfEngine ---
+[INFO] Replacing main artifact with repackaged archive
+[INFO] 
+[INFO] --- jacoco-maven-plugin:0.8.7:report (report) @ NtfEngine ---
+[INFO] Loading execution data file /mnt/data/express/workspace/MODERNIZATION.NTF_BUILD_12/target/jacoco.exec
+[INFO] Analyzed bundle 'ntf' with 599 classes
+[INFO] 
+[INFO] --- maven-install-plugin:2.5.2:install (default-install) @ NtfEngine ---
+[INFO] Installing /mnt/data/express/workspace/MODERNIZATION.NTF_BUILD_12/target/NtfEngine-test2.jar to /maven_repository/etiya/engine/notification/NtfEngine/test2/NtfEngine-test2.jar
+[INFO] Installing /mnt/data/express/workspace/MODERNIZATION.NTF_BUILD_12/.flattened-pom.xml to /maven_repository/etiya/engine/notification/NtfEngine/test2/NtfEngine-test2.pom
+[INFO] 
+[INFO] --- maven-deploy-plugin:2.8.2:deploy (default-deploy) @ NtfEngine ---
+[INFO] Uploading: https://artifact-server4.etiya.com/repository/etiya-fizz-libs-release-local/etiya/engine/notification/NtfEngine/test2/NtfEngine-test2.jar
+[INFO] Uploaded: https://artifact-server4.etiya.com/repository/etiya-fizz-libs-release-local/etiya/engine/notification/NtfEngine/test2/NtfEngine-test2.jar (156927 KB at 69529.0 KB/sec)
+[INFO] Uploading: https://artifact-server4.etiya.com/repository/etiya-fizz-libs-release-local/etiya/engine/notification/NtfEngine/test2/NtfEngine-test2.pom
+[INFO] Uploaded: https://artifact-server4.etiya.com/repository/etiya-fizz-libs-release-local/etiya/engine/notification/NtfEngine/test2/NtfEngine-test2.pom (20 KB at 829.7 KB/sec)
+[INFO] Downloading: https://artifact-server4.etiya.com/repository/etiya-fizz-libs-release-local/etiya/engine/notification/NtfEngine/maven-metadata.xml
+[INFO] Downloaded: https://artifact-server4.etiya.com/repository/etiya-fizz-libs-release-local/etiya/engine/notification/NtfEngine/maven-metadata.xml (441 B at 22.7 KB/sec)
+[INFO] Uploading: https://artifact-server4.etiya.com/repository/etiya-fizz-libs-release-local/etiya/engine/notification/NtfEngine/maven-metadata.xml
+[INFO] Uploaded: https://artifact-server4.etiya.com/repository/etiya-fizz-libs-release-local/etiya/engine/notification/NtfEngine/maven-metadata.xml (441 B at 20.5 KB/sec)
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time: 24.366 s
+[INFO] Finished at: 2026-06-11T16:38:45+03:00
+[INFO] Final Memory: 65M/280M
+[INFO] ------------------------------------------------------------------------
+No emails were triggered.
+Finished: SUCCESS

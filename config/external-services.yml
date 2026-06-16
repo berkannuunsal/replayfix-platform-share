@@ -41,7 +41,7 @@ replayfix:
 
     confluence:
       enabled: ${CONFLUENCE_ENABLED:false}
-      base-url: ${CONFLUENCE_BASE_URL:https://your-company.atlassian.net}
+      base-url: ${CONFLUENCE_BASE_URL:https://your-etiya.atlassian.net}
       auth-type: ${CONFLUENCE_AUTH_TYPE:BASIC}
       username: ${CONFLUENCE_USERNAME:}
       token: ${CONFLUENCE_TOKEN:}
@@ -78,18 +78,32 @@ replayfix:
 
       applications:
         backend:
+          repository-aliases:
+            - backend
+            - bss-backend
           build-job-url: ${JENKINS_BACKEND_BUILD_JOB_URL:}
           image-job-url: ${JENKINS_BACKEND_IMAGE_JOB_URL:}
 
         batch-backend:
+          repository-aliases:
+            - batch-backend
+            - bss-backend-batch
+            - backend-batch
           build-job-url: ${JENKINS_BATCH_BACKEND_BUILD_JOB_URL:}
           image-job-url: ${JENKINS_BATCH_BACKEND_IMAGE_JOB_URL:}
 
         ntf:
+          repository-aliases:
+            - ntf
+            - ntf-engine
+            - notification-engine
           build-job-url: ${JENKINS_NTF_BUILD_JOB_URL:}
           image-job-url: ${JENKINS_NTF_IMAGE_JOB_URL:}
 
         loyalty:
+          repository-aliases:
+            - loyalty
+            - loyalty-engine
           build-job-url: ${JENKINS_LOYALTY_BUILD_JOB_URL:}
           image-job-url: ${JENKINS_LOYALTY_IMAGE_JOB_URL:}
 

@@ -478,4 +478,215 @@ public class GitWorkspaceService {
                 "$1=***"
         );
     }
+
+    public record ReadOnlyCommitCheckoutResult(
+            String commitSha,
+            String workspace,
+            boolean fetched
+    ) {
+    }
+
+    public ReadOnlyCommitCheckoutResult checkoutReadOnlyCommit(
+            String workspaceValue,
+            String commitSha
+    ) {
+        if (workspaceValue == null
+                || workspaceValue.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Workspace is empty."
+            );
+        }
+
+        if (commitSha == null
+                || commitSha.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Commit SHA is empty."
+            );
+        }
+
+        Path workspace =
+                Path.of(workspaceValue)
+                        .toAbsolutePath()
+                        .normalize();
+
+        if (!Files.isDirectory(
+                workspace.resolve(".git")
+        )) {
+            throw new IllegalStateException(
+                    "Workspace is not a Git repository: "
+                            + workspace
+            );
+        }
+
+        var bitbucket =
+                properties.getIntegrations()
+                        .getBitbucket();
+
+        boolean fetched = false;
+
+        try {
+            if (!commitExists(
+                    workspace,
+                    commitSha
+            )) {
+                Path askPassScript =
+                        createAskPassScript(
+                                workspace.getParent()
+                        );
+
+                Map<String, String> environment =
+                        new HashMap<>();
+
+                environment.put(
+                        "GIT_ASKPASS",
+                        askPassScript.toString()
+                );
+
+                environment.put(
+                        "GIT_TERMINAL_PROMPT",
+                        "0"
+                );
+
+                environment.put(
+                        "REPLAYFIX_GIT_USERNAME",
+                        bitbucket.getUsername()
+                );
+
+                environment.put(
+                        "REPLAYFIX_GIT_TOKEN",
+                        bitbucket.getToken()
+                );
+
+                try {
+                    run(
+                            workspace,
+                            List.of(
+                                    bitbucket.getGitExecutable(),
+                                    "fetch",
+                                    "--no-tags",
+                                    "--depth",
+                                    "1",
+                                    "origin",
+                                    commitSha
+                            ),
+                            environment
+                    );
+
+                    fetched = true;
+
+                } finally {
+                    Files.deleteIfExists(
+                            askPassScript
+                    );
+                }
+            }
+
+            run(
+                    workspace,
+                    List.of(
+                            bitbucket.getGitExecutable(),
+                            "checkout",
+                            "--detach",
+                            "--force",
+                            commitSha
+                    ),
+                    Map.of()
+            );
+
+            String resolvedSha =
+                    run(
+                            workspace,
+                            List.of(
+                                    bitbucket.getGitExecutable(),
+                                    "rev-parse",
+                                    "HEAD"
+                            ),
+                            Map.of()
+                    ).trim();
+
+            return new ReadOnlyCommitCheckoutResult(
+                    resolvedSha,
+                    workspace.toString(),
+                    fetched
+            );
+
+        } catch (Exception exception) {
+            throw new IllegalStateException(
+                    "Read-only Jenkins commit checkout failed.",
+                    exception
+            );
+        }
+    }
+
+    private boolean commitExists(
+            Path workspace,
+            String commitSha
+    ) {
+        try {
+            run(
+                    workspace,
+                    List.of(
+                            properties.getIntegrations()
+                                    .getBitbucket()
+                                    .getGitExecutable(),
+                            "cat-file",
+                            "-e",
+                            commitSha + "^{commit}"
+                    ),
+                    Map.of()
+            );
+
+            return true;
+
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    public String readDiff(
+            String workspaceValue
+    ) {
+        Path workspace =
+                Path.of(workspaceValue)
+                        .toAbsolutePath()
+                        .normalize();
+
+        return run(
+                workspace,
+                List.of(
+                        properties.getIntegrations()
+                                .getBitbucket()
+                                .getGitExecutable(),
+                        "diff",
+                        "--",
+                        "."
+                ),
+                Map.of()
+        );
+    }
+
+    public boolean hasChanges(
+            String workspaceValue
+    ) {
+        Path workspace =
+                Path.of(workspaceValue)
+                        .toAbsolutePath()
+                        .normalize();
+
+        String output =
+                run(
+                        workspace,
+                        List.of(
+                                properties.getIntegrations()
+                                        .getBitbucket()
+                                        .getGitExecutable(),
+                                "status",
+                                "--porcelain"
+                        ),
+                        Map.of()
+                );
+
+        return output != null
+                && !output.isBlank();
+    }
 }

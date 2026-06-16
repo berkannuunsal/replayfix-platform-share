@@ -11,7 +11,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                echo "Checkout must be connected to the company Bitbucket credential and repository."
+                echo "Checkout must be connected to the Etiya Bitbucket credential and repository."
                 checkout scm
             }
         }

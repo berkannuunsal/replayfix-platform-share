@@ -50,6 +50,18 @@ public class ReplayFixProperties {
         private boolean allowAiSourceCode;
         private int maxLogLines = 1000;
         private int maxAiInputCharacters = 100000;
+        private int aiBundleMaxChars = 120000;
+        private int aiBundleMaxLokiChars = 40000;
+        private int aiBundleMaxSourceChars = 40000;
+        private int aiBundleMaxTempoChars = 15000;
+        private int aiBundleMaxJiraChars = 15000;
+        private boolean allowTestExecution;
+        private String mavenExecutable = "mvn";
+        private long localTestTimeoutSeconds = 600;
+        private int localTestMaxOutputChars = 100000;
+        private double patternTestMinConfidence = 0.65;
+        private String kubectlExecutable = "kubectl";
+        private int kubernetesTimeoutSeconds = 30;
 
         public boolean isAllowProductionRead() { return allowProductionRead; }
         public void setAllowProductionRead(boolean value) { this.allowProductionRead = value; }
@@ -71,14 +83,38 @@ public class ReplayFixProperties {
         public void setMaxLogLines(int value) { this.maxLogLines = value; }
         public int getMaxAiInputCharacters() { return maxAiInputCharacters; }
         public void setMaxAiInputCharacters(int value) { this.maxAiInputCharacters = value; }
+        public int getAiBundleMaxChars() { return aiBundleMaxChars; }
+        public void setAiBundleMaxChars(int value) { this.aiBundleMaxChars = value; }
+        public int getAiBundleMaxLokiChars() { return aiBundleMaxLokiChars; }
+        public void setAiBundleMaxLokiChars(int value) { this.aiBundleMaxLokiChars = value; }
+        public int getAiBundleMaxSourceChars() { return aiBundleMaxSourceChars; }
+        public void setAiBundleMaxSourceChars(int value) { this.aiBundleMaxSourceChars = value; }
+        public int getAiBundleMaxTempoChars() { return aiBundleMaxTempoChars; }
+        public void setAiBundleMaxTempoChars(int value) { this.aiBundleMaxTempoChars = value; }
+        public int getAiBundleMaxJiraChars() { return aiBundleMaxJiraChars; }
+        public void setAiBundleMaxJiraChars(int value) { this.aiBundleMaxJiraChars = value; }
+        public boolean isAllowTestExecution() { return allowTestExecution; }
+        public void setAllowTestExecution(boolean value) { this.allowTestExecution = value; }
+        public String getMavenExecutable() { return mavenExecutable; }
+        public void setMavenExecutable(String value) { this.mavenExecutable = value; }
+        public long getLocalTestTimeoutSeconds() { return localTestTimeoutSeconds; }
+        public void setLocalTestTimeoutSeconds(long value) { this.localTestTimeoutSeconds = value; }
+        public int getLocalTestMaxOutputChars() { return localTestMaxOutputChars; }
+        public void setLocalTestMaxOutputChars(int value) { this.localTestMaxOutputChars = value; }
+        public double getPatternTestMinConfidence() { return patternTestMinConfidence; }
+        public void setPatternTestMinConfidence(double value) { this.patternTestMinConfidence = value; }
+        public String getKubectlExecutable() { return kubectlExecutable; }
+        public void setKubectlExecutable(String value) { this.kubectlExecutable = value; }
+        public int getKubernetesTimeoutSeconds() { return kubernetesTimeoutSeconds; }
+        public void setKubernetesTimeoutSeconds(int value) { this.kubernetesTimeoutSeconds = value; }
     }
 
     public static class Integrations {
         private Endpoint jira = new Endpoint();
         private Endpoint loki = new Endpoint();
-        private Endpoint tempo = new Endpoint();
+        private TempoEndpoint tempo = new TempoEndpoint();
         private Bitbucket bitbucket = new Bitbucket();
-        private Endpoint confluence = new Endpoint();
+        private ConfluenceEndpoint confluence = new ConfluenceEndpoint();
         private Endpoint rovo = new Endpoint();
         private Ai ai = new Ai();
         private Jenkins jenkins = new Jenkins();
@@ -89,12 +125,12 @@ public class ReplayFixProperties {
         public void setJira(Endpoint jira) { this.jira = jira; }
         public Endpoint getLoki() { return loki; }
         public void setLoki(Endpoint loki) { this.loki = loki; }
-        public Endpoint getTempo() { return tempo; }
-        public void setTempo(Endpoint tempo) { this.tempo = tempo; }
+        public TempoEndpoint getTempo() { return tempo; }
+        public void setTempo(TempoEndpoint tempo) { this.tempo = tempo; }
         public Bitbucket getBitbucket() { return bitbucket; }
         public void setBitbucket(Bitbucket bitbucket) { this.bitbucket = bitbucket; }
-        public Endpoint getConfluence() { return confluence; }
-        public void setConfluence(Endpoint confluence) { this.confluence = confluence; }
+        public ConfluenceEndpoint getConfluence() { return confluence; }
+        public void setConfluence(ConfluenceEndpoint confluence) { this.confluence = confluence; }
         public Endpoint getRovo() { return rovo; }
         public void setRovo(Endpoint rovo) { this.rovo = rovo; }
         public Ai getAi() { return ai; }
@@ -188,8 +224,21 @@ public class ReplayFixProperties {
     }
 
     public static class JenkinsApplication {
+        private List<String> repositoryAliases = new ArrayList<>();
         private String buildJobUrl = "";
         private String imageJobUrl = "";
+
+        public List<String> getRepositoryAliases() {
+            return repositoryAliases;
+        }
+
+        public void setRepositoryAliases(
+                List<String> repositoryAliases
+        ) {
+            this.repositoryAliases = repositoryAliases == null
+                    ? new ArrayList<>()
+                    : repositoryAliases;
+        }
 
         public String getBuildJobUrl() {
             return buildJobUrl;
@@ -359,6 +408,44 @@ public class ReplayFixProperties {
         public void setBranchPrefix(String value) { this.branchPrefix = value; }
         public List<String> getReviewerUsers() { return reviewerUsers; }
         public void setReviewerUsers(List<String> value) { this.reviewerUsers = value; }
+    }
+
+    public static class TempoEndpoint extends Endpoint {
+        private String accessMode = "GRAFANA_PROXY";
+        private String datasourceUid = "";
+        private int maxTracesPerCase = 5;
+        private int maxSpansPerTrace = 5000;
+        private int maxResponseChars = 2000000;
+
+        public String getAccessMode() { return accessMode; }
+        public void setAccessMode(String value) { this.accessMode = value; }
+        public String getDatasourceUid() { return datasourceUid; }
+        public void setDatasourceUid(String value) { this.datasourceUid = value; }
+        public int getMaxTracesPerCase() { return maxTracesPerCase; }
+        public void setMaxTracesPerCase(int value) { this.maxTracesPerCase = value; }
+        public int getMaxSpansPerTrace() { return maxSpansPerTrace; }
+        public void setMaxSpansPerTrace(int value) { this.maxSpansPerTrace = value; }
+        public int getMaxResponseChars() { return maxResponseChars; }
+        public void setMaxResponseChars(int value) { this.maxResponseChars = value; }
+    }
+
+    public static class ConfluenceEndpoint extends Endpoint {
+        private int maxSearchResults = 15;
+        private int maxPagesPerCase = 5;
+        private int maxPageChars = 30000;
+        private int maxTotalChars = 80000;
+        private String allowedSpaceKeys = "";
+
+        public int getMaxSearchResults() { return maxSearchResults; }
+        public void setMaxSearchResults(int value) { this.maxSearchResults = value; }
+        public int getMaxPagesPerCase() { return maxPagesPerCase; }
+        public void setMaxPagesPerCase(int value) { this.maxPagesPerCase = value; }
+        public int getMaxPageChars() { return maxPageChars; }
+        public void setMaxPageChars(int value) { this.maxPageChars = value; }
+        public int getMaxTotalChars() { return maxTotalChars; }
+        public void setMaxTotalChars(int value) { this.maxTotalChars = value; }
+        public String getAllowedSpaceKeys() { return allowedSpaceKeys; }
+        public void setAllowedSpaceKeys(String value) { this.allowedSpaceKeys = value; }
     }
 
     public static class LogParser {

@@ -1,10 +1,12 @@
 package com.etiya.replayfix.service;
 
 import com.etiya.replayfix.model.AdaptiveLokiSearchResult;
+import com.etiya.replayfix.model.AiEvidenceBundle;
 import com.etiya.replayfix.model.CorrelationSignals;
 import com.etiya.replayfix.model.DeterministicRootCauseReport;
 import com.etiya.replayfix.model.IncidentSignals;
 import com.etiya.replayfix.model.IncidentTimeline;
+import com.etiya.replayfix.model.IncidentTimelineEvent;
 import com.etiya.replayfix.model.LokiSearchAttempt;
 import com.etiya.replayfix.model.RootCauseMetrics;
 import com.etiya.replayfix.model.TempoEnrichmentResult;
@@ -784,5 +786,380 @@ public class DeterministicRootCauseReportBuilder {
 
     private String safe(String value) {
         return value == null ? "" : value;
+    }
+
+    public DeterministicRootCauseReport buildFromBundle(
+            AiEvidenceBundle bundle
+    ) {
+        if (bundle == null) {
+            throw new IllegalArgumentException(
+                    "AI evidence bundle is null."
+            );
+        }
+
+        String classification =
+                classifyFromBundle(bundle);
+
+        RootCauseMetrics metrics =
+                createBundleMetrics(bundle);
+
+        String probableCause =
+                determineProbableCauseFromBundle(
+                        bundle,
+                        classification
+                );
+
+        double confidence =
+                calculateBundleConfidence(
+                        bundle,
+                        classification
+                );
+
+        List<String> supportingEvidence =
+                extractSupportingEvidenceFromBundle(
+                        bundle
+                );
+
+        List<String> missingEvidence =
+                identifyMissingEvidenceFromBundle(
+                        bundle
+                );
+
+        List<String> recommendedActions =
+                generateRecommendedActionsFromBundle(
+                        bundle,
+                        classification
+                );
+
+        List<String> affectedApplications =
+                extractAffectedApplicationsFromBundle(
+                        bundle
+                );
+
+        return new DeterministicRootCauseReport(
+                bundle.jiraKey(),
+                STATUS_HYPOTHESIS,
+                classification,
+                probableCause,
+                confidence,
+                affectedApplications,
+                supportingEvidence,
+                missingEvidence,
+                recommendedActions,
+                metrics
+        );
+    }
+
+    private String classifyFromBundle(
+            AiEvidenceBundle bundle
+    ) {
+        String description =
+                bundle.plainDescription()
+                        .toLowerCase();
+
+        if (description.contains("timeout")
+                || description.contains("timed out")) {
+            return "TIMEOUT";
+        }
+
+        if (description.contains("connection")
+                && (description.contains("refused")
+                        || description.contains("failed"))) {
+            return "CONNECTION_FAILURE";
+        }
+
+        if (description.contains("null pointer")
+                || description.contains("nullpointerexception")) {
+            return "NULL_POINTER";
+        }
+
+        if (description.contains("authentication")
+                || description.contains("unauthorized")
+                || description.contains("401")) {
+            return "AUTHENTICATION_FAILURE";
+        }
+
+        if (description.contains("500")
+                || description.contains("internal server error")) {
+            return "INTERNAL_SERVER_ERROR";
+        }
+
+        return "UNCLASSIFIED";
+    }
+
+    private RootCauseMetrics createBundleMetrics(
+            AiEvidenceBundle bundle
+    ) {
+        int timelineEventCount =
+                bundle.timelineEvents() == null
+                        ? 0
+                        : bundle.timelineEvents().size();
+
+        int correlationSignalCount =
+                bundle.correlations() == null
+                        ? 0
+                        : countCorrelationSignals(
+                                bundle.correlations()
+                        );
+
+        int tempoTraceCount =
+                bundle.tempo() == null
+                        ? 0
+                        : bundle.tempo().foundTraceCount();
+
+        int sourceExcerptCount =
+                bundle.sourceExcerpts() == null
+                        ? 0
+                        : bundle.sourceExcerpts().size();
+
+        return new RootCauseMetrics(
+                0,
+                0,
+                0,
+                correlationSignalCount,
+                0,
+                0,
+                sourceExcerptCount,
+                timelineEventCount,
+                tempoTraceCount,
+                tempoTraceCount,
+                0
+        );
+    }
+
+    private int countCorrelationSignals(
+            CorrelationSignals signals
+    ) {
+        return safeList(signals.traceIds()).size()
+                + safeList(signals.orderIds()).size()
+                + safeList(signals.correlationIds()).size()
+                + safeList(signals.processInstanceIds()).size()
+                + safeList(signals.businessKeys()).size()
+                + safeList(signals.requestIds()).size();
+    }
+
+    private String determineProbableCauseFromBundle(
+            AiEvidenceBundle bundle,
+            String classification
+    ) {
+        StringBuilder cause =
+                new StringBuilder();
+
+        cause.append("Based on Jenkins-validated source context");
+
+        if (bundle.deterministicReport() != null
+                && bundle.deterministicReport()
+                        .probableCause() != null) {
+            cause.append(": ")
+                    .append(bundle.deterministicReport()
+                            .probableCause());
+        } else {
+            cause.append(", incident classification suggests ")
+                    .append(classification.replace("_", " ").toLowerCase())
+                    .append(".");
+        }
+
+        if (bundle.timelineEvents() != null
+                && !bundle.timelineEvents().isEmpty()) {
+            cause.append(" Timeline analysis identifies ")
+                    .append(bundle.timelineEvents().size())
+                    .append(" relevant event(s).");
+        }
+
+        return cause.toString();
+    }
+
+    private double calculateBundleConfidence(
+            AiEvidenceBundle bundle,
+            String classification
+    ) {
+        double confidence = 0.3;
+
+        if (bundle.timelineEvents() != null
+                && !bundle.timelineEvents().isEmpty()) {
+            confidence += 0.2;
+        }
+
+        if (bundle.correlations() != null
+                && countCorrelationSignals(
+                        bundle.correlations()
+                ) > 0) {
+            confidence += 0.15;
+        }
+
+        if (bundle.tempo() != null
+                && bundle.tempo().foundTraceCount() > 0) {
+            confidence += 0.15;
+        }
+
+        if (bundle.sourceExcerpts() != null
+                && !bundle.sourceExcerpts().isEmpty()) {
+            confidence += 0.2;
+        }
+
+        if (bundle.deterministicReport() != null) {
+            confidence = Math.max(
+                    confidence,
+                    bundle.deterministicReport()
+                            .confidence()
+            );
+        }
+
+        return Math.min(confidence, 0.95);
+    }
+
+    private List<String> extractSupportingEvidenceFromBundle(
+            AiEvidenceBundle bundle
+    ) {
+        List<String> evidence =
+                new ArrayList<>();
+
+        if (bundle.timelineEvents() != null
+                && !bundle.timelineEvents().isEmpty()) {
+            evidence.add(
+                    bundle.timelineEvents().size()
+                            + " timeline event(s) correlated with incident window"
+            );
+        }
+
+        if (bundle.correlations() != null) {
+            int signalCount =
+                    countCorrelationSignals(
+                            bundle.correlations()
+                    );
+
+            if (signalCount > 0) {
+                evidence.add(
+                        signalCount
+                                + " correlation signal(s) identified"
+                );
+            }
+        }
+
+        if (bundle.tempo() != null
+                && bundle.tempo().foundTraceCount() > 0) {
+            evidence.add(
+                    bundle.tempo().foundTraceCount()
+                            + " distributed trace(s) found"
+            );
+        }
+
+        if (bundle.sourceExcerpts() != null
+                && !bundle.sourceExcerpts().isEmpty()) {
+            evidence.add(
+                    bundle.sourceExcerpts().size()
+                            + " relevant source code excerpt(s) from Jenkins-validated commit"
+            );
+        }
+
+        if (bundle.plainDescription()
+                .contains("Jenkins Commit:")
+                && bundle.plainDescription()
+                        .contains("MISMATCH")) {
+            evidence.add(
+                    "Source context regenerated from Jenkins deployment commit (differs from incident version)"
+            );
+        }
+
+        return evidence;
+    }
+
+    private List<String> identifyMissingEvidenceFromBundle(
+            AiEvidenceBundle bundle
+    ) {
+        List<String> missing =
+                new ArrayList<>();
+
+        if (bundle.tempo() == null
+                || bundle.tempo().foundTraceCount() == 0) {
+            missing.add(
+                    "Distributed tracing data not available"
+            );
+        }
+
+        if (bundle.sourceExcerpts() == null
+                || bundle.sourceExcerpts().isEmpty()) {
+            missing.add(
+                    "Source code context not available"
+            );
+        }
+
+        if (bundle.knowledge() == null
+                || bundle.knowledge().isEmpty()) {
+            missing.add(
+                    "Knowledge base articles not available"
+            );
+        }
+
+        return missing;
+    }
+
+    private List<String> generateRecommendedActionsFromBundle(
+            AiEvidenceBundle bundle,
+            String classification
+    ) {
+        List<String> actions =
+                new ArrayList<>();
+
+        actions.add(
+                "Verify root cause hypothesis with regression test"
+        );
+
+        if (bundle.plainDescription()
+                .contains("MISMATCH")) {
+            actions.add(
+                    "Review differences between incident commit and Jenkins deployment commit"
+            );
+        }
+
+        if ("TIMEOUT".equals(classification)) {
+            actions.add(
+                    "Increase timeout configuration or optimize slow operation"
+            );
+        } else if ("CONNECTION_FAILURE".equals(classification)) {
+            actions.add(
+                    "Verify service availability and network connectivity"
+            );
+        } else if ("AUTHENTICATION_FAILURE".equals(classification)) {
+            actions.add(
+                    "Validate authentication token propagation and expiration"
+            );
+        }
+
+        actions.add(
+                "Deploy fix to non-production environment for validation"
+        );
+
+        actions.add(
+                "Require human approval before production deployment"
+        );
+
+        return actions;
+    }
+
+    private List<String> extractAffectedApplicationsFromBundle(
+            AiEvidenceBundle bundle
+    ) {
+        List<String> applications =
+                new ArrayList<>();
+
+        if (bundle.timelineEvents() != null) {
+            applications.addAll(
+                    bundle.timelineEvents()
+                            .stream()
+                            .map(IncidentTimelineEvent::application)
+                            .filter(app ->
+                                    app != null && !app.isBlank()
+                            )
+                            .distinct()
+                            .toList()
+            );
+        }
+
+        if (applications.isEmpty()) {
+            applications.add("unknown");
+        }
+
+        return applications;
     }
 }

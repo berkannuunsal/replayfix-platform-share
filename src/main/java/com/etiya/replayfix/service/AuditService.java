@@ -22,4 +22,22 @@ public class AuditService {
         event.setDetails(details);
         repository.save(event);
     }
+
+    public void record(UUID caseId, String action, String actor, String details) {
+        String normalizedActor =
+                actor == null || actor.isBlank()
+                        ? "unknown"
+                        : actor.trim();
+
+        String normalizedDetails =
+                details == null
+                        ? ""
+                        : details;
+
+        record(
+                caseId,
+                action,
+                "actor=" + normalizedActor + ", " + normalizedDetails
+        );
+    }
 }

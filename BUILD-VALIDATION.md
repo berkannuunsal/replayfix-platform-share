@@ -25,7 +25,7 @@ Observed error:
 Unknown host repo.maven.apache.org: Temporary failure in name resolution
 ```
 
-Run the following in an environment with access to your company Maven mirror or Maven Central:
+Run the following in an environment with access to your Etiya Maven mirror or Maven Central:
 
 ```bash
 mvn -B clean verify

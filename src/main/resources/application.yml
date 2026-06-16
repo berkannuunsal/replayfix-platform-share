@@ -49,3 +49,39 @@ replayfix:
     allow-ai-source-code: ${REPLAYFIX_ALLOW_AI_SOURCE_CODE:false}
     max-log-lines: 1000
     max-ai-input-characters: 100000
+    ai-bundle-max-chars: ${REPLAYFIX_AI_BUNDLE_MAX_CHARS:120000}
+    ai-bundle-max-loki-chars: ${REPLAYFIX_AI_BUNDLE_MAX_LOKI_CHARS:40000}
+    ai-bundle-max-source-chars: ${REPLAYFIX_AI_BUNDLE_MAX_SOURCE_CHARS:40000}
+    ai-bundle-max-tempo-chars: ${REPLAYFIX_AI_BUNDLE_MAX_TEMPO_CHARS:15000}
+    ai-bundle-max-jira-chars: ${REPLAYFIX_AI_BUNDLE_MAX_JIRA_CHARS:15000}
+    allow-test-execution: ${REPLAYFIX_ALLOW_TEST_EXECUTION:false}
+    maven-executable: ${REPLAYFIX_MAVEN_EXECUTABLE:mvn}
+    local-test-timeout-seconds: ${REPLAYFIX_LOCAL_TEST_TIMEOUT_SECONDS:600}
+    local-test-max-output-chars: ${REPLAYFIX_LOCAL_TEST_MAX_OUTPUT_CHARS:100000}
+    pattern-test-min-confidence: ${REPLAYFIX_PATTERN_TEST_MIN_CONFIDENCE:0.65}
+    kubectl-executable: ${REPLAYFIX_KUBECTL_EXECUTABLE:kubectl}
+    kubernetes-timeout-seconds: ${REPLAYFIX_KUBERNETES_TIMEOUT_SECONDS:30}
+  integrations:
+    tempo:
+      enabled: ${REPLAYFIX_TEMPO_ENABLED:true}
+      access-mode: ${REPLAYFIX_TEMPO_ACCESS_MODE:GRAFANA_PROXY}
+      base-url: ${REPLAYFIX_TEMPO_BASE_URL:}
+      datasource-uid: ${REPLAYFIX_TEMPO_DATASOURCE_UID:}
+      token: ${TEMPO_TOKEN:}
+      auth-type: ${REPLAYFIX_TEMPO_AUTH_TYPE:BEARER}
+      timeout: ${REPLAYFIX_TEMPO_TIMEOUT:30s}
+      max-traces-per-case: ${REPLAYFIX_TEMPO_MAX_TRACES_PER_CASE:5}
+      max-spans-per-trace: ${REPLAYFIX_TEMPO_MAX_SPANS_PER_TRACE:5000}
+      max-response-chars: ${REPLAYFIX_TEMPO_MAX_RESPONSE_CHARS:2000000}
+    confluence:
+      enabled: ${REPLAYFIX_CONFLUENCE_ENABLED:false}
+      base-url: ${REPLAYFIX_CONFLUENCE_BASE_URL:}
+      username: ${REPLAYFIX_CONFLUENCE_USERNAME:}
+      token: ${CONFLUENCE_TOKEN:}
+      auth-type: ${REPLAYFIX_CONFLUENCE_AUTH_TYPE:BASIC}
+      timeout: ${REPLAYFIX_CONFLUENCE_TIMEOUT:30s}
+      max-search-results: ${REPLAYFIX_CONFLUENCE_MAX_SEARCH_RESULTS:15}
+      max-pages-per-case: ${REPLAYFIX_CONFLUENCE_MAX_PAGES_PER_CASE:5}
+      max-page-chars: ${REPLAYFIX_CONFLUENCE_MAX_PAGE_CHARS:30000}
+      max-total-chars: ${REPLAYFIX_CONFLUENCE_MAX_TOTAL_CHARS:80000}
+      allowed-space-keys: ${REPLAYFIX_CONFLUENCE_ALLOWED_SPACE_KEYS:}
