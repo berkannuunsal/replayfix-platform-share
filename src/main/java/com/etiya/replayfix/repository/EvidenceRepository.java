@@ -10,6 +10,8 @@ import java.util.UUID;
 
 @Repository
 public interface EvidenceRepository extends JpaRepository<EvidenceEntity, UUID> {
+    List<EvidenceEntity> findByCaseId(UUID caseId);
+    
     List<EvidenceEntity> findByCaseIdOrderByCreatedAtAsc(UUID caseId);
     
     List<EvidenceEntity> findByCaseIdAndEvidenceTypeAndSource(UUID caseId, EvidenceType evidenceType, String source);

@@ -20,6 +20,8 @@ public class ReplayFixProperties {
     private Policy policy = new Policy();
     private Integrations integrations = new Integrations();
     private Notifications notifications = new Notifications();
+    private Ai ai = new Ai();
+    private Demo demo = new Demo();
     private Map<String, Target> targets = new LinkedHashMap<>();
     private Map<String, LogParser> logParsers = new LinkedHashMap<>();
 
@@ -37,6 +39,10 @@ public class ReplayFixProperties {
     public void setIntegrations(Integrations integrations) { this.integrations = integrations; }
     public Notifications getNotifications() { return notifications; }
     public void setNotifications(Notifications notifications) { this.notifications = notifications; }
+    public Ai getAi() { return ai; }
+    public void setAi(Ai ai) { this.ai = ai; }
+    public Demo getDemo() { return demo; }
+    public void setDemo(Demo demo) { this.demo = demo; }
     public Map<String, Target> getTargets() { return targets; }
     public void setTargets(Map<String, Target> targets) { this.targets = targets; }
     public Map<String, LogParser> getLogParsers() { return logParsers; }
@@ -194,11 +200,17 @@ public class ReplayFixProperties {
     }
 
     public static class Ai extends Endpoint {
-        private String model = "internal-code-model";
+        private com.etiya.replayfix.domain.AiProviderType provider = com.etiya.replayfix.domain.AiProviderType.DISABLED;
+        private String model = "mock-replayfix-v1";
         private String chatPath = "/v1/chat/completions";
         private double temperature = 0.1;
         private int maxOutputTokens = 4000;
+        private int maxInputChars = 120000;
+        private int maxOutputChars = 30000;
+        private boolean includeSourceCode = false;
 
+        public com.etiya.replayfix.domain.AiProviderType getProvider() { return provider; }
+        public void setProvider(com.etiya.replayfix.domain.AiProviderType value) { this.provider = value; }
         public String getModel() { return model; }
         public void setModel(String model) { this.model = model; }
         public String getChatPath() { return chatPath; }
@@ -207,6 +219,12 @@ public class ReplayFixProperties {
         public void setTemperature(double temperature) { this.temperature = temperature; }
         public int getMaxOutputTokens() { return maxOutputTokens; }
         public void setMaxOutputTokens(int value) { this.maxOutputTokens = value; }
+        public int getMaxInputChars() { return maxInputChars; }
+        public void setMaxInputChars(int value) { this.maxInputChars = value; }
+        public int getMaxOutputChars() { return maxOutputChars; }
+        public void setMaxOutputChars(int value) { this.maxOutputChars = value; }
+        public boolean isIncludeSourceCode() { return includeSourceCode; }
+        public void setIncludeSourceCode(boolean value) { this.includeSourceCode = value; }
     }
 
     public static class Jenkins extends Endpoint {
@@ -531,5 +549,15 @@ public class ReplayFixProperties {
             public int getMaxAttempts() { return maxAttempts; }
             public void setMaxAttempts(int value) { this.maxAttempts = value; }
         }
+    }
+
+    public static class Demo {
+        private boolean enabled = false;
+        private boolean allowReset = false;
+
+        public boolean isEnabled() { return enabled; }
+        public void setEnabled(boolean value) { this.enabled = value; }
+        public boolean isAllowReset() { return allowReset; }
+        public void setAllowReset(boolean value) { this.allowReset = value; }
     }
 }

@@ -41,6 +41,14 @@ replayfix:
   demo:
     enabled: ${REPLAYFIX_DEMO_ENABLED:false}
     allow-reset: ${REPLAYFIX_DEMO_ALLOW_RESET:false}
+  ai:
+    enabled: ${REPLAYFIX_AI_ENABLED:false}
+    provider: ${REPLAYFIX_AI_PROVIDER:DISABLED}
+    model: ${REPLAYFIX_AI_MODEL:mock-replayfix-v1}
+    max-input-chars: ${REPLAYFIX_AI_MAX_INPUT_CHARS:120000}
+    max-output-chars: ${REPLAYFIX_AI_MAX_OUTPUT_CHARS:30000}
+    temperature: ${REPLAYFIX_AI_TEMPERATURE:0.1}
+    include-source-code: ${REPLAYFIX_AI_INCLUDE_SOURCE_CODE:false}
   notifications:
     webhook:
       enabled: ${REPLAYFIX_NOTIFICATION_WEBHOOK_ENABLED:false}
