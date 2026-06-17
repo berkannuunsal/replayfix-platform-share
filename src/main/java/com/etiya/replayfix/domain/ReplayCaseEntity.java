@@ -59,6 +59,12 @@ public class ReplayCaseEntity {
     @Column(name = "last_error", columnDefinition = "text")
     private String lastError;
 
+    @Column(name = "jenkins_job_name", length = 300)
+    private String jenkinsJobName;
+
+    @Column(name = "jenkins_build_number")
+    private Integer jenkinsBuildNumber;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -117,4 +123,8 @@ public class ReplayCaseEntity {
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
     public long getVersion() { return version; }
+    public String getJenkinsJobName() { return jenkinsJobName; }
+    public void setJenkinsJobName(String value) { this.jenkinsJobName = value; }
+    public Integer getJenkinsBuildNumber() { return jenkinsBuildNumber; }
+    public void setJenkinsBuildNumber(Integer value) { this.jenkinsBuildNumber = value; }
 }
