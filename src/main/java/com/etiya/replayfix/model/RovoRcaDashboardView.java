@@ -5,13 +5,18 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
 
 public record RovoRcaDashboardView(
+        boolean rovoRcaAvailable,
         String importStatus,
         String rcaStatus,
+        Double rovoConfidence,
         String rawHumanReport,
         JsonNode rawRovoJson,
         JsonNode normalizedRovoJson,
         Double confidence,
         String probableRootCause,
+        String commentId,
+        String commentAuthor,
+        String importedAt,
         String executiveSummary,
         List<MatrixEntry> evidenceMatrix,
         List<RelatedJiraIssue> relatedJiraIssues,
@@ -64,9 +69,14 @@ public record RovoRcaDashboardView(
 
     public static RovoRcaDashboardView notAvailable() {
         return new RovoRcaDashboardView(
+                false,
                 "NOT_IMPORTED",
                 null,
+                null,
                 null,  // rawHumanReport
+                null,
+                null,
+                null,
                 null,
                 null,
                 null,
@@ -97,7 +107,11 @@ public record RovoRcaDashboardView(
             String rawHumanReport,
             JsonNode rawRovoJson,
             JsonNode normalizedRovoJson,
-            String rawJson
+            String rawJson,
+            String importStatus,
+            String commentId,
+            String commentAuthor,
+            String importedAt
     ) {
         // Build evidence matrix
         List<MatrixEntry> evidenceMatrix = analysis.evidenceMatrix() != null
@@ -145,13 +159,18 @@ public record RovoRcaDashboardView(
         String comparisonMessage = buildComparisonMessage(analysis);
 
         return new RovoRcaDashboardView(
-                "IMPORTED",
+                true,
+                importStatus != null ? importStatus : "IMPORTED",
                 analysis.status() != null ? analysis.status() : "HYPOTHESIS",
+                analysis.confidence(),
                 rawHumanReport != null ? rawHumanReport : "",
                 rawRovoJson,
                 normalizedRovoJson,
                 analysis.confidence(),
                 analysis.probableRootCause(),
+                commentId,
+                commentAuthor,
+                importedAt,
                 analysis.executiveSummary(),
                 evidenceMatrix,
                 relatedIssues,

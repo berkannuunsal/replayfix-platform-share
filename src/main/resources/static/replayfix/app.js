@@ -328,7 +328,7 @@
         const section = document.getElementById('rovoRcaSection');
         if (!section) return;
 
-        if (!rovoRca || rovoRca.importStatus !== 'IMPORTED') {
+        if (!rovoRca || rovoRca.rovoRcaAvailable === false || rovoRca.importStatus !== 'IMPORTED') {
             section.classList.add('hidden');
             return;
         }
@@ -343,10 +343,18 @@
         rcaStatusEl.textContent = rovoRca.rcaStatus || 'HYPOTHESIS';
         rcaStatusEl.className = 'badge badge-' + getStatusClass(rovoRca.rcaStatus || 'HYPOTHESIS');
 
-        const confidence = typeof rovoRca.confidence === 'number'
-            ? `${Math.round(rovoRca.confidence * 100)}%`
+        const rovoConfidence = typeof rovoRca.rovoConfidence === 'number'
+            ? rovoRca.rovoConfidence
+            : rovoRca.confidence;
+        const confidence = typeof rovoConfidence === 'number'
+            ? `${Math.round(rovoConfidence * 100)}%`
             : 'N/A';
         document.getElementById('rovoRcaConfidence').textContent = confidence;
+        document.getElementById('rovoRcaCommentMeta').textContent = [
+            rovoRca.commentId ? `#${rovoRca.commentId}` : null,
+            rovoRca.commentAuthor || null
+        ].filter(Boolean).join(' - ') || 'N/A';
+        document.getElementById('rovoRcaImportedAt').textContent = rovoRca.importedAt || 'N/A';
         document.getElementById('rovoRcaProbableRootCause').textContent = rovoRca.probableRootCause || 'N/A';
         document.getElementById('rovoRcaHumanReport').textContent = rovoRca.rawHumanReport || '';
 

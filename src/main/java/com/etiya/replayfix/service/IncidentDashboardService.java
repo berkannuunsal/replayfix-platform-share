@@ -29,6 +29,7 @@ public class IncidentDashboardService {
     private final JiraEvidenceCommentPreviewService previewService;
     private final ReplayFixProperties properties;
     private final ObjectMapper objectMapper;
+    private final EvidenceSanitizer evidenceSanitizer;
 
     public IncidentDashboardService(
             ReplayCaseRepository caseRepository,
@@ -40,7 +41,8 @@ public class IncidentDashboardService {
             ReplayFixWorkflowOrchestrator orchestrator,
             JiraEvidenceCommentPreviewService previewService,
             ReplayFixProperties properties,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            EvidenceSanitizer evidenceSanitizer
     ) {
         this.caseRepository = caseRepository;
         this.workflowRunRepository = workflowRunRepository;
@@ -52,6 +54,7 @@ public class IncidentDashboardService {
         this.previewService = previewService;
         this.properties = properties;
         this.objectMapper = objectMapper;
+        this.evidenceSanitizer = evidenceSanitizer;
     }
 
     @Transactional(readOnly = true)
@@ -213,26 +216,36 @@ public class IncidentDashboardService {
                 com.etiya.replayfix.model.RovoRcaEnvelope envelope = 
                         objectMapper.readValue(json, com.etiya.replayfix.model.RovoRcaEnvelope.class);
                 
+                com.fasterxml.jackson.databind.JsonNode sanitizedRawJson =
+                        sanitizeJsonNode(envelope.rawRovoJson());
+                com.fasterxml.jackson.databind.JsonNode sanitizedNormalizedJson =
+                        sanitizeJsonNode(envelope.normalizedRovoJson());
+
                 // Parse normalized JSON from envelope
-                RovoRcaAnalysis analysis = objectMapper.treeToValue(
-                        envelope.normalizedRovoJson(), 
-                        RovoRcaAnalysis.class
+                RovoRcaAnalysis analysis = parseRovoRcaAnalysis(
+                        sanitizedNormalizedJson
                 );
                 
                 return RovoRcaDashboardView.fromAnalysis(
                         analysis,
                         !envelope.normalizationWarnings().isEmpty(),
-                        envelope.normalizationWarnings(),
-                        envelope.rawHumanReport(),
-                        envelope.rawRovoJson(),
-                        envelope.normalizedRovoJson(),
-                        objectMapper.writeValueAsString(envelope.rawRovoJson())
+                        sanitizeList(envelope.normalizationWarnings()),
+                        sanitizeText(envelope.rawHumanReport()),
+                        sanitizedRawJson,
+                        sanitizedNormalizedJson,
+                        objectMapper.writeValueAsString(sanitizedRawJson),
+                        envelope.importStatus(),
+                        envelope.commentId(),
+                        sanitizeText(envelope.commentAuthor()),
+                        envelope.importedAt() != null ? envelope.importedAt().toString() : null
                 );
             } catch (Exception envelopeEx) {
                 // Fallback: try legacy format (direct RovoRcaAnalysis)
                 log.debug("Not an envelope, trying legacy format: {}", envelopeEx.getMessage());
-                RovoRcaAnalysis analysis = objectMapper.readValue(json, RovoRcaAnalysis.class);
-                com.fasterxml.jackson.databind.JsonNode legacyJson = objectMapper.readTree(json);
+                com.fasterxml.jackson.databind.JsonNode legacyJson =
+                        sanitizeJsonNode(objectMapper.readTree(json));
+                RovoRcaAnalysis analysis = parseRovoRcaAnalysis(legacyJson);
+                String sanitizedJson = objectMapper.writeValueAsString(legacyJson);
                 
                 boolean wasNormalized = detectIfNormalized(analysis);
                 
@@ -243,7 +256,11 @@ public class IncidentDashboardService {
                         "", // No human report in legacy format
                         legacyJson,
                         legacyJson,
-                        json
+                        sanitizedJson,
+                        "IMPORTED",
+                        null,
+                        null,
+                        null
                 );
             }
         } catch (Exception e) {
@@ -318,6 +335,88 @@ public class IncidentDashboardService {
         }
         
         return false;
+    }
+
+    private RovoRcaAnalysis parseRovoRcaAnalysis(
+            com.fasterxml.jackson.databind.JsonNode value
+    ) throws java.io.IOException {
+        return objectMapper
+                .readerFor(RovoRcaAnalysis.class)
+                .without(
+                        com.fasterxml.jackson.databind.DeserializationFeature
+                                .FAIL_ON_UNKNOWN_PROPERTIES
+                )
+                .readValue(value);
+    }
+
+    private String sanitizeText(String value) {
+        return evidenceSanitizer.sanitize(value);
+    }
+
+    private List<String> sanitizeList(List<String> values) {
+        if (values == null) {
+            return List.of();
+        }
+        return values.stream()
+                .map(this::sanitizeText)
+                .toList();
+    }
+
+    private com.fasterxml.jackson.databind.JsonNode sanitizeJsonNode(
+            com.fasterxml.jackson.databind.JsonNode value
+    ) {
+        if (value == null) {
+            return null;
+        }
+
+        if (value.isObject()) {
+            com.fasterxml.jackson.databind.node.ObjectNode sanitized =
+                    objectMapper.createObjectNode();
+
+            value.fields().forEachRemaining(entry -> {
+                String fieldName = entry.getKey();
+                if (isSensitiveField(fieldName)) {
+                    sanitized.put(fieldName, "[REDACTED]");
+                } else {
+                    sanitized.set(
+                            fieldName,
+                            sanitizeJsonNode(entry.getValue())
+                    );
+                }
+            });
+
+            return sanitized;
+        }
+
+        if (value.isArray()) {
+            com.fasterxml.jackson.databind.node.ArrayNode sanitized =
+                    objectMapper.createArrayNode();
+
+            for (com.fasterxml.jackson.databind.JsonNode item : value) {
+                sanitized.add(sanitizeJsonNode(item));
+            }
+
+            return sanitized;
+        }
+
+        if (value.isTextual()) {
+            return objectMapper.getNodeFactory()
+                    .textNode(sanitizeText(value.asText()));
+        }
+
+        return value.deepCopy();
+    }
+
+    private boolean isSensitiveField(String fieldName) {
+        if (fieldName == null) {
+            return false;
+        }
+        String lower = fieldName.toLowerCase(Locale.ROOT);
+        return lower.contains("authorization")
+                || lower.contains("cookie")
+                || lower.contains("token")
+                || lower.contains("password")
+                || lower.contains("secret");
     }
 
     private List<MissingEvidenceView> buildMissingEvidence(UUID caseId, WorkflowRunView workflow) {

@@ -71,7 +71,8 @@ class RovoRcaEnvelopeTest {
                 orchestrator,
                 previewService,
                 properties,
-                objectMapper
+                objectMapper,
+                new EvidenceSanitizer()
         );
 
         when(workflowRunRepository.findFirstByCaseIdOrderByCreatedAtDesc(any()))
@@ -337,9 +338,162 @@ class RovoRcaEnvelopeTest {
         // Then
         assertNotNull(dashboard.rovoRca());
         assertEquals("IMPORTED", dashboard.rovoRca().importStatus());
+        assertTrue(dashboard.rovoRca().rovoRcaAvailable());
         assertEquals("HYPOTHESIS", dashboard.rovoRca().rcaStatus());
+        assertEquals(0.8, dashboard.rovoRca().rovoConfidence());
+        assertEquals("10001", dashboard.rovoRca().commentId());
+        assertEquals("Rovo Bot", dashboard.rovoRca().commentAuthor());
+        assertNotNull(dashboard.rovoRca().importedAt());
         assertNotNull(dashboard.rovoRca().rawHumanReport());
         assertTrue(dashboard.rovoRca().rawHumanReport().contains("Turkish RCA Report"));
+        assertNotNull(dashboard.rovoRca().rawRovoJson());
+        assertNotNull(dashboard.rovoRca().normalizedRovoJson());
+        assertTrue(dashboard.rovoRca().normalizationWarnings().isEmpty());
+    }
+
+    @Test
+    void shouldSelectLatestRovoRcaEvidenceForDashboard() throws Exception {
+        UUID caseId = UUID.randomUUID();
+        ReplayCaseEntity caseEntity = new ReplayCaseEntity();
+        caseEntity.setJiraKey("TEST-123");
+
+        EvidenceEntity oldEvidence = rovoEvidence(
+                caseId,
+                "old-comment",
+                "Old Bot",
+                "Old human report",
+                "Old root cause",
+                Instant.parse("2026-01-01T00:00:00Z"),
+                List.of()
+        );
+
+        EvidenceEntity latestEvidence = rovoEvidence(
+                caseId,
+                "new-comment",
+                "Rovo Bot",
+                "Latest human report",
+                "Latest root cause",
+                Instant.parse("2026-01-02T00:00:00Z"),
+                List.of("Normalized relatedJiraIssues from string to object")
+        );
+
+        when(caseRepository.findById(caseId)).thenReturn(Optional.of(caseEntity));
+        when(evidenceRepository.findByCaseIdAndEvidenceType(caseId, EvidenceType.ROVO_RCA))
+                .thenReturn(List.of(oldEvidence, latestEvidence));
+
+        IncidentDashboardView dashboard = dashboardService.getCaseDashboard(caseId);
+
+        assertTrue(dashboard.rovoRca().rovoRcaAvailable());
+        assertEquals("new-comment", dashboard.rovoRca().commentId());
+        assertEquals("Latest root cause", dashboard.rovoRca().probableRootCause());
+        assertTrue(dashboard.rovoRca().rawHumanReport().contains("Latest human report"));
+        assertEquals(1, dashboard.rovoRca().normalizationWarnings().size());
+    }
+
+    @Test
+    void shouldRenderLegacyJsonOnlyRovoRcaOnDashboard() {
+        UUID caseId = UUID.randomUUID();
+        ReplayCaseEntity caseEntity = new ReplayCaseEntity();
+        caseEntity.setJiraKey("TEST-123");
+
+        EvidenceEntity legacyEvidence = new EvidenceEntity();
+        legacyEvidence.setId(UUID.randomUUID());
+        legacyEvidence.setCaseId(caseId);
+        legacyEvidence.setEvidenceType(EvidenceType.ROVO_RCA);
+        legacyEvidence.setContentText("""
+                {
+                  "schemaVersion": "1.0",
+                  "jiraKey": "TEST-123",
+                  "status": "HYPOTHESIS",
+                  "confidence": 0.45,
+                  "probableRootCause": "Legacy JSON root cause"
+                }
+                """);
+        legacyEvidence.setCreatedAt(Instant.now());
+
+        when(caseRepository.findById(caseId)).thenReturn(Optional.of(caseEntity));
+        when(evidenceRepository.findByCaseIdAndEvidenceType(caseId, EvidenceType.ROVO_RCA))
+                .thenReturn(List.of(legacyEvidence));
+
+        IncidentDashboardView dashboard = dashboardService.getCaseDashboard(caseId);
+
+        assertTrue(dashboard.rovoRca().rovoRcaAvailable());
+        assertEquals("IMPORTED", dashboard.rovoRca().importStatus());
+        assertEquals("HYPOTHESIS", dashboard.rovoRca().rcaStatus());
+        assertEquals(0.45, dashboard.rovoRca().rovoConfidence());
+        assertEquals("Legacy JSON root cause", dashboard.rovoRca().probableRootCause());
+        assertNotNull(dashboard.rovoRca().rawRovoJson());
+        assertNotNull(dashboard.rovoRca().normalizedRovoJson());
+    }
+
+    @Test
+    void shouldRedactSecretsFromRovoRcaDashboard() {
+        UUID caseId = UUID.randomUUID();
+        ReplayCaseEntity caseEntity = new ReplayCaseEntity();
+        caseEntity.setJiraKey("TEST-123");
+
+        EvidenceEntity legacyEvidence = new EvidenceEntity();
+        legacyEvidence.setId(UUID.randomUUID());
+        legacyEvidence.setCaseId(caseId);
+        legacyEvidence.setEvidenceType(EvidenceType.ROVO_RCA);
+        legacyEvidence.setContentText("""
+                {
+                  "schemaVersion": "1.0",
+                  "jiraKey": "TEST-123",
+                  "status": "HYPOTHESIS",
+                  "confidence": 0.2,
+                  "probableRootCause": "Authorization: Bearer abc123 leaked in logs",
+                  "authorization": "Bearer abc123",
+                  "nested": { "apiToken": "secret-token" }
+                }
+                """);
+        legacyEvidence.setCreatedAt(Instant.now());
+
+        when(caseRepository.findById(caseId)).thenReturn(Optional.of(caseEntity));
+        when(evidenceRepository.findByCaseIdAndEvidenceType(caseId, EvidenceType.ROVO_RCA))
+                .thenReturn(List.of(legacyEvidence));
+
+        IncidentDashboardView dashboard = dashboardService.getCaseDashboard(caseId);
+        String dashboardJson = dashboard.rovoRca().rawRovoJson().toString()
+                + dashboard.rovoRca().probableRootCause();
+
+        assertFalse(dashboardJson.contains("abc123"));
+        assertFalse(dashboardJson.contains("secret-token"));
+        assertTrue(dashboardJson.contains("[REDACTED]"));
+    }
+
+    private EvidenceEntity rovoEvidence(
+            UUID caseId,
+            String commentId,
+            String commentAuthor,
+            String rawHumanReport,
+            String probableRootCause,
+            Instant createdAt,
+            List<String> warnings
+    ) throws Exception {
+        RovoRcaEnvelope envelope = RovoRcaEnvelope.create(
+                caseId,
+                "TEST-123",
+                commentId,
+                commentAuthor,
+                rawHumanReport,
+                "{\"schemaVersion\":\"1.0\",\"jiraKey\":\"TEST-123\",\"confidence\":0.8,\"probableRootCause\":\""
+                        + probableRootCause
+                        + "\"}",
+                "{\"schemaVersion\":\"1.0\",\"jiraKey\":\"TEST-123\",\"status\":\"HYPOTHESIS\",\"confidence\":0.8,\"probableRootCause\":\""
+                        + probableRootCause
+                        + "\"}",
+                warnings,
+                objectMapper
+        );
+
+        EvidenceEntity evidence = new EvidenceEntity();
+        evidence.setId(UUID.randomUUID());
+        evidence.setCaseId(caseId);
+        evidence.setEvidenceType(EvidenceType.ROVO_RCA);
+        evidence.setContentText(objectMapper.writeValueAsString(envelope));
+        evidence.setCreatedAt(createdAt);
+        return evidence;
     }
 
     @Test
