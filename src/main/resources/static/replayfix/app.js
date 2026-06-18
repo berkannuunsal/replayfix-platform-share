@@ -198,6 +198,8 @@
         renderEvidenceMatrix(dashboard.evidenceCards);
         renderRootCause(dashboard.rootCause);
         renderRovoRca(dashboard.rovoRca);
+        renderRegressionTestHypothesis(dashboard.regressionTestHypothesis);
+        renderFailingRegressionTestDraft(dashboard.failingRegressionTestDraft);
         renderMissingEvidence(dashboard.missingEvidence);
         renderJiraPreview(dashboard.jiraPreview, dashboard.policies);
         renderApprovals(dashboard.approvals);
@@ -364,6 +366,85 @@
             JSON.stringify(rovoRca.normalizedRovoJson || {}, null, 2);
         document.getElementById('rovoRcaRawJson').textContent =
             JSON.stringify(rovoRca.rawRovoJson || {}, null, 2);
+    }
+
+    function renderRegressionTestHypothesis(hypothesis) {
+        const section = document.getElementById('regressionHypothesisSection');
+        if (!section) return;
+
+        if (!hypothesis || hypothesis.status === 'NOT_GENERATED') {
+            section.classList.add('hidden');
+            return;
+        }
+
+        section.classList.remove('hidden');
+
+        const statusEl = document.getElementById('hypothesisStatus');
+        statusEl.textContent = hypothesis.status || 'HYPOTHESIS';
+        statusEl.className = 'badge badge-' + getStatusClass(hypothesis.status || 'HYPOTHESIS');
+
+        const typeEl = document.getElementById('hypothesisTestType');
+        typeEl.textContent = hypothesis.testType || 'UNKNOWN';
+        typeEl.className = 'badge badge-primary';
+
+        document.getElementById('hypothesisConfidence').textContent =
+            typeof hypothesis.confidence === 'number' ? `${Math.round(hypothesis.confidence * 100)}%` : 'N/A';
+        document.getElementById('hypothesisTargetFlow').textContent = hypothesis.targetFlow || 'N/A';
+        document.getElementById('hypothesisFailingScenario').textContent = hypothesis.failingScenario || 'N/A';
+        renderList('hypothesisSuggestedInputs', hypothesis.suggestedInputs);
+        renderList('hypothesisAssertions', hypothesis.assertions);
+        renderOptionalListSection('hypothesisWarningsSection', 'hypothesisWarnings', hypothesis.warnings);
+    }
+
+    function renderFailingRegressionTestDraft(draft) {
+        const section = document.getElementById('failingDraftSection');
+        if (!section) return;
+
+        if (!draft || draft.status === 'NOT_GENERATED') {
+            section.classList.add('hidden');
+            return;
+        }
+
+        section.classList.remove('hidden');
+
+        const statusEl = document.getElementById('draftStatus');
+        statusEl.textContent = draft.status || 'DRAFT';
+        statusEl.className = 'badge badge-' + getStatusClass(draft.status || 'DRAFT');
+
+        const readinessEl = document.getElementById('draftReadiness');
+        readinessEl.textContent = draft.readiness || 'UNKNOWN';
+        readinessEl.className = 'badge badge-warning';
+
+        document.getElementById('draftPath').textContent = draft.proposedRelativePath || 'N/A';
+        document.getElementById('draftClassName').textContent = draft.proposedClassName || 'N/A';
+        document.getElementById('draftMethodName').textContent = draft.proposedMethodName || 'N/A';
+        document.getElementById('draftSourceCode').textContent = draft.sourceCode || '';
+        renderOptionalListSection('draftWarningsSection', 'draftWarnings', draft.warnings);
+    }
+
+    function renderList(elementId, values) {
+        const element = document.getElementById(elementId);
+        if (!element) return;
+        const safeValues = values || [];
+        if (safeValues.length === 0) {
+            element.innerHTML = '<li>Not provided.</li>';
+            return;
+        }
+        element.innerHTML = safeValues
+            .map(item => `<li>${escapeHtml(item)}</li>`)
+            .join('');
+    }
+
+    function renderOptionalListSection(sectionId, listId, values) {
+        const section = document.getElementById(sectionId);
+        if (!section) return;
+        if (!values || values.length === 0) {
+            section.classList.add('hidden');
+            renderList(listId, []);
+            return;
+        }
+        section.classList.remove('hidden');
+        renderList(listId, values);
     }
 
     function renderMissingEvidence(missingList) {
@@ -719,7 +800,10 @@
             'DUPLICATE': 'warning',
             'INVALID_JSON': 'danger',
             'NOT_FOUND': 'muted',
-            'HYPOTHESIS': 'warning'
+            'HYPOTHESIS': 'warning',
+            'DRAFT': 'warning',
+            'NEEDS_HUMAN_COMPLETION': 'warning',
+            'NOT_GENERATED': 'muted'
         };
         return statusMap[status] || 'muted';
     }

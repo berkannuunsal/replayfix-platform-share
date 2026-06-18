@@ -69,6 +69,12 @@ public class IncidentDashboardService {
 
         RovoRcaDashboardView rovoRca = buildRovoRcaView(caseId);
 
+        RegressionTestHypothesisDashboardView regressionTestHypothesis =
+                buildRegressionTestHypothesisView(caseId);
+
+        FailingRegressionTestDraftDashboardView failingRegressionTestDraft =
+                buildFailingRegressionTestDraftView(caseId);
+
         List<MissingEvidenceView> missingEvidence = buildMissingEvidence(caseId, workflow);
 
         JiraEvidenceCommentPreview jiraPreview = getLatestPreview(caseId);
@@ -85,6 +91,8 @@ public class IncidentDashboardService {
                 evidenceCards,
                 rootCause,
                 rovoRca,
+                regressionTestHypothesis,
+                failingRegressionTestDraft,
                 missingEvidence,
                 jiraPreview,
                 approvals,
@@ -190,11 +198,7 @@ public class IncidentDashboardService {
 
     private RovoRcaDashboardView buildRovoRcaView(UUID caseId) {
         // Find latest ROVO_RCA evidence (sorted by created_at DESC)
-        Optional<EvidenceEntity> rovoRcaEvidence = evidenceRepository
-                .findByCaseIdAndEvidenceType(caseId, EvidenceType.ROVO_RCA)
-                .stream()
-                .sorted((e1, e2) -> e2.getCreatedAt().compareTo(e1.getCreatedAt()))
-                .findFirst();
+        Optional<EvidenceEntity> rovoRcaEvidence = latestEvidence(caseId, EvidenceType.ROVO_RCA);
 
         if (rovoRcaEvidence.isEmpty()) {
             return RovoRcaDashboardView.notAvailable();
@@ -246,6 +250,54 @@ public class IncidentDashboardService {
             log.error("Failed to parse Rovo RCA for dashboard: caseId={}", caseId, e);
             return RovoRcaDashboardView.notAvailable();
         }
+    }
+
+    private RegressionTestHypothesisDashboardView buildRegressionTestHypothesisView(UUID caseId) {
+        Optional<EvidenceEntity> evidence =
+                latestEvidence(caseId, EvidenceType.REGRESSION_TEST_HYPOTHESIS);
+
+        if (evidence.isEmpty()) {
+            return RegressionTestHypothesisDashboardView.notAvailable();
+        }
+
+        try {
+            RegressionTestHypothesis hypothesis = objectMapper.readValue(
+                    evidence.get().getContentText(),
+                    RegressionTestHypothesis.class
+            );
+            return RegressionTestHypothesisDashboardView.from(hypothesis);
+        } catch (Exception exception) {
+            log.error("Failed to parse regression test hypothesis for dashboard: caseId={}", caseId, exception);
+            return RegressionTestHypothesisDashboardView.notAvailable();
+        }
+    }
+
+    private FailingRegressionTestDraftDashboardView buildFailingRegressionTestDraftView(UUID caseId) {
+        Optional<EvidenceEntity> evidence =
+                latestEvidence(caseId, EvidenceType.FAILING_REGRESSION_TEST_DRAFT);
+
+        if (evidence.isEmpty()) {
+            return FailingRegressionTestDraftDashboardView.notAvailable();
+        }
+
+        try {
+            FailingRegressionTestDraft draft = objectMapper.readValue(
+                    evidence.get().getContentText(),
+                    FailingRegressionTestDraft.class
+            );
+            return FailingRegressionTestDraftDashboardView.from(draft);
+        } catch (Exception exception) {
+            log.error("Failed to parse failing regression test draft for dashboard: caseId={}", caseId, exception);
+            return FailingRegressionTestDraftDashboardView.notAvailable();
+        }
+    }
+
+    private Optional<EvidenceEntity> latestEvidence(UUID caseId, EvidenceType evidenceType) {
+        return evidenceRepository
+                .findByCaseIdAndEvidenceType(caseId, evidenceType)
+                .stream()
+                .filter(item -> item.getCreatedAt() != null)
+                .max(Comparator.comparing(EvidenceEntity::getCreatedAt));
     }
 
     private boolean detectIfNormalized(RovoRcaAnalysis analysis) {

@@ -27,9 +27,10 @@
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    font-size: 14px;
     background: var(--bg);
     color: var(--text-primary);
-    line-height: 1.6;
+    line-height: 1.5;
     min-height: 100vh;
 }
 
@@ -157,12 +158,12 @@ body {
 }
 
 .card-header h2 {
-    font-size: 1.25rem;
+    font-size: 1.1rem;
     font-weight: 600;
 }
 
 .card-body {
-    padding: 1.5rem;
+    padding: 1.25rem;
 }
 
 /* Buttons */
@@ -378,7 +379,7 @@ body {
 
 .rca-item label {
     display: block;
-    font-size: 0.875rem;
+    font-size: 0.8125rem;
     font-weight: 600;
     color: var(--text-secondary);
     margin-bottom: 0.5rem;
@@ -403,7 +404,36 @@ body {
 .section-subtitle {
     margin-top: 0.35rem;
     color: var(--text-secondary);
+    font-size: 0.8125rem;
+}
+
+.compact-panel {
     font-size: 0.875rem;
+}
+
+.two-column-detail {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+}
+
+.two-column-detail label {
+    display: block;
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.two-column-detail ul {
+    padding-left: 1.1rem;
+}
+
+.mono-inline {
+    font-family: 'Courier New', monospace;
+    font-size: 0.8125rem;
+    word-break: break-word;
 }
 
 .rovo-rca-summary {
@@ -421,7 +451,8 @@ body {
     max-height: 360px;
     overflow: auto;
     white-space: pre-wrap;
-    line-height: 1.5;
+    font-size: 0.8125rem;
+    line-height: 1.45;
 }
 
 .rovo-json-details {
@@ -443,7 +474,8 @@ body {
     max-height: 360px;
     overflow: auto;
     white-space: pre-wrap;
-    font-size: 0.8125rem;
+    font-size: 0.75rem;
+    line-height: 1.45;
 }
 
 /* Preview */

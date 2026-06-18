@@ -186,6 +186,98 @@
                 </div>
             </section>
 
+            <!-- Regression Test Hypothesis -->
+            <section id="regressionHypothesisSection" class="card hidden">
+                <div class="card-header">
+                    <div>
+                        <h2>Regression Test Hypothesis</h2>
+                        <p class="section-subtitle">Rovo RCA ve ReplayFix evidence uzerinden uretilen test hipotezi.</p>
+                    </div>
+                </div>
+                <div class="card-body compact-panel">
+                    <div class="rovo-rca-summary">
+                        <div class="rca-item">
+                            <label>Status</label>
+                            <span id="hypothesisStatus" class="badge"></span>
+                        </div>
+                        <div class="rca-item">
+                            <label>Test Type</label>
+                            <span id="hypothesisTestType" class="badge"></span>
+                        </div>
+                        <div class="rca-item">
+                            <label>Confidence</label>
+                            <span id="hypothesisConfidence"></span>
+                        </div>
+                    </div>
+                    <div class="rca-item">
+                        <label>Target Flow</label>
+                        <p id="hypothesisTargetFlow"></p>
+                    </div>
+                    <div class="rca-item">
+                        <label>Failing Scenario</label>
+                        <p id="hypothesisFailingScenario"></p>
+                    </div>
+                    <div class="two-column-detail">
+                        <div>
+                            <label>Suggested Inputs</label>
+                            <ul id="hypothesisSuggestedInputs"></ul>
+                        </div>
+                        <div>
+                            <label>Assertions</label>
+                            <ul id="hypothesisAssertions"></ul>
+                        </div>
+                    </div>
+                    <div class="rca-item hidden" id="hypothesisWarningsSection">
+                        <label>Warnings</label>
+                        <ul id="hypothesisWarnings"></ul>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Failing Regression Test Draft -->
+            <section id="failingDraftSection" class="card hidden">
+                <div class="card-header">
+                    <div>
+                        <h2>Failing Regression Test Draft</h2>
+                        <p class="section-subtitle">Bu draft henuz dosyaya yazilmadi ve calistirilmadi; insan onayi gerektirir.</p>
+                    </div>
+                </div>
+                <div class="card-body compact-panel">
+                    <div class="rovo-rca-summary">
+                        <div class="rca-item">
+                            <label>Status</label>
+                            <span id="draftStatus" class="badge"></span>
+                        </div>
+                        <div class="rca-item">
+                            <label>Readiness</label>
+                            <span id="draftReadiness" class="badge"></span>
+                        </div>
+                        <div class="rca-item">
+                            <label>Path</label>
+                            <span id="draftPath" class="mono-inline"></span>
+                        </div>
+                    </div>
+                    <div class="two-column-detail">
+                        <div>
+                            <label>Class</label>
+                            <p id="draftClassName" class="mono-inline"></p>
+                        </div>
+                        <div>
+                            <label>Method</label>
+                            <p id="draftMethodName" class="mono-inline"></p>
+                        </div>
+                    </div>
+                    <details class="rovo-json-details" open>
+                        <summary>Draft Source</summary>
+                        <pre id="draftSourceCode"></pre>
+                    </details>
+                    <div class="rca-item hidden" id="draftWarningsSection">
+                        <label>Warnings</label>
+                        <ul id="draftWarnings"></ul>
+                    </div>
+                </div>
+            </section>
+
             <!-- Missing Evidence -->
             <section id="missingEvidenceSection" class="card hidden">
                 <div class="card-header">

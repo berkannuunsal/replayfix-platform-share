@@ -8,6 +8,8 @@ public record IncidentDashboardView(
         List<DashboardEvidenceCard> evidenceCards,
         RootCauseDashboardView rootCause,
         RovoRcaDashboardView rovoRca,
+        RegressionTestHypothesisDashboardView regressionTestHypothesis,
+        FailingRegressionTestDraftDashboardView failingRegressionTestDraft,
         List<MissingEvidenceView> missingEvidence,
         JiraEvidenceCommentPreview jiraPreview,
         List<ApprovalRequestView> approvals,
