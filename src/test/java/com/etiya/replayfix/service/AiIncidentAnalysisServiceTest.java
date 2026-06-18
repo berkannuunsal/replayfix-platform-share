@@ -169,7 +169,7 @@ class AiIncidentAnalysisServiceTest {
         assertThat(savedEvidence.getCaseId()).isEqualTo(caseId);
         
         verify(auditService).record(eq(caseId), eq("AI_ANALYSIS_COMPLETED"), any(), any());
-        verify(notificationRepository).save(any(NotificationEntity.class));
+        verify(eventPublisher).publishEvent(any(AiAnalysisCompletedEvent.class));
     }
 
     @Test

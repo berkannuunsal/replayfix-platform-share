@@ -1,12 +1,12 @@
 package com.etiya.replayfix.service;
 
+import com.etiya.replayfix.config.ReplayFixProperties;
 import com.etiya.replayfix.domain.EvidenceEntity;
 import com.etiya.replayfix.domain.EvidenceType;
 import com.etiya.replayfix.domain.ReplayCaseEntity;
 import com.etiya.replayfix.integration.JiraClient;
 import com.etiya.replayfix.model.*;
-import com.etiya.replayfix.repository.EvidenceRepository;
-import com.etiya.replayfix.repository.ReplayCaseRepository;
+import com.etiya.replayfix.repository.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,7 +26,14 @@ class RovoRcaEnvelopeTest {
     private RovoRcaImporterService importerService;
     private IncidentDashboardService dashboardService;
     private ReplayCaseRepository caseRepository;
+    private WorkflowRunRepository workflowRunRepository;
+    private WorkflowStepRepository workflowStepRepository;
     private EvidenceRepository evidenceRepository;
+    private ApprovalRequestRepository approvalRepository;
+    private AuditEventRepository auditRepository;
+    private ReplayFixWorkflowOrchestrator orchestrator;
+    private JiraEvidenceCommentPreviewService previewService;
+    private ReplayFixProperties properties;
     private JiraClient jiraClient;
     private EvidenceService evidenceService;
     private ObjectMapper objectMapper;
@@ -34,10 +41,17 @@ class RovoRcaEnvelopeTest {
     @BeforeEach
     void setUp() {
         caseRepository = mock(ReplayCaseRepository.class);
+        workflowRunRepository = mock(WorkflowRunRepository.class);
+        workflowStepRepository = mock(WorkflowStepRepository.class);
         evidenceRepository = mock(EvidenceRepository.class);
+        approvalRepository = mock(ApprovalRequestRepository.class);
+        auditRepository = mock(AuditEventRepository.class);
+        orchestrator = mock(ReplayFixWorkflowOrchestrator.class);
+        previewService = mock(JiraEvidenceCommentPreviewService.class);
+        properties = new ReplayFixProperties();
         jiraClient = mock(JiraClient.class);
         evidenceService = mock(EvidenceService.class);
-        objectMapper = new ObjectMapper();
+        objectMapper = new ObjectMapper().findAndRegisterModules();
 
         importerService = new RovoRcaImporterService(
                 caseRepository,
@@ -49,10 +63,27 @@ class RovoRcaEnvelopeTest {
 
         dashboardService = new IncidentDashboardService(
                 caseRepository,
+                workflowRunRepository,
+                workflowStepRepository,
                 evidenceRepository,
-                null, // workflowEngine not needed
+                approvalRepository,
+                auditRepository,
+                orchestrator,
+                previewService,
+                properties,
                 objectMapper
         );
+
+        when(workflowRunRepository.findFirstByCaseIdOrderByCreatedAtDesc(any()))
+                .thenReturn(Optional.empty());
+        when(evidenceRepository.findByCaseIdOrderByCreatedAtAsc(any()))
+                .thenReturn(List.of());
+        when(approvalRepository.findByCaseIdOrderByRequestedAtDesc(any()))
+                .thenReturn(List.of());
+        when(auditRepository.findByCaseIdOrderByCreatedAtDesc(any()))
+                .thenReturn(List.of());
+        when(previewService.createPreview(any()))
+                .thenThrow(new IllegalStateException("No preview in unit test"));
     }
 
     @Test
@@ -301,7 +332,7 @@ class RovoRcaEnvelopeTest {
                 .thenReturn(List.of(rovoEvidence));
 
         // When
-        IncidentDashboardView dashboard = dashboardService.getDashboard(caseId);
+        IncidentDashboardView dashboard = dashboardService.getCaseDashboard(caseId);
 
         // Then
         assertNotNull(dashboard.rovoRca());

@@ -37,7 +37,7 @@ class RovoRcaNormalizationTest {
         evidenceRepository = mock(EvidenceRepository.class);
         jiraClient = mock(JiraClient.class);
         evidenceService = mock(EvidenceService.class);
-        objectMapper = new ObjectMapper();
+        objectMapper = new ObjectMapper().findAndRegisterModules();
 
         service = new RovoRcaImporterService(
                 caseRepository,
