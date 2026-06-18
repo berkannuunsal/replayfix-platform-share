@@ -150,40 +150,249 @@ public class IncidentDashboardService {
         List<EvidenceEntity> allEvidence = evidenceRepository
                 .findByCaseIdOrderByCreatedAtAsc(caseId);
 
-        Map<String, List<EvidenceEntity>> groupedBySource = allEvidence.stream()
-                .collect(Collectors.groupingBy(
-                        e -> e.getSource() != null ? e.getSource() : "UNKNOWN"
-                ));
-
         List<DashboardEvidenceCard> cards = new ArrayList<>();
 
-        for (String[] sourceInfo : getEvidenceSources()) {
-            String source = sourceInfo[0];
-            String displayName = sourceInfo[1];
+        for (EvidenceSourceGroup group : evidenceSourceGroups()) {
+            List<EvidenceEntity> groupEvidence = allEvidence.stream()
+                    .filter(item -> group.types().contains(item.getEvidenceType()))
+                    .toList();
 
-            List<EvidenceEntity> sourceEvidence = groupedBySource.getOrDefault(source, List.of());
-
-            String status = sourceEvidence.isEmpty() ? "UNAVAILABLE" : "CONFIRMED";
-            String keyFinding = sourceEvidence.isEmpty() 
-                    ? "No evidence collected" 
-                    : "Evidence available";
-            String confidence = sourceEvidence.isEmpty() ? "N/A" : "High";
-            String lastCollected = sourceEvidence.isEmpty() 
-                    ? null 
-                    : sourceEvidence.get(sourceEvidence.size() - 1).getCreatedAt().toString();
-
-            cards.add(new DashboardEvidenceCard(
-                    displayName,
-                    status,
-                    keyFinding,
-                    confidence,
-                    sourceEvidence.size(),
-                    lastCollected,
-                    List.of()
-            ));
+            cards.add(buildEvidenceCard(group, groupEvidence));
         }
 
         return cards;
+    }
+
+    private DashboardEvidenceCard buildEvidenceCard(
+            EvidenceSourceGroup group,
+            List<EvidenceEntity> evidence
+    ) {
+        if (evidence.isEmpty()) {
+            return new DashboardEvidenceCard(
+                    group.displayName(),
+                    "UNAVAILABLE",
+                    "No evidence collected",
+                    "N/A",
+                    0,
+                    null,
+                    List.of()
+            );
+        }
+
+        EvidenceAvailability availability =
+                determineDashboardAvailability(group, evidence);
+
+        List<String> warnings =
+                evidence.stream()
+                        .map(this::weakEvidenceWarning)
+                        .filter(Objects::nonNull)
+                        .distinct()
+                        .toList();
+
+        EvidenceEntity latest = evidence.stream()
+                .filter(item -> item.getCreatedAt() != null)
+                .max(Comparator.comparing(EvidenceEntity::getCreatedAt))
+                .orElse(evidence.get(evidence.size() - 1));
+
+        return new DashboardEvidenceCard(
+                group.displayName(),
+                availability.name(),
+                buildDashboardFinding(group, evidence),
+                availability == EvidenceAvailability.CONFIRMED
+                        ? "High"
+                        : "Medium",
+                evidence.size(),
+                latest.getCreatedAt() != null
+                        ? latest.getCreatedAt().toString()
+                        : null,
+                warnings
+        );
+    }
+
+    private EvidenceAvailability determineDashboardAvailability(
+            EvidenceSourceGroup group,
+            List<EvidenceEntity> evidence
+    ) {
+        if (evidence.isEmpty()) {
+            return EvidenceAvailability.UNAVAILABLE;
+        }
+
+        boolean weak = evidence.stream()
+                .anyMatch(item -> isWeakDashboardEvidence(group, item));
+
+        return weak
+                ? EvidenceAvailability.PROBABLE
+                : EvidenceAvailability.CONFIRMED;
+    }
+
+    private boolean isWeakDashboardEvidence(
+            EvidenceSourceGroup group,
+            EvidenceEntity evidence
+    ) {
+        EvidenceType type = evidence.getEvidenceType();
+
+        if (group.displayName().equals("Loki")) {
+            return hasZeroMetric(
+                    evidence,
+                    "matchedRowCount",
+                    "matchedRows",
+                    "matchedLogCount",
+                    "logCount",
+                    "resultCount"
+            );
+        }
+
+        if (group.displayName().equals("Tempo")) {
+            return hasZeroMetric(
+                    evidence,
+                    "foundTraceCount",
+                    "traceCount",
+                    "foundTraces"
+            );
+        }
+
+        if (group.displayName().equals("Source Context")
+                || type == EvidenceType.SOURCE_CONTEXT) {
+            return hasZeroMetric(
+                    evidence,
+                    "matchedFileCount",
+                    "scannedFileCount",
+                    "fileCount"
+            );
+        }
+
+        return false;
+    }
+
+    private boolean hasZeroMetric(EvidenceEntity evidence, String... fieldNames) {
+        Optional<com.fasterxml.jackson.databind.JsonNode> json =
+                readEvidenceJson(evidence);
+
+        if (json.isEmpty()) {
+            return false;
+        }
+
+        for (String fieldName : fieldNames) {
+            Optional<Integer> value = findIntField(json.get(), fieldName);
+            if (value.isPresent()) {
+                return value.get() == 0;
+            }
+        }
+
+        return false;
+    }
+
+    private Optional<Integer> findIntField(
+            com.fasterxml.jackson.databind.JsonNode node,
+            String fieldName
+    ) {
+        if (node == null) {
+            return Optional.empty();
+        }
+
+        if (node.isObject()) {
+            com.fasterxml.jackson.databind.JsonNode value = node.get(fieldName);
+            if (value != null && value.isNumber()) {
+                return Optional.of(value.asInt());
+            }
+
+            Iterator<com.fasterxml.jackson.databind.JsonNode> children =
+                    node.elements();
+            while (children.hasNext()) {
+                Optional<Integer> childValue =
+                        findIntField(children.next(), fieldName);
+                if (childValue.isPresent()) {
+                    return childValue;
+                }
+            }
+        }
+
+        if (node.isArray()) {
+            for (com.fasterxml.jackson.databind.JsonNode child : node) {
+                Optional<Integer> childValue =
+                        findIntField(child, fieldName);
+                if (childValue.isPresent()) {
+                    return childValue;
+                }
+            }
+        }
+
+        return Optional.empty();
+    }
+
+    private Optional<com.fasterxml.jackson.databind.JsonNode> readEvidenceJson(
+            EvidenceEntity evidence
+    ) {
+        String content = firstNonBlank(
+                evidence.getContentText(),
+                evidence.getBody()
+        );
+
+        if (content == null) {
+            return Optional.empty();
+        }
+
+        try {
+            return Optional.of(objectMapper.readTree(content));
+        } catch (Exception ignored) {
+            return Optional.empty();
+        }
+    }
+
+    private String weakEvidenceWarning(EvidenceEntity evidence) {
+        EvidenceType type = evidence.getEvidenceType();
+
+        if (type == EvidenceType.LOKI_LOG
+                || type == EvidenceType.LOKI_QUERY_PLAN
+                || type == EvidenceType.LOKI_CORRELATION_SIGNALS
+                || type == EvidenceType.LOKI_SECOND_PASS) {
+            if (hasZeroMetric(
+                    evidence,
+                    "matchedRowCount",
+                    "matchedRows",
+                    "matchedLogCount",
+                    "logCount",
+                    "resultCount"
+            )) {
+                return "Loki evidence exists but no matching rows were found.";
+            }
+        }
+
+        if (type == EvidenceType.TEMPO_ENRICHMENT
+                && hasZeroMetric(
+                evidence,
+                "foundTraceCount",
+                "traceCount",
+                "foundTraces"
+        )) {
+            return "Tempo evidence exists but no traces were found.";
+        }
+
+        if (type == EvidenceType.SOURCE_CONTEXT
+                && hasZeroMetric(
+                evidence,
+                "matchedFileCount",
+                "scannedFileCount",
+                "fileCount"
+        )) {
+            return "Source context evidence exists but no matching files were found.";
+        }
+
+        return null;
+    }
+
+    private String buildDashboardFinding(
+            EvidenceSourceGroup group,
+            List<EvidenceEntity> evidence
+    ) {
+        String types = evidence.stream()
+                .map(item -> item.getEvidenceType().name())
+                .distinct()
+                .collect(Collectors.joining(", "));
+
+        return group.displayName()
+                + " evidence available: "
+                + types;
     }
 
     private RootCauseDashboardView buildRootCauseView(UUID caseId) {
@@ -537,16 +746,68 @@ public class IncidentDashboardService {
         return details;
     }
 
-    private String[][] getEvidenceSources() {
-        return new String[][]{
-                {"jira-issue", "Jira"},
-                {"loki-log", "Loki"},
-                {"tempo-trace", "Tempo"},
-                {"repository-context", "Bitbucket"},
-                {"jenkins-build", "Jenkins"},
-                {"confluence-knowledge", "Confluence"},
-                {"kubernetes-runtime", "Kubernetes"},
-                {"jira-evidence-summary-preview", "ReplayFix Preview"}
-        };
+    private List<EvidenceSourceGroup> evidenceSourceGroups() {
+        return List.of(
+                new EvidenceSourceGroup(
+                        "Jira",
+                        Set.of(EvidenceType.JIRA_ISSUE)
+                ),
+                new EvidenceSourceGroup(
+                        "Bitbucket",
+                        Set.of(
+                                EvidenceType.REPOSITORY_RESOLUTION,
+                                EvidenceType.INCIDENT_VERSION
+                        )
+                ),
+                new EvidenceSourceGroup(
+                        "Jenkins",
+                        Set.of(EvidenceType.JENKINS_BUILD_CONTEXT)
+                ),
+                new EvidenceSourceGroup(
+                        "Loki",
+                        Set.of(
+                                EvidenceType.LOKI_QUERY_PLAN,
+                                EvidenceType.LOKI_LOG,
+                                EvidenceType.LOKI_LOGS,
+                                EvidenceType.LOKI_CORRELATION_SIGNALS,
+                                EvidenceType.LOKI_SECOND_PASS,
+                                EvidenceType.INCIDENT_TIMELINE
+                        )
+                ),
+                new EvidenceSourceGroup(
+                        "Tempo",
+                        Set.of(EvidenceType.TEMPO_ENRICHMENT)
+                ),
+                new EvidenceSourceGroup(
+                        "Source Context",
+                        Set.of(EvidenceType.SOURCE_CONTEXT)
+                ),
+                new EvidenceSourceGroup(
+                        "ReplayFix",
+                        Set.of(
+                                EvidenceType.AI_INPUT_BUNDLE,
+                                EvidenceType.DETERMINISTIC_ROOT_CAUSE,
+                                EvidenceType.AI_ROOT_CAUSE,
+                                EvidenceType.ROVO_RCA,
+                                EvidenceType.REGRESSION_TEST_HYPOTHESIS,
+                                EvidenceType.FAILING_REGRESSION_TEST_DRAFT
+                        )
+                )
+        );
+    }
+
+    private String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private record EvidenceSourceGroup(
+            String displayName,
+            Set<EvidenceType> types
+    ) {
     }
 }
