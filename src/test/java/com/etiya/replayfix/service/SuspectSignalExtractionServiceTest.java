@@ -1,0 +1,196 @@
+package com.etiya.replayfix.service;
+
+import com.etiya.replayfix.domain.EvidenceEntity;
+import com.etiya.replayfix.domain.EvidenceType;
+import com.etiya.replayfix.domain.ReplayCaseEntity;
+import com.etiya.replayfix.domain.ReplayCaseStatus;
+import com.etiya.replayfix.model.SuspectSignalExtractionResponse;
+import com.etiya.replayfix.repository.EvidenceRepository;
+import com.etiya.replayfix.repository.ReplayCaseRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+class SuspectSignalExtractionServiceTest {
+
+    private SuspectSignalExtractionService service;
+    private ReplayCaseRepository caseRepository;
+    private EvidenceRepository evidenceRepository;
+
+    @BeforeEach
+    void setUp() {
+        caseRepository = mock(ReplayCaseRepository.class);
+        evidenceRepository = mock(EvidenceRepository.class);
+        service = new SuspectSignalExtractionService(
+                caseRepository,
+                evidenceRepository,
+                new ObjectMapper().findAndRegisterModules()
+        );
+    }
+
+    @Test
+    void shouldExtractRovoSignalsAndVariants() {
+        UUID caseId = UUID.randomUUID();
+
+        List<EvidenceEntity> evidence = List.of(
+                evidence(caseId, EvidenceType.REPOSITORY_RESOLUTION,
+                        "repository-resolution",
+                        "{\"projectKey\":\"DCE\",\"primaryRepositorySlug\":\"backend\",\"branch\":\"test2\"}"),
+                evidence(caseId, EvidenceType.ROVO_RCA,
+                        "rovo-incident-commander",
+                        """
+                                {
+                                  "rawHumanReport": "Billing Account Creation / Update Flow has province mismatch for billing account.",
+                                  "normalizedRovoJson": {
+                                    "probableRootCause": "Missing validation around /businessFlow/initialize and /user/region/update.",
+                                    "minimumFixDirection": [
+                                      "Validate PREFERRED_PROVINCE, region, tax_info and timezone."
+                                    ]
+                                  }
+                                }
+                                """)
+        );
+
+        when(caseRepository.findById(caseId))
+                .thenReturn(Optional.of(caseEntity(caseId)));
+        when(evidenceRepository.findByCaseIdOrderByCreatedAtAsc(caseId))
+                .thenReturn(evidence);
+
+        SuspectSignalExtractionResponse response = service.extract(caseId);
+
+        assertEquals("FIZZMS-10228", response.jiraKey());
+        assertEquals("DCE/backend", response.repository());
+        assertEquals("test2", response.branch());
+        assertTrue(response.warnings().isEmpty());
+
+        assertSignal(response, "/businessFlow/initialize");
+        assertSignal(response, "/user/region/update");
+        assertSignal(response, "PREFERRED_PROVINCE");
+        assertSignal(response, "preferredProvince");
+        assertSignal(response, "PreferredProvince");
+        assertSignal(response, "preferred_province");
+        assertSignal(response, "preferred-province");
+        assertSignal(response, "tax_info");
+        assertSignal(response, "taxInfo");
+        assertSignal(response, "TaxInfo");
+        assertSignal(response, "tax-info");
+        assertSignal(response, "timezone");
+        assertSignal(response, "timeZone");
+        assertSignal(response, "TimeZone");
+        assertSignal(response, "billing account");
+        assertSignal(response, "BillingAccount");
+        assertSignal(response, "billingAccount");
+        assertSignal(response, "billing-account");
+        assertSignal(response, "businessFlow");
+        assertSignal(response, "BusinessFlow");
+        assertSignal(response, "initialize");
+        assertSignal(response, "user");
+        assertSignal(response, "region");
+        assertSignal(response, "update");
+        assertSignal(response, "RegionUpdate");
+    }
+
+    @Test
+    void shouldDeduplicateRepeatedBusinessTerms() {
+        UUID caseId = UUID.randomUUID();
+
+        List<EvidenceEntity> evidence = List.of(
+                evidence(caseId, EvidenceType.ROVO_RCA,
+                        "rovo-incident-commander",
+                        """
+                                {
+                                  "rawHumanReport": "billing account billing account Billing Account",
+                                  "normalizedRovoJson": {
+                                    "probableRootCause": "billing account"
+                                  }
+                                }
+                                """)
+        );
+
+        when(caseRepository.findById(caseId))
+                .thenReturn(Optional.of(caseEntity(caseId)));
+        when(evidenceRepository.findByCaseIdOrderByCreatedAtAsc(caseId))
+                .thenReturn(evidence);
+
+        SuspectSignalExtractionResponse response = service.extract(caseId);
+
+        long count = response.signals()
+                .stream()
+                .filter(signal -> "billing account".equals(signal.value()))
+                .count();
+
+        assertEquals(1, count);
+    }
+
+    @Test
+    void shouldWarnWhenRovoMissingButOtherEvidenceExists() {
+        UUID caseId = UUID.randomUUID();
+
+        List<EvidenceEntity> evidence = List.of(
+                evidence(caseId, EvidenceType.JIRA_ISSUE,
+                        "jira",
+                        "{\"summary\":\"billing account province mismatch\"}")
+        );
+
+        when(caseRepository.findById(caseId))
+                .thenReturn(Optional.of(caseEntity(caseId)));
+        when(evidenceRepository.findByCaseIdOrderByCreatedAtAsc(caseId))
+                .thenReturn(evidence);
+
+        SuspectSignalExtractionResponse response = service.extract(caseId);
+
+        assertFalse(response.warnings().isEmpty());
+        assertSignal(response, "billing account");
+        assertSignal(response, "province mismatch");
+    }
+
+    private void assertSignal(
+            SuspectSignalExtractionResponse response,
+            String value
+    ) {
+        assertTrue(
+                response.signals()
+                        .stream()
+                        .anyMatch(signal -> value.equals(signal.value())),
+                "Expected signal not found: " + value
+        );
+    }
+
+    private ReplayCaseEntity caseEntity(UUID caseId) {
+        ReplayCaseEntity replayCase = new ReplayCaseEntity();
+        replayCase.setId(caseId);
+        replayCase.setJiraKey("FIZZMS-10228");
+        replayCase.setTargetKey("backend");
+        replayCase.setStatus(ReplayCaseStatus.NEW);
+        replayCase.setSourceBranch("test2");
+        return replayCase;
+    }
+
+    private EvidenceEntity evidence(
+            UUID caseId,
+            EvidenceType type,
+            String source,
+            String contentText
+    ) {
+        EvidenceEntity evidence = new EvidenceEntity();
+        evidence.setId(UUID.randomUUID());
+        evidence.setCaseId(caseId);
+        evidence.setEvidenceType(type);
+        evidence.setSource(source);
+        evidence.setContentText(contentText);
+        evidence.setCreatedAt(Instant.now());
+        evidence.setSanitized(true);
+        return evidence;
+    }
+}
