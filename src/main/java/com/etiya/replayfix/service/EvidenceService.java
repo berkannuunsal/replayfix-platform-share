@@ -59,6 +59,10 @@ public class EvidenceService {
         return sanitizer.sanitize(content);
     }
 
+    public String hashContent(String content) {
+        return hash(content);
+    }
+
     private String hash(String content) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
