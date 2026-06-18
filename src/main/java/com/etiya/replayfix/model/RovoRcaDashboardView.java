@@ -9,17 +9,14 @@ public record RovoRcaDashboardView(
         Double confidence,
         String probableRootCause,
         String executiveSummary,
-        List<String> facts,
-        List<String> inferences,
-        List<String> unknowns,
-        EvidenceMatrix evidenceMatrix,
+        List<MatrixEntry> evidenceMatrix,
         List<RelatedJiraIssue> relatedJiraIssues,
         List<ConfluenceRef> confluenceReferences,
         List<SuspectedFile> suspectedFiles,
         List<SuspectedClass> suspectedClasses,
         List<SuspectedMethod> suspectedMethods,
-        String regressionTestHypothesis,
-        String minimumFixDirection,
+        List<String> regressionTestHypothesis,
+        List<String> minimumFixDirection,
         List<String> missingEvidence,
         String recommendedNextAction,
         List<String> normalizationWarnings,
@@ -28,13 +25,8 @@ public record RovoRcaDashboardView(
         String rawJson,
         String comparisonMessage
 ) {
-    public record EvidenceMatrix(
-            MatrixEntry loki,
-            MatrixEntry tempo,
-            MatrixEntry source
-    ) {}
-
     public record MatrixEntry(
+            String category,
             String status,
             List<String> references,
             String reason
@@ -74,17 +66,14 @@ public record RovoRcaDashboardView(
                 null,
                 null,
                 null,
-                List.of(),
-                List.of(),
-                List.of(),
-                null,
+                List.of(),  // evidenceMatrix
                 List.of(),
                 List.of(),
                 List.of(),
                 List.of(),
                 List.of(),
-                null,
-                null,
+                List.of(),  // regressionTestHypothesis
+                List.of(),  // minimumFixDirection
                 List.of(),
                 null,
                 List.of(),
@@ -103,14 +92,11 @@ public record RovoRcaDashboardView(
             String rawJson
     ) {
         // Build evidence matrix
-        EvidenceMatrix evidenceMatrix = null;
-        if (analysis.evidenceMatrix() != null) {
-            evidenceMatrix = new EvidenceMatrix(
-                    buildMatrixEntry(analysis.evidenceMatrix().loki()),
-                    buildMatrixEntry(analysis.evidenceMatrix().tempo()),
-                    buildMatrixEntry(analysis.evidenceMatrix().source())
-            );
-        }
+        List<MatrixEntry> evidenceMatrix = analysis.evidenceMatrix() != null
+                ? analysis.evidenceMatrix().stream()
+                        .map(e -> new MatrixEntry(e.category(), e.status(), e.references(), e.reason()))
+                        .toList()
+                : List.of();
 
         // Build related Jira issues
         List<RelatedJiraIssue> relatedIssues = analysis.relatedJiraIssues() != null
@@ -157,17 +143,14 @@ public record RovoRcaDashboardView(
                 analysis.confidence(),
                 analysis.probableRootCause(),
                 analysis.executiveSummary(),
-                analysis.facts() != null ? analysis.facts() : List.of(),
-                analysis.inferences() != null ? analysis.inferences() : List.of(),
-                analysis.unknowns() != null ? analysis.unknowns() : List.of(),
                 evidenceMatrix,
                 relatedIssues,
                 confluenceRefs,
                 suspectedFiles,
                 suspectedClasses,
                 suspectedMethods,
-                analysis.regressionTestHypothesis(),
-                analysis.minimumFixDirection(),
+                analysis.regressionTestHypothesis() != null ? analysis.regressionTestHypothesis() : List.of(),
+                analysis.minimumFixDirection() != null ? analysis.minimumFixDirection() : List.of(),
                 analysis.missingEvidence() != null ? analysis.missingEvidence() : List.of(),
                 analysis.recommendedNextAction(),
                 normalizationWarnings != null ? normalizationWarnings : List.of(),
@@ -178,25 +161,15 @@ public record RovoRcaDashboardView(
         );
     }
 
-    private static MatrixEntry buildMatrixEntry(RovoRcaAnalysis.EvidenceMatrixEntry entry) {
-        if (entry == null) {
-            return null;
-        }
-        return new MatrixEntry(
-                entry.status(),
-                entry.references() != null ? entry.references() : List.of(),
-                entry.reason()
-        );
-    }
-
     private static String buildComparisonMessage(RovoRcaAnalysis analysis) {
         boolean hasWeakEvidence = false;
         
         if (analysis.evidenceMatrix() != null) {
-            if (isWeak(analysis.evidenceMatrix().loki()) ||
-                isWeak(analysis.evidenceMatrix().tempo()) ||
-                isWeak(analysis.evidenceMatrix().source())) {
-                hasWeakEvidence = true;
+            for (RovoRcaAnalysis.EvidenceMatrixEntry entry : analysis.evidenceMatrix()) {
+                if (isWeak(entry)) {
+                    hasWeakEvidence = true;
+                    break;
+                }
             }
         }
 

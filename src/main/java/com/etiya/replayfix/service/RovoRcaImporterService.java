@@ -218,16 +218,20 @@ public class RovoRcaImporterService {
             String envelopeJson = objectMapper.writeValueAsString(envelope);
 
             // Check for duplicate using commentId from envelope
+            // Create final variables for lambda capture
+            final String finalCommentId = importedCommentId;
+            final String finalRawJson = rovoRcaBlock.json;
+            
             Optional<EvidenceEntity> existingEvidence = evidenceRepository
                     .findByCaseIdAndEvidenceType(caseId, EvidenceType.ROVO_RCA)
                     .stream()
                     .filter(e -> {
                         try {
                             RovoRcaEnvelope existing = objectMapper.readValue(e.getContentText(), RovoRcaEnvelope.class);
-                            return importedCommentId.equals(existing.commentId());
+                            return finalCommentId.equals(existing.commentId());
                         } catch (Exception ex) {
                             // Legacy format without envelope, check raw JSON hash
-                            return calculateHash(rovoRcaBlock.json).equals(calculateHash(e.getContentText()));
+                            return calculateHash(finalRawJson).equals(calculateHash(e.getContentText()));
                         }
                     })
                     .findFirst();
@@ -464,35 +468,65 @@ public class RovoRcaImporterService {
     ) {
         com.fasterxml.jackson.databind.node.ObjectNode normalized = json.deepCopy();
 
-        // Normalize relatedJiraIssues
-        if (normalized.has("relatedJiraIssues")) {
-            com.fasterxml.jackson.databind.JsonNode relatedIssues = normalized.get("relatedJiraIssues");
-            if (relatedIssues.isArray()) {
-                com.fasterxml.jackson.databind.node.ArrayNode normalizedIssues = objectMapper.createArrayNode();
-                for (com.fasterxml.jackson.databind.JsonNode item : relatedIssues) {
-                    if (item.isTextual()) {
-                        // String form: convert to object
-                        com.fasterxml.jackson.databind.node.ObjectNode issueObj = objectMapper.createObjectNode();
-                        issueObj.put("jiraKey", item.asText());
-                        issueObj.put("reason", "");
-                        normalizedIssues.add(issueObj);
-                        warnings.add("Normalized relatedJiraIssues from string to object");
-                    } else {
-                        normalizedIssues.add(item);
+        // Normalize evidenceMatrix: object {loki, tempo, source} -> array [{category, status, references, reason}]
+        if (normalized.has("evidenceMatrix")) {
+            com.fasterxml.jackson.databind.JsonNode evidenceMatrix = normalized.get("evidenceMatrix");
+            if (evidenceMatrix.isObject()) {
+                // Convert object form to array form
+                com.fasterxml.jackson.databind.node.ArrayNode matrixArray = objectMapper.createArrayNode();
+                com.fasterxml.jackson.databind.node.ObjectNode matrixObj = (com.fasterxml.jackson.databind.node.ObjectNode) evidenceMatrix;
+                
+                for (String category : List.of("loki", "tempo", "source")) {
+                    if (matrixObj.has(category)) {
+                        com.fasterxml.jackson.databind.JsonNode item = matrixObj.get(category);
+                        if (item.isObject()) {
+                            com.fasterxml.jackson.databind.node.ObjectNode entry = item.deepCopy();
+                            entry.put("category", category);
+                            
+                            // Normalize references string to array
+                            if (entry.has("references") && entry.get("references").isTextual()) {
+                                com.fasterxml.jackson.databind.node.ArrayNode refsArray = objectMapper.createArrayNode();
+                                refsArray.add(entry.get("references").asText());
+                                entry.set("references", refsArray);
+                                warnings.add("Normalized evidenceMatrix." + category + ".references from string to array");
+                            }
+                            
+                            matrixArray.add(entry);
+                        }
                     }
                 }
-                normalized.set("relatedJiraIssues", normalizedIssues);
+                
+                normalized.set("evidenceMatrix", matrixArray);
+                warnings.add("Normalized evidenceMatrix from object to array");
+            } else if (evidenceMatrix.isArray()) {
+                // Already array, just normalize references within entries
+                com.fasterxml.jackson.databind.node.ArrayNode matrixArray = (com.fasterxml.jackson.databind.node.ArrayNode) evidenceMatrix;
+                for (int i = 0; i < matrixArray.size(); i++) {
+                    com.fasterxml.jackson.databind.JsonNode entry = matrixArray.get(i);
+                    if (entry.isObject() && entry.has("references") && entry.get("references").isTextual()) {
+                        com.fasterxml.jackson.databind.node.ObjectNode entryObj = (com.fasterxml.jackson.databind.node.ObjectNode) entry;
+                        com.fasterxml.jackson.databind.node.ArrayNode refsArray = objectMapper.createArrayNode();
+                        refsArray.add(entry.get("references").asText());
+                        entryObj.set("references", refsArray);
+                        warnings.add("Normalized evidenceMatrix[" + i + "].references from string to array");
+                    }
+                }
             }
         }
 
-        // Normalize confluenceReferences
+        // Normalize relatedJiraIssues: string array -> object array
+        normalized = normalizeStringArrayToObjectArray(normalized, "relatedJiraIssues", "jiraKey", warnings);
+
+        // Normalize similarIncidents: string array -> object array
+        normalized = normalizeStringArrayToObjectArray(normalized, "similarIncidents", "jiraKey", warnings);
+
+        // Normalize confluenceReferences: string array -> object array  
         if (normalized.has("confluenceReferences")) {
             com.fasterxml.jackson.databind.JsonNode confRefs = normalized.get("confluenceReferences");
             if (confRefs.isArray()) {
                 com.fasterxml.jackson.databind.node.ArrayNode normalizedRefs = objectMapper.createArrayNode();
                 for (com.fasterxml.jackson.databind.JsonNode item : confRefs) {
                     if (item.isTextual()) {
-                        // String form: convert to object
                         com.fasterxml.jackson.databind.node.ObjectNode refObj = objectMapper.createObjectNode();
                         refObj.put("title", item.asText());
                         refObj.putNull("url");
@@ -507,29 +541,6 @@ public class RovoRcaImporterService {
             }
         }
 
-        // Normalize evidenceMatrix references
-        if (normalized.has("evidenceMatrix")) {
-            com.fasterxml.jackson.databind.JsonNode evidenceMatrix = normalized.get("evidenceMatrix");
-            if (evidenceMatrix.isObject()) {
-                com.fasterxml.jackson.databind.node.ObjectNode matrixObj = (com.fasterxml.jackson.databind.node.ObjectNode) evidenceMatrix;
-                for (String key : List.of("loki", "tempo", "source")) {
-                    if (matrixObj.has(key)) {
-                        com.fasterxml.jackson.databind.JsonNode item = matrixObj.get(key);
-                        if (item.isObject() && item.has("references")) {
-                            com.fasterxml.jackson.databind.JsonNode refs = item.get("references");
-                            if (refs.isTextual()) {
-                                // String form: convert to array
-                                com.fasterxml.jackson.databind.node.ArrayNode refsArray = objectMapper.createArrayNode();
-                                refsArray.add(refs.asText());
-                                ((com.fasterxml.jackson.databind.node.ObjectNode) item).set("references", refsArray);
-                                warnings.add("Normalized evidenceMatrix." + key + ".references from string to array");
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
         // Normalize failureChain to probableFailureChain
         if (normalized.has("failureChain") && !normalized.has("probableFailureChain")) {
             com.fasterxml.jackson.databind.JsonNode failureChain = normalized.get("failureChain");
@@ -538,30 +549,7 @@ public class RovoRcaImporterService {
                 int order = 1;
                 for (com.fasterxml.jackson.databind.JsonNode item : failureChain) {
                     if (item.isTextual()) {
-                        String text = item.asText();
-                        String classification = "UNKNOWN";
-                        String statement = text;
-                        
-                        // Infer classification from prefix
-                        if (text.startsWith("FACT:")) {
-                            classification = "FACT";
-                            statement = text.substring(5).trim();
-                        } else if (text.startsWith("INFERENCE:")) {
-                            classification = "INFERENCE";
-                            statement = text.substring(10).trim();
-                        } else if (text.startsWith("UNKNOWN:")) {
-                            classification = "UNKNOWN";
-                            statement = text.substring(8).trim();
-                        }
-                        
-                        com.fasterxml.jackson.databind.node.ObjectNode chainItem = objectMapper.createObjectNode();
-                        chainItem.put("order", order++);
-                        chainItem.put("classification", classification);
-                        chainItem.put("statement", statement);
-                        chainItem.putNull("service");
-                        chainItem.putNull("operation");
-                        chainItem.set("evidenceReferences", objectMapper.createArrayNode());
-                        probableChain.add(chainItem);
+                        probableChain.add(createFailureChainItem(item.asText(), order++));
                     } else {
                         probableChain.add(item);
                     }
@@ -571,6 +559,14 @@ public class RovoRcaImporterService {
                 warnings.add("Normalized failureChain to probableFailureChain");
             }
         }
+
+        // Normalize string fields to arrays
+        normalized = normalizeStringToArray(normalized, "regressionTestHypothesis", warnings);
+        normalized = normalizeStringToArray(normalized, "minimumFixDirection", warnings);
+        normalized = normalizeStringToArray(normalized, "missingEvidence", warnings);
+        normalized = normalizeStringToArray(normalized, "supportingEvidenceReferences", warnings);
+        normalized = normalizeStringToArray(normalized, "competingHypotheses", warnings);
+        normalized = normalizeStringToArray(normalized, "warnings", warnings);
 
         // Add defaults
         if (!normalized.has("status") || normalized.get("status").isNull()) {
@@ -590,6 +586,97 @@ public class RovoRcaImporterService {
             }
         }
 
+        // Ensure arrays exist for optional fields
+        ensureArrayField(normalized, "probableFailureChain");
+        ensureArrayField(normalized, "evidenceMatrix");
+        ensureArrayField(normalized, "similarIncidents");
+        ensureArrayField(normalized, "relatedJiraIssues");
+        ensureArrayField(normalized, "confluenceReferences");
+        ensureArrayField(normalized, "supportingEvidenceReferences");
+        ensureArrayField(normalized, "competingHypotheses");
+        ensureArrayField(normalized, "suspectedFiles");
+        ensureArrayField(normalized, "suspectedClasses");
+        ensureArrayField(normalized, "suspectedMethods");
+        ensureArrayField(normalized, "regressionTestHypothesis");
+        ensureArrayField(normalized, "minimumFixDirection");
+        ensureArrayField(normalized, "missingEvidence");
+        ensureArrayField(normalized, "warnings");
+
         return normalized;
+    }
+
+    private com.fasterxml.jackson.databind.node.ObjectNode normalizeStringArrayToObjectArray(
+            com.fasterxml.jackson.databind.node.ObjectNode normalized,
+            String fieldName,
+            String keyField,
+            List<String> warnings
+    ) {
+        if (normalized.has(fieldName)) {
+            com.fasterxml.jackson.databind.JsonNode items = normalized.get(fieldName);
+            if (items.isArray()) {
+                com.fasterxml.jackson.databind.node.ArrayNode normalizedItems = objectMapper.createArrayNode();
+                for (com.fasterxml.jackson.databind.JsonNode item : items) {
+                    if (item.isTextual()) {
+                        com.fasterxml.jackson.databind.node.ObjectNode itemObj = objectMapper.createObjectNode();
+                        itemObj.put(keyField, item.asText());
+                        itemObj.put("reason", "");
+                        normalizedItems.add(itemObj);
+                        warnings.add("Normalized " + fieldName + " from string to object");
+                    } else {
+                        normalizedItems.add(item);
+                    }
+                }
+                normalized.set(fieldName, normalizedItems);
+            }
+        }
+        return normalized;
+    }
+
+    private com.fasterxml.jackson.databind.node.ObjectNode normalizeStringToArray(
+            com.fasterxml.jackson.databind.node.ObjectNode normalized,
+            String fieldName,
+            List<String> warnings
+    ) {
+        if (normalized.has(fieldName)) {
+            com.fasterxml.jackson.databind.JsonNode field = normalized.get(fieldName);
+            if (field.isTextual()) {
+                com.fasterxml.jackson.databind.node.ArrayNode array = objectMapper.createArrayNode();
+                array.add(field.asText());
+                normalized.set(fieldName, array);
+                warnings.add("Normalized " + fieldName + " from string to array");
+            }
+        }
+        return normalized;
+    }
+
+    private void ensureArrayField(com.fasterxml.jackson.databind.node.ObjectNode normalized, String fieldName) {
+        if (!normalized.has(fieldName) || normalized.get(fieldName).isNull()) {
+            normalized.set(fieldName, objectMapper.createArrayNode());
+        }
+    }
+
+    private com.fasterxml.jackson.databind.node.ObjectNode createFailureChainItem(String text, int order) {
+        String classification = "UNKNOWN";
+        String statement = text;
+        
+        if (text.startsWith("FACT:")) {
+            classification = "FACT";
+            statement = text.substring(5).trim();
+        } else if (text.startsWith("INFERENCE:")) {
+            classification = "INFERENCE";
+            statement = text.substring(10).trim();
+        } else if (text.startsWith("UNKNOWN:")) {
+            classification = "UNKNOWN";
+            statement = text.substring(8).trim();
+        }
+        
+        com.fasterxml.jackson.databind.node.ObjectNode chainItem = objectMapper.createObjectNode();
+        chainItem.put("order", order);
+        chainItem.put("classification", classification);
+        chainItem.put("statement", statement);
+        chainItem.putNull("service");
+        chainItem.putNull("operation");
+        chainItem.set("evidenceReferences", objectMapper.createArrayNode());
+        return chainItem;
     }
 }

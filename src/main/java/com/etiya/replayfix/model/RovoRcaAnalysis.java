@@ -5,37 +5,44 @@ import java.util.List;
 public record RovoRcaAnalysis(
         String schemaVersion,
         String jiraKey,
+        String branch,
         String status,
-        Double confidence,
-        String probableRootCause,
         String executiveSummary,
-        List<String> facts,
-        List<String> inferences,
-        List<String> unknowns,
-        EvidenceMatrix evidenceMatrix,
+        String businessImpact,
+        String technicalSymptom,
+        String affectedFlow,
+        String currentStatus,
+        List<FailureChainItem> probableFailureChain,
+        List<EvidenceMatrixEntry> evidenceMatrix,
+        List<SimilarIncident> similarIncidents,
         List<RelatedIssue> relatedJiraIssues,
         List<ConfluenceReference> confluenceReferences,
+        String probableRootCause,
+        String impactedComponent,
+        Double confidence,
+        List<String> supportingEvidenceReferences,
+        List<String> competingHypotheses,
         List<SuspectedFile> suspectedFiles,
         List<SuspectedClass> suspectedClasses,
         List<SuspectedMethod> suspectedMethods,
-        List<FailureChainItem> probableFailureChain,
-        String regressionTestHypothesis,
-        String minimumFixDirection,
+        List<String> regressionTestHypothesis,
+        List<String> minimumFixDirection,
         List<String> missingEvidence,
         String recommendedNextAction,
+        List<String> warnings,
         String analysisTimestamp
 ) {
     public static final String SCHEMA_VERSION = "1.0";
 
-    public record EvidenceMatrix(
-            EvidenceMatrixEntry loki,
-            EvidenceMatrixEntry tempo,
-            EvidenceMatrixEntry source
-    ) {}
-
     public record EvidenceMatrixEntry(
+            String category,
             String status,
             List<String> references,
+            String reason
+    ) {}
+
+    public record SimilarIncident(
+            String jiraKey,
             String reason
     ) {}
 
@@ -66,7 +73,7 @@ public record RovoRcaAnalysis(
     ) {}
 
     public record FailureChainItem(
-            int order,
+            Integer order,
             String classification,
             String statement,
             String service,
