@@ -186,6 +186,9 @@ class ApprovalServiceTest {
         assertEquals(ApprovalTargetType.FAILING_REGRESSION_TEST_DRAFT, result.targetType());
         assertEquals(EvidenceType.FAILING_REGRESSION_TEST_DRAFT.name(), result.targetEvidenceType());
         assertEquals("failing-regression-test-draft", result.targetEvidenceSource());
+        assertFalse(result.allowsGeneratedTestWrite());
+        assertFalse(result.allowsTestExecution());
+        assertFalse(result.allowsPatternInformedTestWrite());
 
         verify(repository).save(any(ApprovalRequestEntity.class));
         verify(auditService).record(

@@ -3,6 +3,9 @@ package com.etiya.replayfix.service;
 import com.etiya.replayfix.config.ReplayFixProperties;
 import com.etiya.replayfix.domain.EvidenceEntity;
 import com.etiya.replayfix.domain.EvidenceType;
+import com.etiya.replayfix.domain.ApprovalRequestEntity;
+import com.etiya.replayfix.domain.ApprovalStatus;
+import com.etiya.replayfix.domain.ApprovalTargetType;
 import com.etiya.replayfix.domain.ReplayCaseEntity;
 import com.etiya.replayfix.domain.ReplayCaseStatus;
 import com.etiya.replayfix.model.DashboardEvidenceCard;
@@ -36,6 +39,7 @@ class IncidentDashboardEvidenceConsistencyTest {
     private IncidentDashboardService service;
     private ReplayCaseRepository caseRepository;
     private EvidenceRepository evidenceRepository;
+    private ApprovalRequestRepository approvalRepository;
 
     @BeforeEach
     void setUp() {
@@ -45,8 +49,7 @@ class IncidentDashboardEvidenceConsistencyTest {
         WorkflowStepRepository workflowStepRepository =
                 mock(WorkflowStepRepository.class);
         evidenceRepository = mock(EvidenceRepository.class);
-        ApprovalRequestRepository approvalRepository =
-                mock(ApprovalRequestRepository.class);
+        approvalRepository = mock(ApprovalRequestRepository.class);
         AuditEventRepository auditRepository =
                 mock(AuditEventRepository.class);
         ReplayFixWorkflowOrchestrator orchestrator =
@@ -198,6 +201,47 @@ class IncidentDashboardEvidenceConsistencyTest {
                 dashboard.rootCause().analysisType());
         assertFalse(dashboard.rootCause().probableRootCause()
                 .contains("Deterministic analysis pending"));
+    }
+
+    @Test
+    void shouldShowPendingFailingRegressionTestDraftApprovalOnDashboard() {
+        UUID caseId = UUID.randomUUID();
+        ReplayCaseEntity replayCase = caseEntity(caseId);
+        UUID evidenceId = UUID.randomUUID();
+
+        List<EvidenceEntity> evidence = List.of(
+                evidence(
+                        caseId,
+                        EvidenceType.FAILING_REGRESSION_TEST_DRAFT,
+                        "failing-regression-test-draft",
+                        "{\"status\":\"DRAFT\",\"fileWritten\":false}"
+                )
+        );
+
+        ApprovalRequestEntity approval = new ApprovalRequestEntity();
+        approval.setId(UUID.randomUUID());
+        approval.setCaseId(caseId);
+        approval.setTargetType(ApprovalTargetType.FAILING_REGRESSION_TEST_DRAFT);
+        approval.setTargetEvidenceId(evidenceId);
+        approval.setTargetEvidenceType(EvidenceType.FAILING_REGRESSION_TEST_DRAFT.name());
+        approval.setTargetEvidenceSource("failing-regression-test-draft");
+        approval.setStatus(ApprovalStatus.PENDING);
+        approval.setRequestedBy("Berkan Unsal");
+        approval.setRequestedAt(Instant.now());
+
+        stubDashboardEvidence(caseId, replayCase, evidence);
+        when(approvalRepository.findByCaseIdOrderByRequestedAtDesc(caseId))
+                .thenReturn(List.of(approval));
+
+        IncidentDashboardView dashboard = service.getCaseDashboard(caseId);
+
+        assertEquals(1, dashboard.approvals().size());
+        assertEquals(
+                ApprovalTargetType.FAILING_REGRESSION_TEST_DRAFT,
+                dashboard.approvals().get(0).targetType()
+        );
+        assertEquals(ApprovalStatus.PENDING, dashboard.approvals().get(0).status());
+        assertFalse(dashboard.approvals().get(0).allowsGeneratedTestWrite());
     }
 
     private void stubDashboardEvidence(
