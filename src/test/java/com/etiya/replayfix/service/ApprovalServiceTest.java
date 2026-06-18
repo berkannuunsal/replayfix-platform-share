@@ -7,6 +7,7 @@ import com.etiya.replayfix.domain.EvidenceEntity;
 import com.etiya.replayfix.domain.EvidenceType;
 import com.etiya.replayfix.model.ApprovalRequestView;
 import com.etiya.replayfix.repository.ApprovalRequestRepository;
+import com.etiya.replayfix.repository.ReplayCaseRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -26,18 +27,24 @@ class ApprovalServiceTest {
     private ApprovalRequestRepository repository;
     private EvidenceService evidenceService;
     private AuditService auditService;
+    private ReplayFixNotificationService notificationService;
+    private ReplayCaseRepository caseRepository;
 
     @BeforeEach
     void setUp() {
         repository = mock(ApprovalRequestRepository.class);
         evidenceService = mock(EvidenceService.class);
         auditService = mock(AuditService.class);
+        notificationService = mock(ReplayFixNotificationService.class);
+        caseRepository = mock(ReplayCaseRepository.class);
 
         approvalService = new ApprovalService(
                 repository,
                 evidenceService,
                 auditService,
-                new com.fasterxml.jackson.databind.ObjectMapper()
+                new com.fasterxml.jackson.databind.ObjectMapper(),
+                notificationService,
+                caseRepository
         );
     }
 
@@ -47,6 +54,7 @@ class ApprovalServiceTest {
         UUID evidenceId = UUID.randomUUID();
 
         EvidenceEntity planEvidence = new EvidenceEntity();
+        planEvidence.setId(evidenceId);
         planEvidence.setEvidenceType(EvidenceType.GENERATED_TEST);
         planEvidence.setSource("regression-test-plan");
 
@@ -98,6 +106,7 @@ class ApprovalServiceTest {
         UUID evidenceId = UUID.randomUUID();
 
         EvidenceEntity planEvidence = new EvidenceEntity();
+        planEvidence.setId(evidenceId);
         planEvidence.setEvidenceType(EvidenceType.GENERATED_TEST);
         planEvidence.setSource("regression-test-plan");
 
@@ -130,6 +139,61 @@ class ApprovalServiceTest {
         assertEquals(ApprovalStatus.PENDING, result.status());
 
         verify(repository, never()).save(any());
+    }
+
+    @Test
+    void shouldCreatePendingApprovalRequestForFailingRegressionTestDraft() {
+        UUID caseId = UUID.randomUUID();
+        UUID evidenceId = UUID.randomUUID();
+
+        EvidenceEntity draftEvidence = new EvidenceEntity();
+        draftEvidence.setId(evidenceId);
+        draftEvidence.setEvidenceType(EvidenceType.FAILING_REGRESSION_TEST_DRAFT);
+        draftEvidence.setSource("failing-regression-test-draft");
+
+        when(evidenceService.list(caseId))
+                .thenReturn(List.of(draftEvidence));
+
+        when(repository.findFirstByCaseIdAndTargetTypeAndTargetEvidenceIdAndStatusOrderByRequestedAtDesc(
+                eq(caseId),
+                eq(ApprovalTargetType.FAILING_REGRESSION_TEST_DRAFT),
+                eq(evidenceId),
+                eq(ApprovalStatus.PENDING)
+        )).thenReturn(Optional.empty());
+
+        ApprovalRequestEntity savedEntity = new ApprovalRequestEntity();
+        savedEntity.setId(UUID.randomUUID());
+        savedEntity.setCaseId(caseId);
+        savedEntity.setTargetType(ApprovalTargetType.FAILING_REGRESSION_TEST_DRAFT);
+        savedEntity.setTargetEvidenceId(evidenceId);
+        savedEntity.setTargetEvidenceType(EvidenceType.FAILING_REGRESSION_TEST_DRAFT.name());
+        savedEntity.setTargetEvidenceSource("failing-regression-test-draft");
+        savedEntity.setStatus(ApprovalStatus.PENDING);
+        savedEntity.setRequestedBy("actor");
+
+        when(repository.save(any(ApprovalRequestEntity.class)))
+                .thenReturn(savedEntity);
+
+        ApprovalRequestView result = approvalService
+                .createFailingRegressionTestDraftApproval(
+                        caseId,
+                        "actor",
+                        "review generated draft"
+                );
+
+        assertNotNull(result);
+        assertEquals(ApprovalStatus.PENDING, result.status());
+        assertEquals(ApprovalTargetType.FAILING_REGRESSION_TEST_DRAFT, result.targetType());
+        assertEquals(EvidenceType.FAILING_REGRESSION_TEST_DRAFT.name(), result.targetEvidenceType());
+        assertEquals("failing-regression-test-draft", result.targetEvidenceSource());
+
+        verify(repository).save(any(ApprovalRequestEntity.class));
+        verify(auditService).record(
+                eq(caseId),
+                eq("FAILING_REGRESSION_TEST_DRAFT_APPROVAL_REQUESTED"),
+                eq("actor"),
+                anyString()
+        );
     }
 
     @Test

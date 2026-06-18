@@ -49,6 +49,25 @@ public class ApprovalController {
     }
 
     @PostMapping(
+            "/cases/{caseId}/approvals/failing-regression-test-draft"
+    )
+    public Mono<ApprovalRequestView> requestFailingRegressionTestDraftApproval(
+            @PathVariable UUID caseId,
+            @RequestBody CreateApprovalRequest request
+    ) {
+        return Mono.fromCallable(() ->
+                approvalService
+                        .createFailingRegressionTestDraftApproval(
+                                caseId,
+                                request.actor(),
+                                request.comment()
+                        )
+        ).subscribeOn(
+                Schedulers.boundedElastic()
+        );
+    }
+
+    @PostMapping(
             "/approvals/{approvalId}/approve"
     )
     public Mono<ApprovalRequestView> approve(

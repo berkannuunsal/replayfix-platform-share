@@ -2,6 +2,7 @@ package com.etiya.replayfix.domain;
 
 public enum ApprovalTargetType {
     REGRESSION_TEST_PLAN,
+    FAILING_REGRESSION_TEST_DRAFT,
     GENERATED_TEST_WRITE,
     GENERATED_TEST_EXECUTION,
     PATTERN_INFORMED_TEST_SOURCE,

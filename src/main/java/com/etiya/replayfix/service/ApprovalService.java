@@ -27,6 +27,9 @@ public class ApprovalService {
     private static final String GENERATED_WRITE_RESULT_SOURCE =
             "approved-generated-test-write-result";
 
+    private static final String FAILING_REGRESSION_TEST_DRAFT_SOURCE =
+            "failing-regression-test-draft";
+
     private static final String PATTERN_CANDIDATE_SOURCE =
             "pattern-informed-test-source-candidate";
 
@@ -127,6 +130,83 @@ public class ApprovalService {
     }
 
     @Transactional
+    public ApprovalRequestView createFailingRegressionTestDraftApproval(
+            UUID caseId,
+            String actor,
+            String comment
+    ) {
+        String normalizedActor =
+                requireActor(actor);
+
+        EvidenceEntity draftEvidence =
+                latestEvidence(
+                        caseId,
+                        EvidenceType.FAILING_REGRESSION_TEST_DRAFT,
+                        FAILING_REGRESSION_TEST_DRAFT_SOURCE
+                );
+
+        var existingPending =
+                repository
+                        .findFirstByCaseIdAndTargetTypeAndTargetEvidenceIdAndStatusOrderByRequestedAtDesc(
+                                caseId,
+                                ApprovalTargetType.FAILING_REGRESSION_TEST_DRAFT,
+                                draftEvidence.getId(),
+                                ApprovalStatus.PENDING
+                        );
+
+        if (existingPending.isPresent()) {
+            return toView(
+                    existingPending.get()
+            );
+        }
+
+        ApprovalRequestEntity entity =
+                new ApprovalRequestEntity();
+
+        entity.setId(UUID.randomUUID());
+        entity.setCaseId(caseId);
+        entity.setTargetType(
+                ApprovalTargetType.FAILING_REGRESSION_TEST_DRAFT
+        );
+        entity.setTargetEvidenceId(
+                draftEvidence.getId()
+        );
+        entity.setTargetEvidenceType(
+                EvidenceType.FAILING_REGRESSION_TEST_DRAFT.name()
+        );
+        entity.setTargetEvidenceSource(
+                FAILING_REGRESSION_TEST_DRAFT_SOURCE
+        );
+        entity.setStatus(
+                ApprovalStatus.PENDING
+        );
+        entity.setRequestedBy(
+                normalizedActor
+        );
+        entity.setRequestComment(
+                normalizeComment(comment)
+        );
+        entity.setRequestedAt(
+                Instant.now()
+        );
+
+        ApprovalRequestEntity saved =
+                repository.save(entity);
+
+        auditService.record(
+                caseId,
+                "FAILING_REGRESSION_TEST_DRAFT_APPROVAL_REQUESTED",
+                normalizedActor,
+                "approvalId="
+                        + saved.getId()
+                        + ", evidenceId="
+                        + saved.getTargetEvidenceId()
+        );
+
+        return toView(saved);
+    }
+
+    @Transactional
     public ApprovalRequestView approve(
             UUID approvalId,
             String actor,
@@ -182,6 +262,29 @@ public class ApprovalService {
                 .orElseThrow(() ->
                         new IllegalStateException(
                                 "Approved regression test plan "
+                                        + "was not found. caseId="
+                                        + caseId
+                                        + ", evidenceId="
+                                        + evidenceId
+                        )
+                );
+    }
+
+    @Transactional(readOnly = true)
+    public ApprovalRequestEntity requireApprovedFailingRegressionTestDraft(
+            UUID caseId,
+            UUID evidenceId
+    ) {
+        return repository
+                .findFirstByCaseIdAndTargetTypeAndTargetEvidenceIdAndStatusOrderByRequestedAtDesc(
+                        caseId,
+                        ApprovalTargetType.FAILING_REGRESSION_TEST_DRAFT,
+                        evidenceId,
+                        ApprovalStatus.APPROVED
+                )
+                .orElseThrow(() ->
+                        new IllegalStateException(
+                                "Approved failing regression test draft "
                                         + "was not found. caseId="
                                         + caseId
                                         + ", evidenceId="
@@ -657,6 +760,10 @@ public class ApprovalService {
                     approved
                             ? "REGRESSION_TEST_PLAN_APPROVED"
                             : "REGRESSION_TEST_PLAN_REJECTED";
+            case FAILING_REGRESSION_TEST_DRAFT ->
+                    approved
+                            ? "FAILING_REGRESSION_TEST_DRAFT_APPROVED"
+                            : "FAILING_REGRESSION_TEST_DRAFT_REJECTED";
             case GENERATED_TEST_EXECUTION ->
                     approved
                             ? "GENERATED_TEST_EXECUTION_APPROVED"
