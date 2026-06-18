@@ -189,10 +189,11 @@ public class IncidentDashboardService {
     }
 
     private RovoRcaDashboardView buildRovoRcaView(UUID caseId) {
-        // Find ROVO_RCA evidence
+        // Find latest ROVO_RCA evidence (sorted by created_at DESC)
         Optional<EvidenceEntity> rovoRcaEvidence = evidenceRepository
                 .findByCaseIdAndEvidenceType(caseId, EvidenceType.ROVO_RCA)
                 .stream()
+                .sorted((e1, e2) -> e2.getCreatedAt().compareTo(e1.getCreatedAt()))
                 .findFirst();
 
         if (rovoRcaEvidence.isEmpty()) {
@@ -200,13 +201,66 @@ public class IncidentDashboardService {
         }
 
         try {
-            String json = rovoRcaEvidence.get().getContentText();
-            RovoRcaAnalysis analysis = objectMapper.readValue(json, RovoRcaAnalysis.class);
-            return RovoRcaDashboardView.fromAnalysis(analysis);
+            EvidenceEntity evidence = rovoRcaEvidence.get();
+            String json = evidence.getContentText();
+            
+            // Try to parse as envelope first (new format)
+            try {
+                com.etiya.replayfix.model.RovoRcaEnvelope envelope = 
+                        objectMapper.readValue(json, com.etiya.replayfix.model.RovoRcaEnvelope.class);
+                
+                // Parse normalized JSON from envelope
+                RovoRcaAnalysis analysis = objectMapper.treeToValue(
+                        envelope.normalizedRovoJson(), 
+                        RovoRcaAnalysis.class
+                );
+                
+                return RovoRcaDashboardView.fromAnalysis(
+                        analysis,
+                        !envelope.normalizationWarnings().isEmpty(),
+                        envelope.normalizationWarnings(),
+                        envelope.rawHumanReport(),
+                        objectMapper.writeValueAsString(envelope.rawRovoJson())
+                );
+            } catch (Exception envelopeEx) {
+                // Fallback: try legacy format (direct RovoRcaAnalysis)
+                log.debug("Not an envelope, trying legacy format: {}", envelopeEx.getMessage());
+                RovoRcaAnalysis analysis = objectMapper.readValue(json, RovoRcaAnalysis.class);
+                
+                boolean wasNormalized = detectIfNormalized(analysis);
+                
+                return RovoRcaDashboardView.fromAnalysis(
+                        analysis,
+                        wasNormalized,
+                        List.of(),
+                        "", // No human report in legacy format
+                        json
+                );
+            }
         } catch (Exception e) {
             log.error("Failed to parse Rovo RCA for dashboard: caseId={}", caseId, e);
             return RovoRcaDashboardView.notAvailable();
         }
+    }
+
+    private boolean detectIfNormalized(RovoRcaAnalysis analysis) {
+        // Heuristic: if status is exactly "HYPOTHESIS" or confidence is exactly 0.0,
+        // it might have been normalized with defaults
+        if ("HYPOTHESIS".equals(analysis.status()) && 
+            (analysis.confidence() == null || analysis.confidence() == 0.0)) {
+            return true;
+        }
+        
+        // Check if relatedJiraIssues have empty reasons (normalized from strings)
+        if (analysis.relatedJiraIssues() != null) {
+            for (var issue : analysis.relatedJiraIssues()) {
+                if (issue.reason() != null && issue.reason().isEmpty()) {
+                    return true;
+                }
+            }
+        }
+        
+        return false;
     }
 
     private List<MissingEvidenceView> buildMissingEvidence(UUID caseId, WorkflowRunView workflow) {

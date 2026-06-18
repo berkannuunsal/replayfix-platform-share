@@ -6,6 +6,7 @@ import com.etiya.replayfix.domain.ReplayCaseEntity;
 import com.etiya.replayfix.integration.JiraClient;
 import com.etiya.replayfix.model.IntegrationModels;
 import com.etiya.replayfix.model.RovoRcaAnalysis;
+import com.etiya.replayfix.model.RovoRcaEnvelope;
 import com.etiya.replayfix.model.RovoRcaImportResponse;
 import com.etiya.replayfix.repository.EvidenceRepository;
 import com.etiya.replayfix.repository.ReplayCaseRepository;
@@ -201,16 +202,39 @@ public class RovoRcaImporterService {
                 return RovoRcaImportResponse.jiraKeyMismatch(caseId, jiraKey, rovoRca.jiraKey(), diagnostics);
             }
 
-            // Check for duplicate using content hash
-            String contentHash = calculateHash(rovoRcaBlock.json);
+            // Create envelope wrapping raw report, raw JSON, and normalized JSON
+            RovoRcaEnvelope envelope = RovoRcaEnvelope.create(
+                    caseId,
+                    jiraKey,
+                    importedCommentId,
+                    rovoRcaBlock.commentAuthor,
+                    rovoRcaBlock.rawHumanReport,
+                    rovoRcaBlock.json,
+                    normalizedJson,
+                    normalizationWarnings,
+                    objectMapper
+            );
+            
+            String envelopeJson = objectMapper.writeValueAsString(envelope);
+
+            // Check for duplicate using commentId from envelope
             Optional<EvidenceEntity> existingEvidence = evidenceRepository
                     .findByCaseIdAndEvidenceType(caseId, EvidenceType.ROVO_RCA)
                     .stream()
-                    .filter(e -> contentHash.equals(calculateHash(e.getContentText())))
+                    .filter(e -> {
+                        try {
+                            RovoRcaEnvelope existing = objectMapper.readValue(e.getContentText(), RovoRcaEnvelope.class);
+                            return importedCommentId.equals(existing.commentId());
+                        } catch (Exception ex) {
+                            // Legacy format without envelope, check raw JSON hash
+                            return calculateHash(rovoRcaBlock.json).equals(calculateHash(e.getContentText()));
+                        }
+                    })
                     .findFirst();
 
             if (existingEvidence.isPresent()) {
-                log.info("ROVO_IMPORT_DUPLICATE caseId={} existingEvidenceId={}", caseId, existingEvidence.get().getId());
+                log.info("ROVO_IMPORT_DUPLICATE caseId={} existingEvidenceId={} commentId={}", 
+                        caseId, existingEvidence.get().getId(), importedCommentId);
                 RovoRcaImportResponse.ImportDiagnostics diagnostics = new RovoRcaImportResponse.ImportDiagnostics(
                         commentsScanned, pagesScanned, markerStartFoundCount, markerEndFoundCount,
                         candidateCommentIds, latestCommentCreatedAt, latestCommentAuthor,
@@ -219,12 +243,12 @@ public class RovoRcaImporterService {
                 return RovoRcaImportResponse.duplicate(caseId, jiraKey, existingEvidence.get().getId(), diagnostics);
             }
 
-            // Persist as ROVO_RCA evidence
+            // Persist envelope as ROVO_RCA evidence
             EvidenceEntity evidence = evidenceService.save(
                     caseId,
                     EvidenceType.ROVO_RCA,
                     "rovo-incident-commander",
-                    rovoRcaBlock.json,
+                    envelopeJson,
                     false // No sanitization needed
             );
 
@@ -371,8 +395,17 @@ public class RovoRcaImporterService {
             
             String json = extractRovoRcaJson(body);
             if (json != null) {
+                // Extract human-readable report (text before the marker)
+                String rawHumanReport = extractHumanReport(body);
                 int normalizedLength = body != null ? body.length() : 0;
-                return new RovoRcaBlock(comment.id(), json, bodyFormat, normalizedLength);
+                return new RovoRcaBlock(
+                        comment.id(),
+                        comment.author(),
+                        json,
+                        rawHumanReport,
+                        bodyFormat,
+                        normalizedLength
+                );
             }
         }
         return null;
@@ -391,6 +424,20 @@ public class RovoRcaImporterService {
         return null;
     }
 
+    private String extractHumanReport(String text) {
+        if (text == null) {
+            return "";
+        }
+
+        // Extract everything before the REPLAYFIX_ROVO_RCA_V1 marker
+        int markerIndex = text.indexOf(RCA_START_MARKER);
+        if (markerIndex > 0) {
+            return text.substring(0, markerIndex).trim();
+        }
+
+        return "";
+    }
+
     private String calculateHash(String content) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
@@ -402,7 +449,14 @@ public class RovoRcaImporterService {
         }
     }
 
-    private record RovoRcaBlock(String commentId, String json, String bodyFormat, int normalizedTextLength) {}
+    private record RovoRcaBlock(
+            String commentId,
+            String commentAuthor,
+            String json,
+            String rawHumanReport,
+            String bodyFormat,
+            int normalizedTextLength
+    ) {}
 
     private com.fasterxml.jackson.databind.JsonNode normalizeRovoRcaJson(
             com.fasterxml.jackson.databind.JsonNode json,
