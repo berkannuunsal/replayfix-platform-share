@@ -7,6 +7,7 @@ public record IncidentDashboardView(
         WorkflowRunView workflow,
         List<DashboardEvidenceCard> evidenceCards,
         RootCauseDashboardView rootCause,
+        RovoRcaDashboardView rovoRca,
         List<MissingEvidenceView> missingEvidence,
         JiraEvidenceCommentPreview jiraPreview,
         List<ApprovalRequestView> approvals,

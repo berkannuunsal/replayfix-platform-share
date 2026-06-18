@@ -495,6 +495,12 @@ public class SourceCodeContextService {
                     terms,
                     signals.businessTerms()
             );
+            
+            // Expand business terms into code-like variants
+            addExpandedCodeVariants(
+                    terms,
+                    signals.businessTerms()
+            );
 
             addValues(
                     terms,
@@ -639,6 +645,152 @@ public class SourceCodeContextService {
         }
 
         target.add(normalized);
+    }
+    
+    private void addExpandedCodeVariants(
+            Set<String> target,
+            List<String> businessTerms
+    ) {
+        if (businessTerms == null) {
+            return;
+        }
+        
+        for (String term : businessTerms) {
+            if (term == null || term.isBlank()) {
+                continue;
+            }
+            
+            String normalized = term.trim().toLowerCase(Locale.ROOT);
+            
+            // Generate variants for different naming conventions
+            List<String> variants = expandTermVariants(normalized);
+            
+            for (String variant : variants) {
+                addValue(target, variant);
+            }
+        }
+    }
+    
+    private List<String> expandTermVariants(String term) {
+        List<String> variants = new ArrayList<>();
+        
+        // Original term
+        variants.add(term);
+        
+        // Handle snake_case -> camelCase
+        if (term.contains("_")) {
+            String[] parts = term.split("_");
+            
+            // camelCase: first lowercase, rest capitalized
+            StringBuilder camelCase = new StringBuilder(parts[0].toLowerCase());
+            for (int i = 1; i < parts.length; i++) {
+                if (parts[i].length() > 0) {
+                    camelCase.append(Character.toUpperCase(parts[i].charAt(0)))
+                            .append(parts[i].substring(1).toLowerCase());
+                }
+            }
+            variants.add(camelCase.toString());
+            
+            // PascalCase: all parts capitalized
+            StringBuilder pascalCase = new StringBuilder();
+            for (String part : parts) {
+                if (part.length() > 0) {
+                    pascalCase.append(Character.toUpperCase(part.charAt(0)))
+                            .append(part.substring(1).toLowerCase());
+                }
+            }
+            variants.add(pascalCase.toString());
+            
+            // kebab-case
+            variants.add(String.join("-", parts));
+        }
+        
+        // Handle kebab-case -> camelCase
+        if (term.contains("-")) {
+            String[] parts = term.split("-");
+            
+            // camelCase
+            StringBuilder camelCase = new StringBuilder(parts[0].toLowerCase());
+            for (int i = 1; i < parts.length; i++) {
+                if (parts[i].length() > 0) {
+                    camelCase.append(Character.toUpperCase(parts[i].charAt(0)))
+                            .append(parts[i].substring(1).toLowerCase());
+                }
+            }
+            variants.add(camelCase.toString());
+            
+            // PascalCase
+            StringBuilder pascalCase = new StringBuilder();
+            for (String part : parts) {
+                if (part.length() > 0) {
+                    pascalCase.append(Character.toUpperCase(part.charAt(0)))
+                            .append(part.substring(1).toLowerCase());
+                }
+            }
+            variants.add(pascalCase.toString());
+            
+            // snake_case
+            variants.add(String.join("_", parts));
+        }
+        
+        // Handle spaces -> multiple variants
+        if (term.contains(" ")) {
+            String[] parts = term.split("\\s+");
+            
+            // camelCase
+            StringBuilder camelCase = new StringBuilder(parts[0].toLowerCase());
+            for (int i = 1; i < parts.length; i++) {
+                if (parts[i].length() > 0) {
+                    camelCase.append(Character.toUpperCase(parts[i].charAt(0)))
+                            .append(parts[i].substring(1).toLowerCase());
+                }
+            }
+            variants.add(camelCase.toString());
+            
+            // PascalCase
+            StringBuilder pascalCase = new StringBuilder();
+            for (String part : parts) {
+                if (part.length() > 0) {
+                    pascalCase.append(Character.toUpperCase(part.charAt(0)))
+                            .append(part.substring(1).toLowerCase());
+                }
+            }
+            variants.add(pascalCase.toString());
+            
+            // snake_case
+            variants.add(String.join("_", parts).toLowerCase());
+            
+            // kebab-case
+            variants.add(String.join("-", parts).toLowerCase());
+            
+            // Each word individually
+            for (String part : parts) {
+                if (part.length() >= 3) {
+                    variants.add(part.toLowerCase());
+                }
+            }
+        }
+        
+        // Add common suffixes for Java classes
+        if (!term.contains("service") && !term.contains("controller") && 
+            !term.contains("repository") && !term.contains("entity")) {
+            String base = term.replace("_", "").replace("-", "");
+            variants.add(base + "service");
+            variants.add(base + "controller");
+            variants.add(base + "repository");
+            variants.add(base + "entity");
+            
+            // PascalCase versions
+            if (base.length() > 0) {
+                String pascalBase = Character.toUpperCase(base.charAt(0)) + base.substring(1);
+                variants.add(pascalBase + "Service");
+                variants.add(pascalBase + "Controller");
+                variants.add(pascalBase + "Repository");
+                variants.add(pascalBase + "Entity");
+            }
+        }
+        
+        return variants;
     }
 
     private boolean isExcluded(

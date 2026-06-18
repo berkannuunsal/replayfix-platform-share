@@ -3,6 +3,8 @@ package com.etiya.replayfix.integration;
 import com.etiya.replayfix.config.ReplayFixProperties;
 import com.etiya.replayfix.model.IntegrationModels.LokiLogEntry;
 import com.fasterxml.jackson.databind.JsonNode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -14,6 +16,9 @@ import java.net.URI;
 
 @Component
 public class LokiHttpClient implements LokiClient {
+    private static final Logger log =
+            LoggerFactory.getLogger(LokiHttpClient.class);
+
     private final ReplayFixProperties properties;
     private final WebClient.Builder webClientBuilder;
 
@@ -77,8 +82,11 @@ public class LokiHttpClient implements LokiClient {
                 .encode()
                 .toUri();
 
-        System.out.println("ReplayFix Loki endpoint: " + endpoint);
-        System.out.println("ReplayFix Loki request: " + requestUri);
+        log.debug(
+                "ReplayFix Loki query_range request. endpoint={}, uri={}",
+                endpoint,
+                requestUri
+        );
 
         JsonNode node = webClientBuilder
             .build()

@@ -147,7 +147,7 @@ public class GoldenPathOrchestrationService {
             steps.put("10_deterministic_rca", generateDeterministicRca(caseId));
 
             // Step 11: Summary
-            steps.put("11_summary", buildSummary(caseId));
+            steps.put("11_summary", buildSummary(caseId, steps));
 
             // Determine overall status based on step results
             String overallStatus = calculateOverallStatus(steps);
@@ -615,10 +615,11 @@ public class GoldenPathOrchestrationService {
         Map<String, Object> step = new LinkedHashMap<>();
         
         try {
-            // Check if AI_INPUT_BUNDLE already exists
+            // Check if AI_INPUT_BUNDLE already exists (canonical or legacy source)
             List<EvidenceEntity> existingBundle = evidenceRepository.findByCaseId(caseId).stream()
                     .filter(ev -> ev.getEvidenceType() == EvidenceType.AI_INPUT_BUNDLE)
-                    .filter(ev -> "jenkins-validated-ai-bundle".equals(ev.getSource()))
+                    .filter(ev -> "replayfix-ai-bundle-builder".equals(ev.getSource()) ||
+                                 "jenkins-validated-ai-bundle".equals(ev.getSource()))
                     .toList();
             
             if (!existingBundle.isEmpty()) {
@@ -645,14 +646,15 @@ public class GoldenPathOrchestrationService {
             
             log.info("AI_INPUT_BUNDLE_START: caseId={}", caseId);
             
-            // Call AiInputBundleRefreshService to create jenkins-validated-ai-bundle
+            // Call AiInputBundleRefreshService to create AI bundle
             // This does NOT call external AI - it just creates the internal evidence bundle
             aiInputBundleRefreshService.refresh(caseId);
             
             // Check if AI_INPUT_BUNDLE was created
             List<EvidenceEntity> bundleEvidence = evidenceRepository.findByCaseId(caseId).stream()
                     .filter(ev -> ev.getEvidenceType() == EvidenceType.AI_INPUT_BUNDLE)
-                    .filter(ev -> "jenkins-validated-ai-bundle".equals(ev.getSource()))
+                    .filter(ev -> "replayfix-ai-bundle-builder".equals(ev.getSource()) ||
+                                 "jenkins-validated-ai-bundle".equals(ev.getSource()))
                     .toList();
             
             if (bundleEvidence.isEmpty()) {
@@ -685,7 +687,8 @@ public class GoldenPathOrchestrationService {
             // Check if bundle exists despite exception
             List<EvidenceEntity> bundleEvidence = evidenceRepository.findByCaseId(caseId).stream()
                     .filter(ev -> ev.getEvidenceType() == EvidenceType.AI_INPUT_BUNDLE)
-                    .filter(ev -> "jenkins-validated-ai-bundle".equals(ev.getSource()))
+                    .filter(ev -> "replayfix-ai-bundle-builder".equals(ev.getSource()) ||
+                                 "jenkins-validated-ai-bundle".equals(ev.getSource()))
                     .toList();
             
             if (!bundleEvidence.isEmpty()) {
@@ -809,6 +812,10 @@ public class GoldenPathOrchestrationService {
     }
 
     private Map<String, Object> buildSummary(UUID caseId) {
+        return buildSummary(caseId, null);
+    }
+    
+    private Map<String, Object> buildSummary(UUID caseId, Map<String, Object> steps) {
         Map<String, Object> summary = new LinkedHashMap<>();
         
         try {
@@ -851,17 +858,274 @@ public class GoldenPathOrchestrationService {
             if (!evidenceByType.containsKey("TEMPO_ENRICHMENT")) {
                 missingEvidence.add("TEMPO_ENRICHMENT (optional)");
             }
+            if (!evidenceByType.containsKey("AI_INPUT_BUNDLE")) {
+                missingEvidence.add("AI_INPUT_BUNDLE");
+            }
             if (!evidenceByType.containsKey("DETERMINISTIC_ROOT_CAUSE")) {
                 missingEvidence.add("DETERMINISTIC_ROOT_CAUSE");
             }
             
+            // Also check step results for failed mandatory final steps
+            if (steps != null) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> aiInputBundleStep = (Map<String, Object>) steps.get("9_ai_input_bundle");
+                if (aiInputBundleStep != null && "FAILED".equals(aiInputBundleStep.get("result"))) {
+                    if (!missingEvidence.contains("AI_INPUT_BUNDLE")) {
+                        missingEvidence.add("AI_INPUT_BUNDLE (step failed)");
+                    }
+                }
+                
+                @SuppressWarnings("unchecked")
+                Map<String, Object> rcaStep = (Map<String, Object>) steps.get("10_deterministic_rca");
+                if (rcaStep != null && "FAILED".equals(rcaStep.get("result"))) {
+                    if (!missingEvidence.contains("DETERMINISTIC_ROOT_CAUSE")) {
+                        missingEvidence.add("DETERMINISTIC_ROOT_CAUSE (step failed)");
+                    }
+                }
+            }
+            
             summary.put("missingEvidence", missingEvidence);
+            
+            // Add evidence quality assessment
+            try {
+                EvidenceQuality quality = assessEvidenceQuality(allEvidence);
+                summary.put("evidenceQuality", quality);
+            } catch (Exception ex) {
+                log.warn("Failed to assess evidence quality: {}", ex.getMessage());
+            }
             
         } catch (Exception e) {
             summary.put("error", e.getMessage());
         }
         
         return summary;
+    }
+    
+    private EvidenceQuality assessEvidenceQuality(List<EvidenceEntity> allEvidence) {
+        String jiraSignalQuality = "UNKNOWN";
+        LokiQualityData lokiQuality = new LokiQualityData(0, 0, 0, false, false);
+        boolean tempoTraceFound = false;
+        SourceQualityData sourceQuality = new SourceQualityData(0, 0);
+        RcaQualityData rcaQuality = new RcaQualityData(0.0, "UNCLASSIFIED");
+        
+        try {
+            // Assess JIRA signal quality
+            jiraSignalQuality = allEvidence.stream()
+                    .filter(e -> e.getEvidenceType() == EvidenceType.JIRA_ISSUE)
+                    .findFirst()
+                    .map(jira -> {
+                        String content = jira.getContentText();
+                        return (content != null && content.length() > 200) ? "SUFFICIENT" : "WEAK";
+                    })
+                    .orElse("UNKNOWN");
+            
+            // Assess Loki log quality
+            lokiQuality = allEvidence.stream()
+                    .filter(e -> e.getEvidenceType() == EvidenceType.LOKI_LOG)
+                    .findFirst()
+                    .map(loki -> {
+                        try {
+                            AdaptiveLokiSearchResult lokiResult = 
+                                objectMapper.readValue(loki.getContentText(), AdaptiveLokiSearchResult.class);
+                            
+                            int matchedRows = lokiResult.logs() != null ? lokiResult.logs().size() : 0;
+                            int totalQueries = lokiResult.attempts() != null ? lokiResult.attempts().size() : 0;
+                            int failedQueries = lokiResult.attempts() != null 
+                                ? (int) lokiResult.attempts().stream().filter(attempt -> attempt.error() != null).count()
+                                : 0;
+                            
+                            boolean corrIdFound = false;
+                            boolean trIdFound = false;
+                            
+                            if (lokiResult.logs() != null) {
+                                for (var log : lokiResult.logs()) {
+                                    String line = log.line();
+                                    if (line != null) {
+                                        if (line.contains("correlationId") || line.contains("correlation-id")) {
+                                            corrIdFound = true;
+                                        }
+                                        if (line.contains("traceId") || line.contains("trace-id")) {
+                                            trIdFound = true;
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            return new LokiQualityData(matchedRows, failedQueries, totalQueries, corrIdFound, trIdFound);
+                        } catch (Exception ex) {
+                            log.warn("Failed to parse Loki evidence: {}", ex.getMessage());
+                            return new LokiQualityData(0, 0, 0, false, false);
+                        }
+                    })
+                    .orElse(new LokiQualityData(0, 0, 0, false, false));
+            
+            // Assess Tempo trace quality
+            tempoTraceFound = allEvidence.stream()
+                    .filter(e -> e.getEvidenceType() == EvidenceType.TEMPO_TRACE)
+                    .findFirst()
+                    .isPresent();
+            
+            // Assess source context quality
+            sourceQuality = allEvidence.stream()
+                    .filter(e -> e.getEvidenceType() == EvidenceType.SOURCE_CONTEXT)
+                    .findFirst()
+                    .map(source -> {
+                        try {
+                            SourceContextResult sourceResult = 
+                                objectMapper.readValue(source.getContentText(), SourceContextResult.class);
+                            int scannedCount = sourceResult.scannedFileCount();
+                            int matchedCount = sourceResult.excerpts() != null ? sourceResult.excerpts().size() : 0;
+                            return new SourceQualityData(scannedCount, matchedCount);
+                        } catch (Exception ex) {
+                            log.warn("Failed to parse source context: {}", ex.getMessage());
+                            return new SourceQualityData(0, 0);
+                        }
+                    })
+                    .orElse(new SourceQualityData(0, 0));
+            
+            // Assess RCA quality
+            rcaQuality = allEvidence.stream()
+                    .filter(e -> e.getEvidenceType() == EvidenceType.DETERMINISTIC_ROOT_CAUSE)
+                    .findFirst()
+                    .map(rca -> {
+                        try {
+                            DeterministicRootCauseReport rcaReport = 
+                                objectMapper.readValue(rca.getContentText(), DeterministicRootCauseReport.class);
+                            double confidence = rca.getConfidence() != null ? rca.getConfidence() : 0.0;
+                            String classification = rcaReport.classification() != null 
+                                ? rcaReport.classification() 
+                                : "UNCLASSIFIED";
+                            return new RcaQualityData(confidence, classification);
+                        } catch (Exception ex) {
+                            log.warn("Failed to parse RCA evidence: {}", ex.getMessage());
+                            return new RcaQualityData(0.0, "UNCLASSIFIED");
+                        }
+                    })
+                    .orElse(new RcaQualityData(0.0, "UNCLASSIFIED"));
+            
+        } catch (Exception e) {
+            log.error("Error assessing evidence quality: {}", e.getMessage());
+            return new EvidenceQuality(
+                "UNKNOWN", 0, 0, 0, false, false, false, 0, 0, 0.0, "UNCLASSIFIED", "WEAK", "Error assessing quality"
+            );
+        }
+        
+        // Calculate demo readiness
+        String demoReadiness = calculateDemoReadiness(
+                lokiQuality.matchedRows(),
+                tempoTraceFound,
+                sourceQuality.matchedFileCount(),
+                rcaQuality.confidence(),
+                rcaQuality.classification()
+        );
+        
+        // Overall assessment
+        String overallAssessment = buildOverallAssessment(
+                lokiQuality.matchedRows(),
+                lokiQuality.failedQueryCount(),
+                sourceQuality.scannedFileCount(),
+                sourceQuality.matchedFileCount(),
+                rcaQuality.confidence()
+        );
+        
+        return new EvidenceQuality(
+                jiraSignalQuality,
+                lokiQuality.matchedRows(),
+                lokiQuality.failedQueryCount(),
+                lokiQuality.totalQueryCount(),
+                lokiQuality.correlationIdFound(),
+                lokiQuality.traceIdFound(),
+                tempoTraceFound,
+                sourceQuality.scannedFileCount(),
+                sourceQuality.matchedFileCount(),
+                rcaQuality.confidence(),
+                rcaQuality.classification(),
+                demoReadiness,
+                overallAssessment
+        );
+    }
+    
+    // Helper records for evidence quality assessment
+    private record LokiQualityData(
+            int matchedRows,
+            int failedQueryCount,
+            int totalQueryCount,
+            boolean correlationIdFound,
+            boolean traceIdFound
+    ) {}
+    
+    private record SourceQualityData(
+            int scannedFileCount,
+            int matchedFileCount
+    ) {}
+    
+    private record RcaQualityData(
+            double confidence,
+            String classification
+    ) {}
+    
+    private String calculateDemoReadiness(
+            int lokiMatchedRows,
+            boolean tempoTraceFound,
+            int sourceMatchedFileCount,
+            double rcaConfidence,
+            String rcaClassification
+    ) {
+        boolean hasStrongLogs = lokiMatchedRows > 50;
+        boolean hasTrace = tempoTraceFound;
+        boolean hasSource = sourceMatchedFileCount > 0;
+        boolean hasStrongRCA = rcaConfidence > 0.7 && !"UNCLASSIFIED".equals(rcaClassification);
+        
+        // STRONG: logs, trace/source, and strong RCA
+        if (hasStrongLogs && (hasTrace || hasSource) && hasStrongRCA) {
+            return "STRONG";
+        }
+        
+        // MEDIUM: has some logs and valid incident version, but weak source/trace or medium RCA
+        if (lokiMatchedRows > 10 && (hasSource || rcaConfidence > 0.3)) {
+            return "MEDIUM";
+        }
+        
+        // WEAK: RCA is only hypothesis or missing critical evidence
+        return "WEAK";
+    }
+    
+    private String buildOverallAssessment(
+            int lokiMatchedRows,
+            int lokiFailedQueryCount,
+            int sourceScannedFileCount,
+            int sourceMatchedFileCount,
+            double rcaConfidence
+    ) {
+        List<String> issues = new ArrayList<>();
+        
+        if (lokiMatchedRows == 0) {
+            issues.add("No Loki logs matched");
+        } else if (lokiMatchedRows < 10) {
+            issues.add("Very few logs matched (" + lokiMatchedRows + ")");
+        }
+        
+        if (lokiFailedQueryCount > 0) {
+            issues.add(lokiFailedQueryCount + " Loki queries failed");
+        }
+        
+        if (sourceScannedFileCount == 0) {
+            issues.add("No source files scanned");
+        } else if (sourceMatchedFileCount == 0) {
+            issues.add("Source scanned but no matches found");
+        }
+        
+        if (rcaConfidence < 0.3) {
+            issues.add("RCA confidence very low (" + String.format("%.2f", rcaConfidence) + ")");
+        } else if (rcaConfidence < 0.6) {
+            issues.add("RCA confidence moderate (" + String.format("%.2f", rcaConfidence) + ")");
+        }
+        
+        if (issues.isEmpty()) {
+            return "Evidence quality is strong";
+        } else {
+            return String.join("; ", issues);
+        }
     }
 
     private String calculateOverallStatus(Map<String, Object> steps) {

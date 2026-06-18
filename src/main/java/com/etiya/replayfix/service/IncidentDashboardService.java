@@ -4,6 +4,7 @@ import com.etiya.replayfix.config.ReplayFixProperties;
 import com.etiya.replayfix.domain.*;
 import com.etiya.replayfix.model.*;
 import com.etiya.replayfix.repository.*;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -27,6 +28,7 @@ public class IncidentDashboardService {
     private final ReplayFixWorkflowOrchestrator orchestrator;
     private final JiraEvidenceCommentPreviewService previewService;
     private final ReplayFixProperties properties;
+    private final ObjectMapper objectMapper;
 
     public IncidentDashboardService(
             ReplayCaseRepository caseRepository,
@@ -37,7 +39,8 @@ public class IncidentDashboardService {
             AuditEventRepository auditRepository,
             ReplayFixWorkflowOrchestrator orchestrator,
             JiraEvidenceCommentPreviewService previewService,
-            ReplayFixProperties properties
+            ReplayFixProperties properties,
+            ObjectMapper objectMapper
     ) {
         this.caseRepository = caseRepository;
         this.workflowRunRepository = workflowRunRepository;
@@ -48,6 +51,7 @@ public class IncidentDashboardService {
         this.orchestrator = orchestrator;
         this.previewService = previewService;
         this.properties = properties;
+        this.objectMapper = objectMapper;
     }
 
     @Transactional(readOnly = true)
@@ -62,6 +66,8 @@ public class IncidentDashboardService {
         List<DashboardEvidenceCard> evidenceCards = buildEvidenceCards(caseId);
 
         RootCauseDashboardView rootCause = buildRootCauseView(caseId);
+
+        RovoRcaDashboardView rovoRca = buildRovoRcaView(caseId);
 
         List<MissingEvidenceView> missingEvidence = buildMissingEvidence(caseId, workflow);
 
@@ -78,6 +84,7 @@ public class IncidentDashboardService {
                 workflow,
                 evidenceCards,
                 rootCause,
+                rovoRca,
                 missingEvidence,
                 jiraPreview,
                 approvals,
@@ -179,6 +186,27 @@ public class IncidentDashboardService {
                 List.of(),
                 "Deterministic analysis"
         );
+    }
+
+    private RovoRcaDashboardView buildRovoRcaView(UUID caseId) {
+        // Find ROVO_RCA evidence
+        Optional<EvidenceEntity> rovoRcaEvidence = evidenceRepository
+                .findByCaseIdAndEvidenceType(caseId, EvidenceType.ROVO_RCA)
+                .stream()
+                .findFirst();
+
+        if (rovoRcaEvidence.isEmpty()) {
+            return RovoRcaDashboardView.notAvailable();
+        }
+
+        try {
+            String json = rovoRcaEvidence.get().getContentText();
+            RovoRcaAnalysis analysis = objectMapper.readValue(json, RovoRcaAnalysis.class);
+            return RovoRcaDashboardView.fromAnalysis(analysis);
+        } catch (Exception e) {
+            log.error("Failed to parse Rovo RCA for dashboard: caseId={}", caseId, e);
+            return RovoRcaDashboardView.notAvailable();
+        }
     }
 
     private List<MissingEvidenceView> buildMissingEvidence(UUID caseId, WorkflowRunView workflow) {

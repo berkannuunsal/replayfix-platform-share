@@ -1,6 +1,7 @@
 package com.etiya.replayfix.integration;
 
 import com.etiya.replayfix.config.ReplayFixProperties;
+import com.etiya.replayfix.model.IntegrationModels;
 import com.etiya.replayfix.model.IntegrationModels.JiraIssue;
 import com.etiya.replayfix.model.JiraCommentPublishResponse;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -10,6 +11,7 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -212,6 +214,206 @@ public class JiraHttpClient implements JiraClient {
                     null,
                     List.of("Failed to publish comment: " + e.getMessage())
             );
+        }
+    }
+
+    @Override
+    public List<IntegrationModels.JiraComment> getComments(String issueKey) {
+        var cfg = properties.getIntegrations().getJira();
+        if (!cfg.isEnabled()) {
+            log.warn("Jira integration is disabled");
+            return List.of();
+        }
+
+        List<IntegrationModels.JiraComment> allComments = new ArrayList<>();
+        int startAt = 0;
+        int maxResults = 100;
+        int totalFetched = 0;
+        int pageCount = 0;
+
+        try {
+            while (true) {
+                pageCount++;
+                final int currentStartAt = startAt; // Make effectively final for lambda
+                
+                JsonNode response = webClientBuilder
+                        .baseUrl(cfg.getBaseUrl())
+                        .build()
+                        .get()
+                        .uri(uriBuilder -> uriBuilder
+                                .path("/rest/api/3/issue/{key}/comment")
+                                .queryParam("startAt", currentStartAt)
+                                .queryParam("maxResults", maxResults)
+                                .build(issueKey))
+                        .headers(h -> h.addAll(HttpSupport.headers(cfg)))
+                        .retrieve()
+                        .bodyToMono(JsonNode.class)
+                        .block(cfg.getTimeout());
+
+                if (response == null || !response.has("comments")) {
+                    break;
+                }
+
+                JsonNode commentsArray = response.get("comments");
+                if (!commentsArray.isArray() || commentsArray.isEmpty()) {
+                    break;
+                }
+
+                int pageSize = 0;
+                for (JsonNode commentNode : commentsArray) {
+                    String id = commentNode.path("id").asText(null);
+                    String author = commentNode.path("author").path("displayName").asText("Unknown");
+                    String createdStr = commentNode.path("created").asText(null);
+                    String body = extractCommentBody(commentNode);
+
+                    Instant created = null;
+                    if (createdStr != null) {
+                        try {
+                            created = Instant.parse(createdStr);
+                        } catch (Exception e) {
+                            log.warn("Failed to parse created timestamp: {}", createdStr);
+                        }
+                    }
+
+                    allComments.add(new IntegrationModels.JiraComment(id, author, created, body));
+                    pageSize++;
+                }
+
+                totalFetched += pageSize;
+                log.debug("Fetched page {} with {} comments for issue {}", pageCount, pageSize, issueKey);
+
+                // Check if there are more comments
+                int total = response.path("total").asInt(0);
+                if (totalFetched >= total) {
+                    break;
+                }
+
+                startAt += maxResults;
+                
+                // Safety limit to prevent infinite loops
+                if (pageCount >= 50) {
+                    log.warn("Reached maximum page limit (50) for issue {}", issueKey);
+                    break;
+                }
+            }
+
+            log.info("Retrieved {} comments across {} pages from Jira issue {}", allComments.size(), pageCount, issueKey);
+            return allComments;
+
+        } catch (Exception e) {
+            log.error("Failed to fetch comments for issue {}: {}", issueKey, e.getMessage());
+            return allComments; // Return what we have so far
+        }
+    }
+
+    private String extractCommentBody(JsonNode commentNode) {
+        JsonNode bodyNode = commentNode.get("body");
+        if (bodyNode == null) {
+            return "";
+        }
+
+        // Plain text body
+        if (bodyNode.isTextual()) {
+            return bodyNode.asText();
+        }
+
+        // ADF body
+        if (bodyNode.has("content")) {
+            StringBuilder text = new StringBuilder();
+            extractTextFromAdfNodes(bodyNode.get("content"), text);
+            return text.toString().trim();
+        }
+
+        return bodyNode.toString();
+    }
+
+    private void extractTextFromAdfNodes(JsonNode nodes, StringBuilder text) {
+        if (nodes == null) {
+            return;
+        }
+        
+        if (!nodes.isArray()) {
+            return;
+        }
+
+        for (JsonNode node : nodes) {
+            String nodeType = node.path("type").asText("");
+
+            switch (nodeType) {
+                case "doc":
+                    if (node.has("content")) {
+                        extractTextFromAdfNodes(node.get("content"), text);
+                    }
+                    break;
+
+                case "paragraph":
+                    if (node.has("content")) {
+                        extractTextFromAdfNodes(node.get("content"), text);
+                    }
+                    text.append("\n");
+                    break;
+
+                case "heading":
+                    if (node.has("content")) {
+                        extractTextFromAdfNodes(node.get("content"), text);
+                    }
+                    text.append("\n");
+                    break;
+
+                case "codeBlock":
+                    if (node.has("content")) {
+                        extractTextFromAdfNodes(node.get("content"), text);
+                    }
+                    text.append("\n");
+                    break;
+
+                case "panel":
+                    if (node.has("content")) {
+                        extractTextFromAdfNodes(node.get("content"), text);
+                    }
+                    text.append("\n");
+                    break;
+
+                case "blockquote":
+                    if (node.has("content")) {
+                        extractTextFromAdfNodes(node.get("content"), text);
+                    }
+                    text.append("\n");
+                    break;
+
+                case "bulletList":
+                case "orderedList":
+                    if (node.has("content")) {
+                        extractTextFromAdfNodes(node.get("content"), text);
+                    }
+                    break;
+
+                case "listItem":
+                    if (node.has("content")) {
+                        extractTextFromAdfNodes(node.get("content"), text);
+                    }
+                    text.append("\n");
+                    break;
+
+                case "text":
+                    text.append(node.path("text").asText(""));
+                    break;
+
+                case "hardBreak":
+                    text.append("\n");
+                    break;
+
+                case "rule":
+                    text.append("\n---\n");
+                    break;
+
+                default:
+                    // Fallback: if it has content, try to extract recursively
+                    if (node.has("content")) {
+                        extractTextFromAdfNodes(node.get("content"), text);
+                    }
+                    break;
+            }
         }
     }
 }

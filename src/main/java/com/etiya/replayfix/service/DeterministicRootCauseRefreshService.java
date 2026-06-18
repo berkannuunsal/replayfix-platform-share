@@ -17,10 +17,13 @@ import java.util.UUID;
 public class DeterministicRootCauseRefreshService {
 
     private static final String BUNDLE_SOURCE =
+            "replayfix-ai-bundle-builder";
+    
+    private static final String LEGACY_BUNDLE_SOURCE =
             "jenkins-validated-ai-bundle";
 
     private static final String REPORT_SOURCE =
-            "deterministic-root-cause-jenkins-validated";
+            "deterministic-root-cause";
 
     private static final String VALIDATION_SOURCE =
             "jenkins-incident-version-validator";
@@ -51,12 +54,21 @@ public class DeterministicRootCauseRefreshService {
         List<EvidenceEntity> evidence =
                 evidenceService.list(caseId);
 
+        // Try canonical source first, then fall back to legacy source
         EvidenceEntity bundleEvidence =
-                latestRequired(
+                latestOptional(
                         evidence,
                         EvidenceType.AI_INPUT_BUNDLE,
                         BUNDLE_SOURCE
                 );
+        
+        if (bundleEvidence == null) {
+            bundleEvidence = latestRequired(
+                    evidence,
+                    EvidenceType.AI_INPUT_BUNDLE,
+                    LEGACY_BUNDLE_SOURCE
+            );
+        }
 
         AiEvidenceBundle bundle =
                 parse(
@@ -195,7 +207,7 @@ public class DeterministicRootCauseRefreshService {
         try {
             evidenceService.save(
                     caseId,
-                    EvidenceType.AI_ROOT_CAUSE,
+                    EvidenceType.DETERMINISTIC_ROOT_CAUSE,
                     REPORT_SOURCE,
                     objectMapper.writeValueAsString(
                             report
@@ -217,7 +229,7 @@ public class DeterministicRootCauseRefreshService {
         return evidence.stream()
                 .filter(item ->
                         item.getEvidenceType()
-                                == EvidenceType.AI_ROOT_CAUSE
+                                == EvidenceType.DETERMINISTIC_ROOT_CAUSE
                 )
                 .filter(item ->
                         !REPORT_SOURCE.equals(

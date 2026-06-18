@@ -6,6 +6,7 @@ import com.etiya.replayfix.domain.EvidenceType;
 import com.etiya.replayfix.model.AiEvidenceBundle;
 import com.etiya.replayfix.model.AiInputBundleRefreshResult;
 import com.etiya.replayfix.model.IncidentVersionResolution;
+import com.etiya.replayfix.model.JenkinsCaseEvidence;
 import com.etiya.replayfix.model.JenkinsIncidentVersionValidation;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
@@ -20,10 +21,10 @@ import java.util.UUID;
 public class AiInputBundleRefreshService {
 
     private static final String OUTPUT_SOURCE =
-            "jenkins-validated-ai-bundle";
+            "replayfix-ai-bundle-builder";
 
     private static final String BUNDLE_VERSION =
-            "jenkins-validated-v1";
+            "replayfix-ai-bundle-v1";
 
     private final ReplayFixProperties properties;
     private final EvidenceService evidenceService;
@@ -97,14 +98,14 @@ public class AiInputBundleRefreshService {
                 );
 
         EvidenceEntity jenkinsContext =
-                latestOptional(
+                latestRequired(
                         evidenceList,
                         EvidenceType.JENKINS_BUILD_CONTEXT,
                         "jenkins-evidence-collector"
                 );
 
         EvidenceEntity jenkinsValidation =
-                latestRequired(
+                latestOptional(
                         evidenceList,
                         EvidenceType.JENKINS_BUILD_CONTEXT,
                         "jenkins-incident-version-validator"
@@ -136,11 +137,19 @@ public class AiInputBundleRefreshService {
                         IncidentVersionResolution.class
                 );
 
-        JenkinsIncidentVersionValidation validation =
+        JenkinsCaseEvidence jenkinsEvidence =
                 parse(
-                        jenkinsValidation,
-                        JenkinsIncidentVersionValidation.class
+                        jenkinsContext,
+                        JenkinsCaseEvidence.class
                 );
+
+        JenkinsIncidentVersionValidation validation =
+                jenkinsValidation == null
+                        ? null
+                        : parse(
+                                jenkinsValidation,
+                                JenkinsIncidentVersionValidation.class
+                        );
 
         List<String> warnings =
                 new ArrayList<>();
@@ -240,13 +249,22 @@ public class AiInputBundleRefreshService {
                 warnings
         );
 
+        String jenkinsCommitSha =
+                validation != null
+                        && validation.jenkinsCommitSha() != null
+                        && !validation.jenkinsCommitSha().isBlank()
+                        ? validation.jenkinsCommitSha()
+                        : jenkinsEvidence.build() != null
+                                ? jenkinsEvidence.build().commitSha()
+                                : incidentVersion.resolvedCommitSha();
+        
         AiEvidenceBundle bundle =
                 bundleBuilder.buildValidatedBundle(
                         caseId,
                         BUNDLE_VERSION,
                         sections,
                         incidentVersion.resolvedCommitSha(),
-                        validation.jenkinsCommitSha(),
+                        jenkinsCommitSha,
                         warnings
                 );
 
@@ -285,7 +303,7 @@ public class AiInputBundleRefreshService {
                         .toList();
 
         boolean mismatch =
-                validation.status() != null
+                validation != null
                         && "MISMATCH".equals(
                                 validation.status()
                         );
@@ -295,7 +313,7 @@ public class AiInputBundleRefreshService {
                         caseId,
                         BUNDLE_VERSION,
                         validatedSource.getSource(),
-                        validation.jenkinsCommitSha(),
+                        jenkinsCommitSha,
                         incidentVersion.resolvedCommitSha(),
                         mismatch,
                         serialized.length(),
@@ -309,9 +327,9 @@ public class AiInputBundleRefreshService {
                 caseId,
                 "AI_INPUT_BUNDLE_REFRESHED",
                 "replayfix-platform",
-                "Bundle refreshed with Jenkins validated source context. "
+                "Bundle refreshed with Jenkins source context. "
                         + "jenkinsCommit="
-                        + validation.jenkinsCommitSha()
+                        + jenkinsCommitSha
                         + ", incidentCommit="
                         + incidentVersion.resolvedCommitSha()
                         + ", length="

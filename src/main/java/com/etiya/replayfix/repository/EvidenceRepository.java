@@ -14,6 +14,8 @@ public interface EvidenceRepository extends JpaRepository<EvidenceEntity, UUID> 
     
     List<EvidenceEntity> findByCaseIdOrderByCreatedAtAsc(UUID caseId);
     
+    List<EvidenceEntity> findByCaseIdAndEvidenceType(UUID caseId, EvidenceType evidenceType);
+    
     List<EvidenceEntity> findByCaseIdAndEvidenceTypeAndSource(UUID caseId, EvidenceType evidenceType, String source);
     
     void deleteByCaseId(UUID caseId);

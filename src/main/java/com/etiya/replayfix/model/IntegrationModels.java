@@ -9,6 +9,7 @@ public final class IntegrationModels {
     private IntegrationModels() {}
 
     public record JiraIssue(String key, String summary, String description, Map<String, Object> fields) {}
+    public record JiraComment(String id, String author, Instant created, String body) {}
     public record LokiLogEntry(Instant timestamp, String labels, String line) {}
     public record TempoTrace(String traceId, String rawJson) {}
     public record KnowledgeResult(String source, String title, String content, String url) {}
