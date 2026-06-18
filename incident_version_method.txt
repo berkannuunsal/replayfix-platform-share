@@ -1,0 +1,139 @@
+    private Map<String, Object> collectIncidentVersion(UUID caseId) {
+        Map<String, Object> step = new LinkedHashMap<>();
+        
+        try {
+            log.info("INCIDENT_VERSION_START: caseId={}", caseId);
+            
+            // Read Jenkins build context evidence
+            List<EvidenceEntity> jenkinsEvidenceList = evidenceRepository.findByCaseId(caseId).stream()
+                    .filter(ev -> ev.getEvidenceType() == EvidenceType.JENKINS_BUILD_CONTEXT)
+                    .toList();
+            
+            if (jenkinsEvidenceList.isEmpty()) {
+                step.put("result", "FAILED");
+                step.put("error", "JENKINS_BUILD_CONTEXT not found");
+                log.error("INCIDENT_VERSION_NO_JENKINS: caseId={}", caseId);
+                return step;
+            }
+            
+            EvidenceEntity jenkinsEvidence = jenkinsEvidenceList.get(jenkinsEvidenceList.size() - 1);
+            JenkinsCaseEvidence jenkinsCase = objectMapper.readValue(
+                    jenkinsEvidence.getContentText(), 
+                    JenkinsCaseEvidence.class
+            );
+            
+            // Read repository resolution evidence for projectKey and branch
+            List<EvidenceEntity> repoEvidenceList = evidenceRepository.findByCaseId(caseId).stream()
+                    .filter(ev -> ev.getEvidenceType() == EvidenceType.REPOSITORY_RESOLUTION)
+                    .toList();
+            
+            if (repoEvidenceList.isEmpty()) {
+                step.put("result", "FAILED");
+                step.put("error", "REPOSITORY_RESOLUTION not found");
+                log.error("INCIDENT_VERSION_NO_REPO: caseId={}", caseId);
+                return step;
+            }
+            
+            EvidenceEntity repoEvidence = repoEvidenceList.get(repoEvidenceList.size() - 1);
+            RepositoryResolutionResult repoResolution = objectMapper.readValue(
+                    repoEvidence.getContentText(), 
+                    RepositoryResolutionResult.class
+            );
+            
+            // Extract commit SHA from Jenkins build
+            String jenkinsCommitSha = null;
+            String jobName = null;
+            Integer buildNumber = null;
+            Long buildTimestamp = null;
+            
+            if (jenkinsCase.build() != null) {
+                jenkinsCommitSha = jenkinsCase.build().commitSha();
+                jobName = jenkinsCase.build().jobName();
+                buildNumber = jenkinsCase.build().buildNumber();
+                buildTimestamp = jenkinsCase.build().timestamp();
+            }
+            
+            if (jenkinsCommitSha == null || jenkinsCommitSha.isBlank()) {
+                step.put("result", "FAILED");
+                step.put("error", "Jenkins commit SHA not found in build");
+                step.put("jobName", jobName);
+                step.put("buildNumber", buildNumber);
+                log.error("INCIDENT_VERSION_NO_COMMIT: caseId={}, jobName={}, buildNumber={}", 
+                        caseId, jobName, buildNumber);
+                return step;
+            }
+            
+            // Validate commit exists in Bitbucket repository
+            String projectKey = repoResolution.projectKey();
+            String repositorySlug = repoResolution.primaryRepositorySlug();
+            String branch = "test2"; // From requirement: sourceBranch=test2
+            
+            List<String> warnings = new ArrayList<>();
+            String bitbucketCommitSha = null;
+            String validationStatus = "PENDING";
+            
+            try {
+                // Get commit from Bitbucket to validate it exists
+                var commitInfo = bitbucketClient.getCommit(projectKey, repositorySlug, jenkinsCommitSha);
+                if (commitInfo != null) {
+                    bitbucketCommitSha = jenkinsCommitSha;
+                    validationStatus = "VALIDATED";
+                    log.info("INCIDENT_VERSION_COMMIT_VALIDATED: caseId={}, commit={}", caseId, jenkinsCommitSha);
+                } else {
+                    validationStatus = "NOT_FOUND_IN_BITBUCKET";
+                    warnings.add("Jenkins commit " + jenkinsCommitSha + " not found in Bitbucket repository " + projectKey + "/" + repositorySlug);
+                    log.warn("INCIDENT_VERSION_COMMIT_NOT_FOUND: caseId={}, commit={}", caseId, jenkinsCommitSha);
+                }
+            } catch (Exception e) {
+                validationStatus = "VALIDATION_FAILED";
+                warnings.add("Failed to validate commit in Bitbucket: " + e.getMessage());
+                log.warn("INCIDENT_VERSION_VALIDATION_ERROR: caseId={}, commit={}", caseId, jenkinsCommitSha, e);
+            }
+            
+            // Create INCIDENT_VERSION evidence
+            IncidentVersionResolution incidentVersion = new IncidentVersionResolution(
+                    caseId,
+                    repositorySlug,
+                    branch,
+                    "JENKINS_BUILD",
+                    jenkinsCommitSha, // requestedSourceCommit
+                    null, // requestedImageTag
+                    Instant.now(), // incidentTime
+                    bitbucketCommitSha != null ? bitbucketCommitSha : jenkinsCommitSha, // resolvedCommitSha
+                    null, // resolvedTag
+                    buildTimestamp != null ? Instant.ofEpochMilli(buildTimestamp) : null, // commitTime
+                    null, // commitMessage
+                    "VALIDATED".equals(validationStatus), // exactMatch
+                    warnings
+            );
+            
+            // Save INCIDENT_VERSION evidence
+            evidenceService.save(
+                    caseId,
+                    EvidenceType.INCIDENT_VERSION,
+                    "golden-path-incident-version",
+                    incidentVersion,
+                    1.0,
+                    null
+            );
+            
+            step.put("result", "VALIDATED".equals(validationStatus) ? "SUCCESS" : "PARTIAL_SUCCESS");
+            step.put("jobName", jobName);
+            step.put("buildNumber", buildNumber);
+            step.put("jenkinsCommitSha", jenkinsCommitSha);
+            step.put("bitbucketCommitSha", bitbucketCommitSha);
+            step.put("checkoutCommitSha", bitbucketCommitSha != null ? bitbucketCommitSha : jenkinsCommitSha);
+            step.put("validationStatus", validationStatus);
+            step.put("warnings", warnings);
+            
+            log.info("INCIDENT_VERSION_CREATED: caseId={}, jobName={}, buildNumber={}, commit={}, status={}", 
+                    caseId, jobName, buildNumber, jenkinsCommitSha, validationStatus);
+            
+        } catch (Exception e) {
+            step.put("result", "FAILED");
+            step.put("error", e.getMessage());
+            log.error("INCIDENT_VERSION_FAILED: caseId={}", caseId, e);
+        }
+        
+        return step;
+    }

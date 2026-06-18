@@ -8,6 +8,8 @@ import com.etiya.replayfix.model.JenkinsBuildSnapshot;
 import com.etiya.replayfix.model.JenkinsCaseEvidence;
 import com.etiya.replayfix.model.RepositoryResolutionResult;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -18,6 +20,8 @@ import java.util.UUID;
 
 @Service
 public class JenkinsEvidenceCollectorService {
+
+    private static final Logger log = LoggerFactory.getLogger(JenkinsEvidenceCollectorService.class);
 
     private final ReplayFixProperties properties;
     private final JenkinsClient jenkinsClient;
@@ -54,10 +58,25 @@ public class JenkinsEvidenceCollectorService {
         String repositorySlug =
                 resolution.primaryRepositorySlug();
 
+        // Diagnostic logging (NO CREDENTIALS)
+        log.info("JENKINS_REPOSITORY_RESOLVED: caseId={}, projectKey={}, repositorySlug={}, primaryResolved={}",
+                caseId, resolution.projectKey(), repositorySlug, 
+                (repositorySlug != null && !repositorySlug.isBlank()));
+
         if (repositorySlug == null
                 || repositorySlug.isBlank()) {
+            log.error("JENKINS_PRIMARY_REPOSITORY_MISSING: caseId={}, projectKey={}", 
+                    caseId, resolution.projectKey());
             throw new IllegalStateException(
                     "Primary repository was not resolved."
+            );
+        }
+        
+        if (resolution.projectKey() == null || resolution.projectKey().isBlank()) {
+            log.error("JENKINS_PROJECT_KEY_MISSING: caseId={}, repositorySlug={}", 
+                    caseId, repositorySlug);
+            throw new IllegalStateException(
+                    "Project key was not resolved."
             );
         }
 
@@ -109,6 +128,20 @@ public class JenkinsEvidenceCollectorService {
                             + jobType
                             + " job URL is not configured."
             );
+            return null;
+        }
+
+        // Check if jobUrl is a boolean value (common configuration error)
+        if (jobUrl.equalsIgnoreCase("true") || jobUrl.equalsIgnoreCase("false")) {
+            warnings.add(
+                    "Jenkins "
+                            + jobType
+                            + " job URL is set to boolean value '"
+                            + jobUrl
+                            + "' - skipping"
+            );
+            log.warn("JENKINS_{}_JOB_DISABLED: Boolean value '{}' used instead of URL", 
+                    jobType.toUpperCase(), jobUrl);
             return null;
         }
 
@@ -188,17 +221,70 @@ public class JenkinsEvidenceCollectorService {
                         );
 
         try {
+            // Try canonical RepositoryResolutionResult first
             return objectMapper.readValue(
                     evidence.getContentText(),
                     RepositoryResolutionResult.class
             );
 
         } catch (Exception exception) {
-            throw new IllegalStateException(
-                    "Cannot parse repository resolution.",
-                    exception
-            );
+            // Backward-compatible parsing for legacy evidence
+            try {
+                return parseLegacyEvidence(evidence.getContentText());
+            } catch (Exception legacyException) {
+                throw new IllegalStateException(
+                        "Cannot parse repository resolution. " +
+                        "Canonical parse error: " + exception.getMessage() + 
+                        "; Legacy parse error: " + legacyException.getMessage(),
+                        exception
+                );
+            }
         }
+    }
+
+    private RepositoryResolutionResult parseLegacyEvidence(String contentText) throws Exception {
+        // Parse as generic JSON node for backward compatibility
+        var node = objectMapper.readTree(contentText);
+        
+        // Extract projectKey (try multiple field names)
+        String projectKey = extractField(node, "projectKey", "bitbucketProjectKey");
+        
+        // Extract primaryRepositorySlug (try multiple field names)
+        String primarySlug = extractField(node, 
+                "primaryRepositorySlug", 
+                "repositorySlug", 
+                "slug", 
+                "repoSlug",
+                "primaryRepository");
+        
+        if (primarySlug == null || primarySlug.isBlank()) {
+            throw new IllegalStateException("Primary repository slug not found in evidence");
+        }
+        
+        if (projectKey == null || projectKey.isBlank()) {
+            throw new IllegalStateException("Project key not found in evidence");
+        }
+        
+        // Build RepositoryResolutionResult with extracted fields
+        return new RepositoryResolutionResult(
+                projectKey,
+                primarySlug,
+                List.of(), // candidates
+                List.of(), // unresolvedSignals
+                "" // warning
+        );
+    }
+    
+    private String extractField(com.fasterxml.jackson.databind.JsonNode node, String... fieldNames) {
+        for (String fieldName : fieldNames) {
+            if (node.has(fieldName) && !node.get(fieldName).isNull()) {
+                String value = node.get(fieldName).asText();
+                if (value != null && !value.isBlank()) {
+                    return value;
+                }
+            }
+        }
+        return null;
     }
 
     private void saveEvidence(

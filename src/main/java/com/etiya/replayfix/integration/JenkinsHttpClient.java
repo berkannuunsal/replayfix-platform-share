@@ -300,8 +300,13 @@ public class JenkinsHttpClient implements JenkinsClient {
             String jobUrl,
             String buildUrl
     ) {
+        // Use bounded tree query to limit response size
+        String tree = "number,result,timestamp,duration,url,"
+                + "actions[lastBuiltRevision[SHA1],parameters[name,value]],changeSet[items[commitId,msg]],"
+                + "artifacts[fileName,relativePath]";
+        
         JsonNode response =
-                getJson(buildUrl + "/api/json?depth=3");
+                getJson(buildUrl + "/api/json?tree=" + tree);
 
         String consoleText =
                 getText(buildUrl + "/consoleText");

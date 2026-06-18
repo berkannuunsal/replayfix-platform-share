@@ -46,6 +46,16 @@ replayfix:
         branch-prefix: replayfix/
         reviewer-users: []
 
+    backend:
+      repository: ${BACKEND_REPOSITORY_SLUG:bss-backend}
+      clone-url: ${BACKEND_CLONE_URL}
+      build-command: mvn -B clean test
+
+      git:
+        source-branch: test2
+        branch-prefix: replayfix/
+        reviewer-users: []
+
   repository-resolution:
     minimum-score: 30
     max-candidates: 4

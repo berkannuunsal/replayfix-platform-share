@@ -11,4 +11,6 @@ import java.util.UUID;
 public interface ReplayCaseRepository extends JpaRepository<ReplayCaseEntity, UUID> {
 
     Optional<ReplayCaseEntity> findFirstByJiraKey(String jiraKey);
+    
+    Optional<ReplayCaseEntity> findFirstByJiraKeyAndTargetKey(String jiraKey, String targetKey);
 }

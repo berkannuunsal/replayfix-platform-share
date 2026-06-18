@@ -171,6 +171,18 @@ public class JenkinsIncidentVersionValidationService {
             return null;
         }
 
+        // Check if jobUrl is a boolean value (common configuration error)
+        if (jobUrl.equalsIgnoreCase("true") || jobUrl.equalsIgnoreCase("false")) {
+            warnings.add(
+                    "Jenkins "
+                            + jobType
+                            + " job URL is set to boolean value '"
+                            + jobUrl
+                            + "' - skipping"
+            );
+            return null;
+        }
+
         try {
             return jenkinsClient.readBuildAtOrBefore(
                     jobUrl,
