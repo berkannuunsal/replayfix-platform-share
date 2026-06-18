@@ -96,7 +96,7 @@ class RovoRcaEnvelopeTest {
         when(jiraClient.getComments("TEST-123")).thenReturn(comments);
         when(evidenceRepository.findByCaseIdAndEvidenceType(caseId, EvidenceType.ROVO_RCA))
                 .thenReturn(List.of());
-        when(evidenceService.save(eq(caseId), eq(EvidenceType.ROVO_RCA), any(), any(), eq(false)))
+        when(evidenceService.save(eq(caseId), eq(EvidenceType.ROVO_RCA), any(), any(), eq(true)))
                 .thenReturn(savedEvidence);
 
         // When
@@ -116,7 +116,7 @@ class RovoRcaEnvelopeTest {
             } catch (Exception e) {
                 return false;
             }
-        }), eq(false));
+        }), eq(true));
     }
 
     @Test
@@ -148,7 +148,7 @@ class RovoRcaEnvelopeTest {
         when(jiraClient.getComments("TEST-123")).thenReturn(comments);
         when(evidenceRepository.findByCaseIdAndEvidenceType(caseId, EvidenceType.ROVO_RCA))
                 .thenReturn(List.of());
-        when(evidenceService.save(eq(caseId), eq(EvidenceType.ROVO_RCA), any(), any(), eq(false)))
+        when(evidenceService.save(eq(caseId), eq(EvidenceType.ROVO_RCA), any(), any(), eq(true)))
                 .thenReturn(savedEvidence);
 
         // When
@@ -164,7 +164,7 @@ class RovoRcaEnvelopeTest {
             } catch (Exception e) {
                 return false;
             }
-        }), eq(false));
+        }), eq(true));
     }
 
     @Test
@@ -196,7 +196,7 @@ class RovoRcaEnvelopeTest {
         when(jiraClient.getComments("TEST-123")).thenReturn(comments);
         when(evidenceRepository.findByCaseIdAndEvidenceType(caseId, EvidenceType.ROVO_RCA))
                 .thenReturn(List.of());
-        when(evidenceService.save(eq(caseId), eq(EvidenceType.ROVO_RCA), any(), any(), eq(false)))
+        when(evidenceService.save(eq(caseId), eq(EvidenceType.ROVO_RCA), any(), any(), eq(true)))
                 .thenReturn(savedEvidence);
 
         // When
@@ -214,7 +214,7 @@ class RovoRcaEnvelopeTest {
             } catch (Exception e) {
                 return false;
             }
-        }), eq(false));
+        }), eq(true));
     }
 
     @Test
@@ -242,7 +242,7 @@ class RovoRcaEnvelopeTest {
         when(jiraClient.getComments("TEST-123")).thenReturn(comments);
         when(evidenceRepository.findByCaseIdAndEvidenceType(caseId, EvidenceType.ROVO_RCA))
                 .thenReturn(List.of());
-        when(evidenceService.save(eq(caseId), eq(EvidenceType.ROVO_RCA), any(), any(), eq(false)))
+        when(evidenceService.save(eq(caseId), eq(EvidenceType.ROVO_RCA), any(), any(), eq(true)))
                 .thenReturn(savedEvidence);
 
         // When
@@ -263,7 +263,7 @@ class RovoRcaEnvelopeTest {
             } catch (Exception e) {
                 return false;
             }
-        }), eq(false));
+        }), eq(true));
     }
 
     @Test

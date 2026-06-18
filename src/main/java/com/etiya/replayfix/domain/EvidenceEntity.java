@@ -56,6 +56,7 @@ public class EvidenceEntity {
     }
 
     public UUID getId() { return id; }
+    public void setId(UUID value) { this.id = value; }
     public UUID getCaseId() { return caseId; }
     public void setCaseId(UUID value) { this.caseId = value; }
     public EvidenceType getEvidenceType() { return evidenceType; }
@@ -75,4 +76,5 @@ public class EvidenceEntity {
     public boolean isSanitized() { return sanitized; }
     public void setSanitized(boolean value) { this.sanitized = value; }
     public Instant getCreatedAt() { return createdAt; }
+    public void setCreatedAt(Instant value) { this.createdAt = value; }
 }

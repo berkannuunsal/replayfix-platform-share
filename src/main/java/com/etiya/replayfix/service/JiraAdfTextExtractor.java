@@ -25,12 +25,10 @@ public class JiraAdfTextExtractor {
             appendText(root, result);
 
             return result.toString()
-                .replaceAll("[ \\t]+", " ")
-                .replaceAll("\\n{3,}", "\n\n")
-                .trim();
-
+                    .replaceAll("[ \\t]+", " ")
+                    .replaceAll("\\n{3,}", "\n\n")
+                    .trim();
         } catch (Exception exception) {
-            // Jira description düz metinse olduğu gibi kullan.
             return description;
         }
     }
@@ -42,26 +40,33 @@ public class JiraAdfTextExtractor {
 
         String type = node.path("type").asText("");
 
-        if ("text".equals(type)) {
-            result.append(node.path("text").asText(""));
-        }
-
-        if ("hardBreak".equals(type)) {
-            result.append('\n');
+        switch (type) {
+            case "text" -> result.append(node.path("text").asText(""));
+            case "hardBreak", "rule" -> result.append('\n');
+            default -> {
+            }
         }
 
         JsonNode content = node.path("content");
-
         if (content.isArray()) {
             for (JsonNode child : content) {
                 appendText(child, result);
             }
         }
 
-        if ("paragraph".equals(type)
-            || "listItem".equals(type)
-            || "heading".equals(type)) {
+        if (isBlockNode(type)) {
             result.append('\n');
         }
+    }
+
+    private boolean isBlockNode(String type) {
+        return "paragraph".equals(type)
+                || "heading".equals(type)
+                || "listItem".equals(type)
+                || "codeBlock".equals(type)
+                || "panel".equals(type)
+                || "blockquote".equals(type)
+                || "bulletList".equals(type)
+                || "orderedList".equals(type);
     }
 }

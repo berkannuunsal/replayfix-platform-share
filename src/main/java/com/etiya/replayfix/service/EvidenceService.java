@@ -55,6 +55,10 @@ public class EvidenceService {
                 .orElseThrow(() -> new IllegalArgumentException("Evidence not found: " + evidenceId));
     }
 
+    public String sanitize(String content) {
+        return sanitizer.sanitize(content);
+    }
+
     private String hash(String content) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")

@@ -4,6 +4,7 @@ import com.etiya.replayfix.config.ReplayFixProperties;
 import com.etiya.replayfix.model.IntegrationModels;
 import com.etiya.replayfix.model.IntegrationModels.JiraIssue;
 import com.etiya.replayfix.model.JiraCommentPublishResponse;
+import com.etiya.replayfix.service.JiraAdfTextExtractor;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,10 +24,16 @@ public class JiraHttpClient implements JiraClient {
     
     private final ReplayFixProperties properties;
     private final WebClient.Builder webClientBuilder;
+    private final JiraAdfTextExtractor adfTextExtractor;
 
-    public JiraHttpClient(ReplayFixProperties properties, WebClient.Builder webClientBuilder) {
+    public JiraHttpClient(
+            ReplayFixProperties properties,
+            WebClient.Builder webClientBuilder,
+            JiraAdfTextExtractor adfTextExtractor
+    ) {
         this.properties = properties;
         this.webClientBuilder = webClientBuilder;
+        this.adfTextExtractor = adfTextExtractor;
     }
 
     @Override
@@ -317,11 +324,8 @@ public class JiraHttpClient implements JiraClient {
             return bodyNode.asText();
         }
 
-        // ADF body
-        if (bodyNode.has("content")) {
-            StringBuilder text = new StringBuilder();
-            extractTextFromAdfNodes(bodyNode.get("content"), text);
-            return text.toString().trim();
+        if (bodyNode.isObject()) {
+            return adfTextExtractor.extract(bodyNode.toString());
         }
 
         return bodyNode.toString();

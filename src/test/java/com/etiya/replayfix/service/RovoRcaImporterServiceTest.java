@@ -77,7 +77,7 @@ class RovoRcaImporterServiceTest {
         when(jiraClient.getComments("TEST-123")).thenReturn(comments);
         when(evidenceRepository.findByCaseIdAndEvidenceType(caseId, EvidenceType.ROVO_RCA))
                 .thenReturn(List.of());
-        when(evidenceService.save(eq(caseId), eq(EvidenceType.ROVO_RCA), any(), any(), eq(false)))
+        when(evidenceService.save(eq(caseId), eq(EvidenceType.ROVO_RCA), any(), any(), eq(true)))
                 .thenReturn(savedEvidence);
 
         // When
@@ -85,7 +85,7 @@ class RovoRcaImporterServiceTest {
 
         // Then
         assertTrue(response.imported());
-        assertEquals("IMPORTED", response.rovoStatus());
+        assertEquals("IMPORTED", response.importStatus());
         assertNotNull(response.diagnostics());
         assertEquals(1, response.diagnostics().commentsScanned());
         assertEquals(1, response.diagnostics().pagesScanned());
@@ -124,7 +124,7 @@ class RovoRcaImporterServiceTest {
         when(jiraClient.getComments("TEST-123")).thenReturn(comments);
         when(evidenceRepository.findByCaseIdAndEvidenceType(caseId, EvidenceType.ROVO_RCA))
                 .thenReturn(List.of());
-        when(evidenceService.save(eq(caseId), eq(EvidenceType.ROVO_RCA), any(), any(), eq(false)))
+        when(evidenceService.save(eq(caseId), eq(EvidenceType.ROVO_RCA), any(), any(), eq(true)))
                 .thenReturn(savedEvidence);
 
         // When
@@ -168,7 +168,7 @@ class RovoRcaImporterServiceTest {
         when(jiraClient.getComments("TEST-123")).thenReturn(comments);
         when(evidenceRepository.findByCaseIdAndEvidenceType(caseId, EvidenceType.ROVO_RCA))
                 .thenReturn(List.of());
-        when(evidenceService.save(eq(caseId), eq(EvidenceType.ROVO_RCA), any(), any(), eq(false)))
+        when(evidenceService.save(eq(caseId), eq(EvidenceType.ROVO_RCA), any(), any(), eq(true)))
                 .thenReturn(savedEvidence);
 
         // When
@@ -207,7 +207,7 @@ class RovoRcaImporterServiceTest {
         when(jiraClient.getComments("TEST-123")).thenReturn(comments);
         when(evidenceRepository.findByCaseIdAndEvidenceType(caseId, EvidenceType.ROVO_RCA))
                 .thenReturn(List.of());
-        when(evidenceService.save(eq(caseId), eq(EvidenceType.ROVO_RCA), any(), any(), eq(false)))
+        when(evidenceService.save(eq(caseId), eq(EvidenceType.ROVO_RCA), any(), any(), eq(true)))
                 .thenReturn(savedEvidence);
 
         // When
@@ -245,7 +245,7 @@ class RovoRcaImporterServiceTest {
 
         // Then
         assertFalse(response.imported());
-        assertEquals("INVALID_JSON", response.rovoStatus());
+        assertEquals("INVALID_JSON", response.importStatus());
         assertNotNull(response.error());
         assertTrue(response.error().contains("INVALID_ROVO_RCA_JSON"));
     }
@@ -287,8 +287,57 @@ class RovoRcaImporterServiceTest {
 
         // Then
         assertFalse(response.imported());
-        assertEquals("DUPLICATE", response.rovoStatus());
+        assertEquals("DUPLICATE", response.importStatus());
         assertEquals(existingId, response.existingEvidenceId());
+        verify(evidenceService, never()).save(any(), any(), any(), any(), anyBoolean());
+    }
+
+    @Test
+    void shouldReplaceLegacyJsonOnlyEvidenceWhenForceImporting() {
+        // Given
+        UUID caseId = UUID.randomUUID();
+        ReplayCaseEntity caseEntity = new ReplayCaseEntity();
+        caseEntity.setJiraKey("TEST-123");
+
+        String rovoRcaComment = """
+                Human report
+                REPLAYFIX_ROVO_RCA_V1
+                {
+                  "schemaVersion": "1.0",
+                  "jiraKey": "TEST-123",
+                  "confidence": 0.85,
+                  "probableRootCause": "NPE"
+                }
+                REPLAYFIX_ROVO_RCA_END
+                """;
+
+        List<IntegrationModels.JiraComment> comments = List.of(
+                new IntegrationModels.JiraComment("10006", "Rovo Bot", Instant.now(), rovoRcaComment)
+        );
+
+        EvidenceEntity existingEvidence = new EvidenceEntity();
+        UUID existingId = UUID.randomUUID();
+        existingEvidence.setId(existingId);
+        existingEvidence.setContentText("{\"schemaVersion\":\"1.0\",\"jiraKey\":\"TEST-123\",\"confidence\":0.85,\"probableRootCause\":\"NPE\"}");
+
+        when(caseRepository.findById(caseId)).thenReturn(Optional.of(caseEntity));
+        when(jiraClient.getComments("TEST-123")).thenReturn(comments);
+        when(evidenceRepository.findByCaseIdAndEvidenceType(caseId, EvidenceType.ROVO_RCA))
+                .thenReturn(List.of(existingEvidence));
+        when(evidenceService.sanitize(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(evidenceRepository.save(existingEvidence)).thenReturn(existingEvidence);
+
+        // When
+        RovoRcaImportResponse response = service.importFromJira(caseId, true);
+
+        // Then
+        assertTrue(response.imported());
+        assertEquals(existingId, response.evidenceId());
+        assertEquals("IMPORTED", response.importStatus());
+        assertEquals("HYPOTHESIS", response.rcaStatus());
+        assertTrue(existingEvidence.getContentText().contains("\"rawHumanReport\":\"Human report\""));
+        assertTrue(existingEvidence.getContentText().contains("\"normalizedRovoJson\""));
+        verify(evidenceRepository).save(existingEvidence);
         verify(evidenceService, never()).save(any(), any(), any(), any(), anyBoolean());
     }
 
@@ -322,7 +371,7 @@ class RovoRcaImporterServiceTest {
         when(jiraClient.getComments("TEST-123")).thenReturn(comments);
         when(evidenceRepository.findByCaseIdAndEvidenceType(caseId, EvidenceType.ROVO_RCA))
                 .thenReturn(List.of());
-        when(evidenceService.save(eq(caseId), eq(EvidenceType.ROVO_RCA), eq("rovo-incident-commander"), any(), eq(false)))
+        when(evidenceService.save(eq(caseId), eq(EvidenceType.ROVO_RCA), eq("rovo-incident-commander"), any(), eq(true)))
                 .thenReturn(savedEvidence);
 
         // When
@@ -337,7 +386,7 @@ class RovoRcaImporterServiceTest {
                 eq(EvidenceType.ROVO_RCA),
                 eq("rovo-incident-commander"),
                 any(),
-                eq(false)
+                eq(true)
         );
     }
 

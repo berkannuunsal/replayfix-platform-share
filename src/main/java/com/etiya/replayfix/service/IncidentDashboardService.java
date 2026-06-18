@@ -220,12 +220,15 @@ public class IncidentDashboardService {
                         !envelope.normalizationWarnings().isEmpty(),
                         envelope.normalizationWarnings(),
                         envelope.rawHumanReport(),
+                        envelope.rawRovoJson(),
+                        envelope.normalizedRovoJson(),
                         objectMapper.writeValueAsString(envelope.rawRovoJson())
                 );
             } catch (Exception envelopeEx) {
                 // Fallback: try legacy format (direct RovoRcaAnalysis)
                 log.debug("Not an envelope, trying legacy format: {}", envelopeEx.getMessage());
                 RovoRcaAnalysis analysis = objectMapper.readValue(json, RovoRcaAnalysis.class);
+                com.fasterxml.jackson.databind.JsonNode legacyJson = objectMapper.readTree(json);
                 
                 boolean wasNormalized = detectIfNormalized(analysis);
                 
@@ -234,6 +237,8 @@ public class IncidentDashboardService {
                         wasNormalized,
                         List.of(),
                         "", // No human report in legacy format
+                        legacyJson,
+                        legacyJson,
                         json
                 );
             }

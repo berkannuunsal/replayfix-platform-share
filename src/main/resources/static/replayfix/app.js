@@ -197,6 +197,7 @@
         renderWorkflowProgress(dashboard.workflow);
         renderEvidenceMatrix(dashboard.evidenceCards);
         renderRootCause(dashboard.rootCause);
+        renderRovoRca(dashboard.rovoRca);
         renderMissingEvidence(dashboard.missingEvidence);
         renderJiraPreview(dashboard.jiraPreview, dashboard.policies);
         renderApprovals(dashboard.approvals);
@@ -319,6 +320,50 @@
         } else {
             fixSection.classList.add('hidden');
         }
+    }
+
+    function renderRovoRca(rovoRca) {
+        const section = document.getElementById('rovoRcaSection');
+        if (!section) return;
+
+        if (!rovoRca || rovoRca.importStatus !== 'IMPORTED') {
+            section.classList.add('hidden');
+            return;
+        }
+
+        section.classList.remove('hidden');
+
+        const importStatusEl = document.getElementById('rovoRcaImportStatus');
+        importStatusEl.textContent = rovoRca.importStatus || 'UNKNOWN';
+        importStatusEl.className = 'badge badge-' + getStatusClass(rovoRca.importStatus);
+
+        const rcaStatusEl = document.getElementById('rovoRcaStatusValue');
+        rcaStatusEl.textContent = rovoRca.rcaStatus || 'HYPOTHESIS';
+        rcaStatusEl.className = 'badge badge-' + getStatusClass(rovoRca.rcaStatus || 'HYPOTHESIS');
+
+        const confidence = typeof rovoRca.confidence === 'number'
+            ? `${Math.round(rovoRca.confidence * 100)}%`
+            : 'N/A';
+        document.getElementById('rovoRcaConfidence').textContent = confidence;
+        document.getElementById('rovoRcaProbableRootCause').textContent = rovoRca.probableRootCause || 'N/A';
+        document.getElementById('rovoRcaHumanReport').textContent = rovoRca.rawHumanReport || '';
+
+        const warningsSection = document.getElementById('rovoRcaWarningsSection');
+        const warningsList = document.getElementById('rovoRcaWarnings');
+        if (rovoRca.normalizationWarnings && rovoRca.normalizationWarnings.length > 0) {
+            warningsSection.classList.remove('hidden');
+            warningsList.innerHTML = rovoRca.normalizationWarnings
+                .map(item => `<li>${escapeHtml(item)}</li>`)
+                .join('');
+        } else {
+            warningsSection.classList.add('hidden');
+            warningsList.innerHTML = '';
+        }
+
+        document.getElementById('rovoRcaNormalizedJson').textContent =
+            JSON.stringify(rovoRca.normalizedRovoJson || {}, null, 2);
+        document.getElementById('rovoRcaRawJson').textContent =
+            JSON.stringify(rovoRca.rawRovoJson || {}, null, 2);
     }
 
     function renderMissingEvidence(missingList) {
@@ -669,7 +714,12 @@
             'REJECTED': 'danger',
             'CONFIRMED': 'success',
             'PROBABLE': 'warning',
-            'UNAVAILABLE': 'muted'
+            'UNAVAILABLE': 'muted',
+            'IMPORTED': 'success',
+            'DUPLICATE': 'warning',
+            'INVALID_JSON': 'danger',
+            'NOT_FOUND': 'muted',
+            'HYPOTHESIS': 'warning'
         };
         return statusMap[status] || 'muted';
     }

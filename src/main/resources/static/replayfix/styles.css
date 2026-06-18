@@ -400,6 +400,52 @@ body {
     color: var(--accent);
 }
 
+.section-subtitle {
+    margin-top: 0.35rem;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+.rovo-rca-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+}
+
+.rovo-human-report {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem;
+    max-height: 360px;
+    overflow: auto;
+    white-space: pre-wrap;
+    line-height: 1.5;
+}
+
+.rovo-json-details {
+    margin-top: 1rem;
+}
+
+.rovo-json-details summary {
+    cursor: pointer;
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.rovo-json-details pre {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-top: 0.75rem;
+    padding: 1rem;
+    max-height: 360px;
+    overflow: auto;
+    white-space: pre-wrap;
+    font-size: 0.8125rem;
+}
+
 /* Preview */
 .preview-meta {
     display: flex;

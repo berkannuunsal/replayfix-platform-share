@@ -1,11 +1,15 @@
 package com.etiya.replayfix.model;
 
+import com.fasterxml.jackson.databind.JsonNode;
+
 import java.util.List;
 
 public record RovoRcaDashboardView(
         String importStatus,
         String rcaStatus,
         String rawHumanReport,
+        JsonNode rawRovoJson,
+        JsonNode normalizedRovoJson,
         Double confidence,
         String probableRootCause,
         String executiveSummary,
@@ -66,6 +70,8 @@ public record RovoRcaDashboardView(
                 null,
                 null,
                 null,
+                null,
+                null,
                 List.of(),  // evidenceMatrix
                 List.of(),
                 List.of(),
@@ -89,6 +95,8 @@ public record RovoRcaDashboardView(
             boolean normalized,
             List<String> normalizationWarnings,
             String rawHumanReport,
+            JsonNode rawRovoJson,
+            JsonNode normalizedRovoJson,
             String rawJson
     ) {
         // Build evidence matrix
@@ -140,6 +148,8 @@ public record RovoRcaDashboardView(
                 "IMPORTED",
                 analysis.status() != null ? analysis.status() : "HYPOTHESIS",
                 rawHumanReport != null ? rawHumanReport : "",
+                rawRovoJson,
+                normalizedRovoJson,
                 analysis.confidence(),
                 analysis.probableRootCause(),
                 analysis.executiveSummary(),

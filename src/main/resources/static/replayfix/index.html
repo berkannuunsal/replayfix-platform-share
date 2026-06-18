@@ -140,6 +140,52 @@
                 </div>
             </section>
 
+            <!-- Imported Rovo RCA -->
+            <section id="rovoRcaSection" class="card hidden">
+                <div class="card-header">
+                    <div>
+                        <h2>Rovo RCA - Jira + ReplayFix Evidence ile Zenginleştirilmiş Analiz</h2>
+                        <p class="section-subtitle">Bu bölüm Rovo’nun Jira comment olarak ürettiği RCA raporundan import edilmiştir.</p>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="rovo-rca-summary">
+                        <div class="rca-item">
+                            <label>Import Status</label>
+                            <span id="rovoRcaImportStatus" class="badge"></span>
+                        </div>
+                        <div class="rca-item">
+                            <label>RCA Status</label>
+                            <span id="rovoRcaStatusValue" class="badge"></span>
+                        </div>
+                        <div class="rca-item">
+                            <label>Confidence</label>
+                            <span id="rovoRcaConfidence"></span>
+                        </div>
+                    </div>
+                    <div class="rca-item">
+                        <label>Probable Root Cause</label>
+                        <p id="rovoRcaProbableRootCause"></p>
+                    </div>
+                    <div class="rca-item">
+                        <label>Human Report</label>
+                        <div id="rovoRcaHumanReport" class="rovo-human-report"></div>
+                    </div>
+                    <div class="rca-item hidden" id="rovoRcaWarningsSection">
+                        <label>Normalization Warnings</label>
+                        <ul id="rovoRcaWarnings"></ul>
+                    </div>
+                    <details class="rovo-json-details">
+                        <summary>Normalized JSON</summary>
+                        <pre id="rovoRcaNormalizedJson"></pre>
+                    </details>
+                    <details class="rovo-json-details">
+                        <summary>Raw Rovo JSON</summary>
+                        <pre id="rovoRcaRawJson"></pre>
+                    </details>
+                </div>
+            </section>
+
             <!-- Missing Evidence -->
             <section id="missingEvidenceSection" class="card hidden">
                 <div class="card-header">

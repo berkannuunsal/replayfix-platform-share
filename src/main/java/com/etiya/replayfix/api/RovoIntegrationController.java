@@ -48,9 +48,10 @@ public class RovoIntegrationController {
 
     @PostMapping("/import-rca")
     public ResponseEntity<RovoRcaImportResponse> importRovoRca(
-            @PathVariable UUID caseId
+            @PathVariable UUID caseId,
+            @RequestParam(defaultValue = "false") boolean force
     ) {
-        RovoRcaImportResponse response = importerService.importFromJira(caseId);
+        RovoRcaImportResponse response = importerService.importFromJira(caseId, force);
         return ResponseEntity.ok(response);
     }
 
@@ -71,7 +72,8 @@ public class RovoIntegrationController {
             );
         }
 
-        RovoRcaImportResponse response = importerService.importManual(caseId, rawComment);
+        boolean force = Boolean.parseBoolean(request.getOrDefault("force", "false"));
+        RovoRcaImportResponse response = importerService.importManual(caseId, rawComment, force);
         return ResponseEntity.ok(response);
     }
 }
