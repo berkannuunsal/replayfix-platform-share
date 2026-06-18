@@ -30,6 +30,7 @@ class JiraEvidenceSnapshotBuilderTest {
     private JiraEvidenceSnapshotBuilder builder;
     private ReplayCaseRepository caseRepository;
     private EvidenceRepository evidenceRepository;
+    private JiraEvidenceAdfRenderer renderer;
 
     @BeforeEach
     void setUp() {
@@ -39,6 +40,9 @@ class JiraEvidenceSnapshotBuilderTest {
                 caseRepository,
                 evidenceRepository,
                 new EvidenceSanitizer(),
+                new ObjectMapper().findAndRegisterModules()
+        );
+        renderer = new JiraEvidenceAdfRenderer(
                 new ObjectMapper().findAndRegisterModules()
         );
     }
@@ -62,7 +66,13 @@ class JiraEvidenceSnapshotBuilderTest {
                         "{\"exactMatch\":true,\"commitSha\":\"7b65a116\"}"),
                 evidence(caseId, EvidenceType.LOKI_LOG,
                         "loki-log",
-                        "{\"matchedRowCount\":0}"),
+                        """
+                                {
+                                  "matchedRowCount": 0,
+                                  "rawResponse": "<html><body>long Loki gateway error that should not appear in preview</body></html>",
+                                  "hugePayload": "%s"
+                                }
+                                """.formatted("x".repeat(1200))),
                 evidence(caseId, EvidenceType.TEMPO_ENRICHMENT,
                         "tempo-enrichment",
                         "{\"foundTraceCount\":0}"),
@@ -97,9 +107,9 @@ class JiraEvidenceSnapshotBuilderTest {
 
         JiraEvidenceSnapshot snapshot = builder.build(caseId);
 
-        assertEquals("Evidence-only deterministic hypothesis",
+        assertEquals("Rovo enriched hypothesis",
                 snapshot.probableRootCause());
-        assertEquals(0.42, snapshot.rootCauseConfidence());
+        assertEquals(0.2, snapshot.rootCauseConfidence());
         assertFalse(snapshot.missingEvidence()
                 .contains("Jira issue details not collected"));
         assertFalse(snapshot.probableRootCause()
@@ -110,8 +120,8 @@ class JiraEvidenceSnapshotBuilderTest {
         assertTrue(chain.contains("test2"));
         assertTrue(chain.contains("MODERNIZATION.BACKEND_BUILD_12"));
         assertTrue(chain.contains("3066"));
-        assertTrue(chain.contains("Incident version validation available"));
-        assertTrue(chain.contains("Rovo RCA imported"));
+        assertTrue(chain.contains("Incident Version: verified"));
+        assertTrue(chain.contains("RCA Status: HYPOTHESIS"));
         assertTrue(chain.contains("Regression test hypothesis generated"));
 
         assertEquals(EvidenceAvailability.CONFIRMED,
@@ -129,6 +139,28 @@ class JiraEvidenceSnapshotBuilderTest {
                 .collect(Collectors.joining(","));
         assertTrue(sources.contains("BITBUCKET"));
         assertTrue(sources.contains("REPLAYFIX"));
+
+        String preview = renderer.renderPlainText(snapshot);
+
+        assertTrue(preview.contains("ReplayFix Evidence Snapshot"));
+        assertTrue(preview.contains("Executive Incident Brief"));
+        assertTrue(preview.contains("* Jira: FIZZMS-10228"));
+        assertTrue(preview.contains("* Target: backend"));
+        assertTrue(preview.contains("* Repository: DCE/backend"));
+        assertTrue(preview.contains("* Branch: test2"));
+        assertTrue(preview.contains("* Jenkins Build: MODERNIZATION.BACKEND_BUILD_12 #3066"));
+        assertTrue(preview.contains("* Incident Version: verified"));
+        assertTrue(preview.contains("Evidence Quality"));
+        assertTrue(preview.contains("* Loki: PROBABLE"));
+        assertTrue(preview.contains("* Tempo: PROBABLE"));
+        assertTrue(preview.contains("* Source Context: PROBABLE"));
+        assertTrue(preview.contains("Rovo enriched hypothesis"));
+        assertTrue(preview.contains("Confidence: 20%"));
+        assertTrue(preview.contains("Human validation required"));
+        assertFalse(preview.contains("Deterministic analysis pending"));
+        assertFalse(preview.contains("<html>"));
+        assertFalse(preview.contains("hugePayload"));
+        assertTrue(preview.length() < 2500);
     }
 
     private JiraEvidenceMatrixItem matrix(

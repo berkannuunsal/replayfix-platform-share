@@ -23,7 +23,9 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -129,6 +131,93 @@ class IncidentDashboardEvidenceConsistencyTest {
         assertEquals("PROBABLE", card(dashboard, "Tempo").status());
         assertEquals("PROBABLE", card(dashboard, "Source Context").status());
         assertEquals("CONFIRMED", card(dashboard, "ReplayFix").status());
+    }
+
+    @Test
+    void shouldUseRovoRcaForRootCauseSummaryWhenAvailable() {
+        UUID caseId = UUID.randomUUID();
+        ReplayCaseEntity replayCase = caseEntity(caseId);
+
+        String rovoRootCause =
+                "Kullanıcı arayüzünden gelen hatalı parametreler veya eksik API validasyonları.";
+        String fixDirection =
+                "API seviyesinde region ve tax_info parametreleri için çapraz validasyon eklenmesi";
+
+        List<EvidenceEntity> evidence = List.of(
+                evidence(caseId, EvidenceType.DETERMINISTIC_ROOT_CAUSE,
+                        "deterministic-root-cause",
+                        "{\"probableCause\":\"Deterministic fallback\",\"confidence\":0.6}"),
+                evidence(caseId, EvidenceType.ROVO_RCA,
+                        "rovo-incident-commander",
+                        """
+                                {
+                                  "normalizedRovoJson": {
+                                    "status": "HYPOTHESIS",
+                                    "confidence": 0.2,
+                                    "probableRootCause": "%s",
+                                    "minimumFixDirection": ["%s"]
+                                  }
+                                }
+                                """.formatted(rovoRootCause, fixDirection))
+        );
+
+        stubDashboardEvidence(caseId, replayCase, evidence);
+
+        IncidentDashboardView dashboard = service.getCaseDashboard(caseId);
+
+        assertEquals(rovoRootCause, dashboard.rootCause().probableRootCause());
+        assertEquals(0.2, dashboard.rootCause().confidence());
+        assertEquals("LOW", dashboard.rootCause().confidenceBand());
+        assertEquals("Rovo RCA enriched analysis",
+                dashboard.rootCause().analysisType());
+        assertTrue(dashboard.rootCause().recommendedFixDirection()
+                .contains(fixDirection));
+        assertFalse(dashboard.rootCause().probableRootCause()
+                .contains("Deterministic analysis pending"));
+    }
+
+    @Test
+    void shouldFallbackToDeterministicRootCauseWhenRovoMissing() {
+        UUID caseId = UUID.randomUUID();
+        ReplayCaseEntity replayCase = caseEntity(caseId);
+
+        List<EvidenceEntity> evidence = List.of(
+                evidence(caseId, EvidenceType.DETERMINISTIC_ROOT_CAUSE,
+                        "deterministic-root-cause",
+                        "{\"probableCause\":\"Deterministic fallback\",\"confidence\":0.55}")
+        );
+
+        stubDashboardEvidence(caseId, replayCase, evidence);
+
+        IncidentDashboardView dashboard = service.getCaseDashboard(caseId);
+
+        assertEquals("Deterministic fallback",
+                dashboard.rootCause().probableRootCause());
+        assertEquals(0.55, dashboard.rootCause().confidence());
+        assertEquals("ReplayFix deterministic RCA",
+                dashboard.rootCause().analysisType());
+        assertFalse(dashboard.rootCause().probableRootCause()
+                .contains("Deterministic analysis pending"));
+    }
+
+    private void stubDashboardEvidence(
+            UUID caseId,
+            ReplayCaseEntity replayCase,
+            List<EvidenceEntity> evidence
+    ) {
+        when(caseRepository.findById(caseId))
+                .thenReturn(Optional.of(replayCase));
+        when(evidenceRepository.findByCaseIdOrderByCreatedAtAsc(caseId))
+                .thenReturn(evidence);
+        when(evidenceRepository.findByCaseIdAndEvidenceType(
+                eq(caseId),
+                any(EvidenceType.class)
+        )).thenAnswer(invocation -> {
+            EvidenceType type = invocation.getArgument(1);
+            return evidence.stream()
+                    .filter(item -> item.getEvidenceType() == type)
+                    .toList();
+        });
     }
 
     private DashboardEvidenceCard card(

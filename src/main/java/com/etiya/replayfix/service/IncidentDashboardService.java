@@ -320,6 +320,179 @@ public class IncidentDashboardService {
         return Optional.empty();
     }
 
+    private Optional<Double> findDoubleField(
+            com.fasterxml.jackson.databind.JsonNode node,
+            String fieldName
+    ) {
+        if (node == null) {
+            return Optional.empty();
+        }
+
+        if (node.isObject()) {
+            com.fasterxml.jackson.databind.JsonNode value = node.get(fieldName);
+            if (value != null && value.isNumber()) {
+                return Optional.of(value.asDouble());
+            }
+
+            Iterator<com.fasterxml.jackson.databind.JsonNode> children =
+                    node.elements();
+            while (children.hasNext()) {
+                Optional<Double> childValue =
+                        findDoubleField(children.next(), fieldName);
+                if (childValue.isPresent()) {
+                    return childValue;
+                }
+            }
+        }
+
+        if (node.isArray()) {
+            for (com.fasterxml.jackson.databind.JsonNode child : node) {
+                Optional<Double> childValue =
+                        findDoubleField(child, fieldName);
+                if (childValue.isPresent()) {
+                    return childValue;
+                }
+            }
+        }
+
+        return Optional.empty();
+    }
+
+    private Optional<String> findTextField(
+            com.fasterxml.jackson.databind.JsonNode node,
+            String fieldName
+    ) {
+        if (node == null) {
+            return Optional.empty();
+        }
+
+        if (node.isObject()) {
+            com.fasterxml.jackson.databind.JsonNode value = node.get(fieldName);
+            if (value != null) {
+                if (value.isTextual()) {
+                    return Optional.of(value.asText());
+                }
+                if (value.isNumber() || value.isBoolean()) {
+                    return Optional.of(value.asText());
+                }
+                if (value.isArray() && !value.isEmpty()) {
+                    com.fasterxml.jackson.databind.JsonNode first = value.get(0);
+                    if (first.isTextual()) {
+                        return Optional.of(first.asText());
+                    }
+                    if (first.isObject()) {
+                        return findTextField(first, "statement")
+                                .or(() -> findTextField(first, "reason"))
+                                .or(() -> findTextField(first, "title"));
+                    }
+                }
+            }
+
+            Iterator<com.fasterxml.jackson.databind.JsonNode> children =
+                    node.elements();
+            while (children.hasNext()) {
+                Optional<String> childValue =
+                        findTextField(children.next(), fieldName);
+                if (childValue.isPresent()) {
+                    return childValue;
+                }
+            }
+        }
+
+        if (node.isArray()) {
+            for (com.fasterxml.jackson.databind.JsonNode child : node) {
+                Optional<String> childValue =
+                        findTextField(child, fieldName);
+                if (childValue.isPresent()) {
+                    return childValue;
+                }
+            }
+        }
+
+        return Optional.empty();
+    }
+
+    private List<String> findStringList(
+            com.fasterxml.jackson.databind.JsonNode node,
+            String fieldName
+    ) {
+        Optional<com.fasterxml.jackson.databind.JsonNode> value =
+                findField(node, fieldName);
+        if (value.isEmpty() || !value.get().isArray()) {
+            return List.of();
+        }
+
+        List<String> result = new ArrayList<>();
+        for (com.fasterxml.jackson.databind.JsonNode item : value.get()) {
+            if (item.isTextual()) {
+                result.add(sanitizeText(item.asText()));
+            } else if (item.isObject()) {
+                findTextField(item, "statement")
+                        .or(() -> findTextField(item, "reason"))
+                        .or(() -> findTextField(item, "title"))
+                        .map(this::sanitizeText)
+                        .ifPresent(result::add);
+            }
+        }
+        return result;
+    }
+
+    private Optional<com.fasterxml.jackson.databind.JsonNode> findField(
+            com.fasterxml.jackson.databind.JsonNode node,
+            String fieldName
+    ) {
+        if (node == null) {
+            return Optional.empty();
+        }
+
+        if (node.isObject()) {
+            com.fasterxml.jackson.databind.JsonNode value = node.get(fieldName);
+            if (value != null) {
+                return Optional.of(value);
+            }
+
+            Iterator<com.fasterxml.jackson.databind.JsonNode> children =
+                    node.elements();
+            while (children.hasNext()) {
+                Optional<com.fasterxml.jackson.databind.JsonNode> childValue =
+                        findField(children.next(), fieldName);
+                if (childValue.isPresent()) {
+                    return childValue;
+                }
+            }
+        }
+
+        if (node.isArray()) {
+            for (com.fasterxml.jackson.databind.JsonNode child : node) {
+                Optional<com.fasterxml.jackson.databind.JsonNode> childValue =
+                        findField(child, fieldName);
+                if (childValue.isPresent()) {
+                    return childValue;
+                }
+            }
+        }
+
+        return Optional.empty();
+    }
+
+    private boolean isDisabledRootCause(
+            com.fasterxml.jackson.databind.JsonNode node
+    ) {
+        Optional<String> status = findTextField(node, "status");
+        if (status.isPresent()
+                && "DISABLED".equalsIgnoreCase(status.get())) {
+            return true;
+        }
+
+        com.fasterxml.jackson.databind.JsonNode disabled = node.get("disabled");
+        if (disabled != null && disabled.isBoolean() && disabled.asBoolean()) {
+            return true;
+        }
+
+        com.fasterxml.jackson.databind.JsonNode enabled = node.get("enabled");
+        return enabled != null && enabled.isBoolean() && !enabled.asBoolean();
+    }
+
     private Optional<com.fasterxml.jackson.databind.JsonNode> readEvidenceJson(
             EvidenceEntity evidence
     ) {
@@ -396,16 +569,121 @@ public class IncidentDashboardService {
     }
 
     private RootCauseDashboardView buildRootCauseView(UUID caseId) {
+        Optional<RootCauseSummary> rovoRootCause =
+                buildRovoRootCauseSummary(caseId);
+        if (rovoRootCause.isPresent()) {
+            return rovoRootCause.get().toView();
+        }
+
+        Optional<RootCauseSummary> deterministicRootCause =
+                buildEvidenceRootCauseSummary(
+                        caseId,
+                        EvidenceType.DETERMINISTIC_ROOT_CAUSE,
+                        "ReplayFix deterministic RCA"
+                );
+        if (deterministicRootCause.isPresent()) {
+            return deterministicRootCause.get().toView();
+        }
+
+        Optional<RootCauseSummary> aiRootCause =
+                buildEvidenceRootCauseSummary(
+                        caseId,
+                        EvidenceType.AI_ROOT_CAUSE,
+                        "AI root-cause analysis"
+                );
+        if (aiRootCause.isPresent()) {
+            return aiRootCause.get().toView();
+        }
+
         return new RootCauseDashboardView(
-                "Deterministic analysis pending",
+                "Analysis pending",
                 "See evidence matrix",
                 0.0,
                 "LOW",
                 List.of(),
-                List.of("Review collected evidence", "Approve Jira preview"),
+                List.of("Review collected evidence"),
                 List.of(),
-                "Deterministic analysis"
+                "Analysis pending"
         );
+    }
+
+    private Optional<RootCauseSummary> buildRovoRootCauseSummary(UUID caseId) {
+        Optional<EvidenceEntity> evidence =
+                latestEvidence(caseId, EvidenceType.ROVO_RCA);
+        if (evidence.isEmpty()) {
+            return Optional.empty();
+        }
+
+        Optional<com.fasterxml.jackson.databind.JsonNode> json =
+                readEvidenceJson(evidence.get());
+        if (json.isEmpty()) {
+            return Optional.empty();
+        }
+
+        Optional<String> rootCause =
+                findTextField(json.get(), "probableRootCause");
+        if (rootCause.isEmpty() || rootCause.get().isBlank()) {
+            return Optional.empty();
+        }
+
+        double confidence = findDoubleField(json.get(), "confidence")
+                .orElse(evidence.get().getConfidence() != null
+                        ? evidence.get().getConfidence()
+                        : 0.0);
+
+        return Optional.of(new RootCauseSummary(
+                sanitizeText(rootCause.get()),
+                findTextField(json.get(), "impactedComponent")
+                        .map(this::sanitizeText)
+                        .orElse("See evidence matrix"),
+                confidence,
+                findStringList(json.get(), "competingHypotheses"),
+                findStringList(json.get(), "minimumFixDirection"),
+                findStringList(json.get(), "regressionTestHypothesis"),
+                "Rovo RCA enriched analysis"
+        ));
+    }
+
+    private Optional<RootCauseSummary> buildEvidenceRootCauseSummary(
+            UUID caseId,
+            EvidenceType type,
+            String analysisType
+    ) {
+        Optional<EvidenceEntity> evidence = latestEvidence(caseId, type);
+        if (evidence.isEmpty()) {
+            return Optional.empty();
+        }
+
+        Optional<com.fasterxml.jackson.databind.JsonNode> json =
+                readEvidenceJson(evidence.get());
+        if (json.isEmpty() || isDisabledRootCause(json.get())) {
+            return Optional.empty();
+        }
+
+        Optional<String> rootCause = findTextField(json.get(), "probableCause")
+                .or(() -> findTextField(json.get(), "probableRootCause"))
+                .or(() -> findTextField(json.get(), "rootCause"))
+                .or(() -> findTextField(json.get(), "summary"));
+        if (rootCause.isEmpty() || rootCause.get().isBlank()) {
+            return Optional.empty();
+        }
+
+        double confidence = findDoubleField(json.get(), "confidence")
+                .orElse(evidence.get().getConfidence() != null
+                        ? evidence.get().getConfidence()
+                        : 0.0);
+
+        return Optional.of(new RootCauseSummary(
+                sanitizeText(rootCause.get()),
+                findTextField(json.get(), "impactedComponent")
+                        .map(this::sanitizeText)
+                        .orElse("See evidence matrix"),
+                confidence,
+                findStringList(json.get(), "competingHypotheses"),
+                findStringList(json.get(), "minimumFixDirection"),
+                findStringList(json.get(), "regressionTestHypothesis"),
+                analysisType
+        ));
     }
 
     private RovoRcaDashboardView buildRovoRcaView(UUID caseId) {
@@ -809,5 +1087,37 @@ public class IncidentDashboardService {
             String displayName,
             Set<EvidenceType> types
     ) {
+    }
+
+    private record RootCauseSummary(
+            String probableRootCause,
+            String impactedComponent,
+            double confidence,
+            List<String> competingHypotheses,
+            List<String> recommendedFixDirection,
+            List<String> regressionTestHypothesis,
+            String analysisType
+    ) {
+        RootCauseDashboardView toView() {
+            return new RootCauseDashboardView(
+                    probableRootCause,
+                    impactedComponent,
+                    confidence,
+                    confidence >= 0.7
+                            ? "HIGH"
+                            : confidence >= 0.3 ? "MEDIUM" : "LOW",
+                    competingHypotheses != null
+                            ? competingHypotheses
+                            : List.of(),
+                    recommendedFixDirection != null
+                            && !recommendedFixDirection.isEmpty()
+                            ? recommendedFixDirection
+                            : List.of("Review current RCA evidence"),
+                    regressionTestHypothesis != null
+                            ? regressionTestHypothesis
+                            : List.of(),
+                    analysisType
+            );
+        }
     }
 }

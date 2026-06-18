@@ -53,7 +53,7 @@ public class JiraEvidenceSnapshotBuilder {
         List<EvidenceEntity> evidenceList = evidenceRepository.findByCaseIdOrderByCreatedAtAsc(caseId);
 
         List<String> warnings = new ArrayList<>();
-        List<JiraEvidenceMatrixItem> evidenceMatrix = new ArrayList<>();
+        List<JiraEvidenceMatrixItem> evidenceMatrix;
 
         String businessImpact = null;
         String technicalSymptom = null;
@@ -67,18 +67,16 @@ public class JiraEvidenceSnapshotBuilder {
         List<String> missingEvidence = new ArrayList<>();
         String recommendedNextAction = null;
 
-        for (EvidenceEntity evidence : evidenceList) {
-            processEvidence(evidence, evidenceMatrix, warnings);
-        }
+        evidenceMatrix = buildEvidenceQualityMatrix(evidenceList);
 
         if (evidenceList.stream().noneMatch(item ->
                 item.getEvidenceType() == EvidenceType.JIRA_ISSUE)) {
             missingEvidence.add("Jira issue details not collected");
         }
 
-        businessImpact = "Evidence collected for "
-                + caseEntity.getJiraKey()
-                + " from ReplayFix case records.";
+        businessImpact = caseEntity.getTargetKey() != null
+                ? caseEntity.getTargetKey()
+                : "See case target";
         technicalSymptom = buildTechnicalSymptom(evidenceList);
         affectedFlow = findFirstTextInEvidence(
                 evidenceList,
@@ -182,6 +180,56 @@ public class JiraEvidenceSnapshotBuilder {
 
         String source = evidence.getSource();
         return source == null ? "UNKNOWN" : source.toUpperCase();
+    }
+
+    private List<SnapshotEvidenceGroup> snapshotEvidenceGroups() {
+        return List.of(
+                new SnapshotEvidenceGroup(
+                        "JIRA",
+                        List.of(EvidenceType.JIRA_ISSUE)
+                ),
+                new SnapshotEvidenceGroup(
+                        "BITBUCKET",
+                        List.of(
+                                EvidenceType.REPOSITORY_RESOLUTION,
+                                EvidenceType.INCIDENT_VERSION
+                        )
+                ),
+                new SnapshotEvidenceGroup(
+                        "JENKINS",
+                        List.of(EvidenceType.JENKINS_BUILD_CONTEXT)
+                ),
+                new SnapshotEvidenceGroup(
+                        "LOKI",
+                        List.of(
+                                EvidenceType.LOKI_QUERY_PLAN,
+                                EvidenceType.LOKI_LOG,
+                                EvidenceType.LOKI_LOGS,
+                                EvidenceType.LOKI_CORRELATION_SIGNALS,
+                                EvidenceType.LOKI_SECOND_PASS,
+                                EvidenceType.INCIDENT_TIMELINE
+                        )
+                ),
+                new SnapshotEvidenceGroup(
+                        "TEMPO",
+                        List.of(EvidenceType.TEMPO_ENRICHMENT)
+                ),
+                new SnapshotEvidenceGroup(
+                        "SOURCE_CONTEXT",
+                        List.of(EvidenceType.SOURCE_CONTEXT)
+                ),
+                new SnapshotEvidenceGroup(
+                        "REPLAYFIX",
+                        List.of(
+                                EvidenceType.AI_INPUT_BUNDLE,
+                                EvidenceType.DETERMINISTIC_ROOT_CAUSE,
+                                EvidenceType.AI_ROOT_CAUSE,
+                                EvidenceType.ROVO_RCA,
+                                EvidenceType.REGRESSION_TEST_HYPOTHESIS,
+                                EvidenceType.FAILING_REGRESSION_TEST_DRAFT
+                        )
+                )
+        );
     }
 
     private EvidenceAvailability determineAvailability(EvidenceEntity evidence) {
@@ -376,15 +424,63 @@ public class JiraEvidenceSnapshotBuilder {
         List<String> chain = new ArrayList<>();
 
         findEvidence(evidenceList, EvidenceType.REPOSITORY_RESOLUTION)
-                .ifPresent(item -> chain.add(extractKeyFinding(item)));
+                .flatMap(item -> findText(
+                        readEvidenceJson(item),
+                        "repository",
+                        "repositoryFullName",
+                        "repo"
+                ))
+                .ifPresent(value -> chain.add("Repository: " + value));
+        findEvidence(evidenceList, EvidenceType.REPOSITORY_RESOLUTION)
+                .flatMap(item -> findText(
+                        readEvidenceJson(item),
+                        "branch",
+                        "targetBranch"
+                ))
+                .ifPresent(value -> chain.add("Branch: " + value));
         findEvidence(evidenceList, EvidenceType.JENKINS_BUILD_CONTEXT)
-                .ifPresent(item -> chain.add(extractKeyFinding(item)));
+                .ifPresent(item -> chain.add(
+                        "Jenkins Build: "
+                                + findText(
+                                readEvidenceJson(item),
+                                "jobName",
+                                "job"
+                        ).orElse("resolved")
+                                + findText(
+                                readEvidenceJson(item),
+                                "buildNumber",
+                                "build"
+                        ).map(value -> " #" + value).orElse("")
+                ));
         findEvidence(evidenceList, EvidenceType.INCIDENT_VERSION)
-                .ifPresent(item -> chain.add(extractKeyFinding(item)));
+                .ifPresent(item -> chain.add(
+                        "Incident Version: "
+                                + findText(
+                                readEvidenceJson(item),
+                                "exactMatch",
+                                "matched",
+                                "commitShaMatches"
+                        ).filter("true"::equalsIgnoreCase)
+                                .map(value -> "verified")
+                                .orElse("collected")
+                ));
         findEvidence(evidenceList, EvidenceType.DETERMINISTIC_ROOT_CAUSE)
-                .ifPresent(item -> chain.add("Deterministic RCA status: available"));
+                .flatMap(item -> findText(
+                        readEvidenceJson(item),
+                        "status",
+                        "rcaStatus"
+                ))
+                .ifPresent(value -> chain.add("Deterministic RCA Status: " + value));
         findEvidence(evidenceList, EvidenceType.ROVO_RCA)
-                .ifPresent(item -> chain.add("Rovo RCA imported"));
+                .flatMap(item -> findText(
+                        readEvidenceJson(item),
+                        "rcaStatus",
+                        "status"
+                ))
+                .ifPresentOrElse(
+                        value -> chain.add("RCA Status: " + value),
+                        () -> chain.add("Rovo RCA imported")
+                );
         findEvidence(evidenceList, EvidenceType.REGRESSION_TEST_HYPOTHESIS)
                 .ifPresent(item -> chain.add("Regression test hypothesis generated"));
 
@@ -394,32 +490,44 @@ public class JiraEvidenceSnapshotBuilder {
     }
 
     private Optional<String> findProbableRootCause(List<EvidenceEntity> evidenceList) {
-        return latestEvidence(evidenceList, EvidenceType.DETERMINISTIC_ROOT_CAUSE)
+        return latestEvidence(evidenceList, EvidenceType.ROVO_RCA)
                 .flatMap(item -> findText(
                         readEvidenceJson(item),
-                        "probableRootCause",
-                        "rootCause",
-                        "summary"
+                        "probableRootCause"
                 ))
-                .or(() -> latestEvidence(evidenceList, EvidenceType.ROVO_RCA)
+                .or(() -> latestEvidence(evidenceList, EvidenceType.DETERMINISTIC_ROOT_CAUSE)
+                        .flatMap(item -> findText(
+                                readEvidenceJson(item),
+                                "probableCause",
+                                "probableRootCause",
+                                "rootCause",
+                                "summary"
+                        )))
+                .or(() -> latestEvidence(evidenceList, EvidenceType.AI_ROOT_CAUSE)
                         .flatMap(item -> findText(
                                 readEvidenceJson(item),
                                 "probableRootCause",
-                                "rawHumanReport"
+                                "rootCause",
+                                "summary"
                         )));
     }
 
     private Optional<Double> findRootCauseConfidence(List<EvidenceEntity> evidenceList) {
-        return latestEvidence(evidenceList, EvidenceType.DETERMINISTIC_ROOT_CAUSE)
+        return latestEvidence(evidenceList, EvidenceType.ROVO_RCA)
                 .map(EvidenceEntity::getConfidence)
+                .or(() -> latestEvidence(evidenceList, EvidenceType.ROVO_RCA)
+                        .flatMap(item -> findDouble(
+                                readEvidenceJson(item),
+                                "confidence"
+                        )))
+                .or(() -> latestEvidence(evidenceList, EvidenceType.DETERMINISTIC_ROOT_CAUSE)
+                        .map(EvidenceEntity::getConfidence))
                 .or(() -> latestEvidence(evidenceList, EvidenceType.DETERMINISTIC_ROOT_CAUSE)
                         .flatMap(item -> findDouble(
                                 readEvidenceJson(item),
                                 "confidence"
                         )))
-                .or(() -> latestEvidence(evidenceList, EvidenceType.ROVO_RCA)
-                        .map(EvidenceEntity::getConfidence))
-                .or(() -> latestEvidence(evidenceList, EvidenceType.ROVO_RCA)
+                .or(() -> latestEvidence(evidenceList, EvidenceType.AI_ROOT_CAUSE)
                         .flatMap(item -> findDouble(
                                 readEvidenceJson(item),
                                 "confidence"
@@ -427,15 +535,20 @@ public class JiraEvidenceSnapshotBuilder {
     }
 
     private List<String> buildRegressionHypothesis(List<EvidenceEntity> evidenceList) {
-        return latestEvidence(evidenceList, EvidenceType.REGRESSION_TEST_HYPOTHESIS)
-                .flatMap(item -> findText(
-                        readEvidenceJson(item),
-                        "failingScenario",
-                        "targetFlow",
-                        "testType"
-                ))
-                .map(List::of)
-                .orElseGet(List::of);
+        Optional<EvidenceEntity> evidence =
+                latestEvidence(evidenceList, EvidenceType.REGRESSION_TEST_HYPOTHESIS);
+        if (evidence.isEmpty()) {
+            return List.of();
+        }
+
+        Optional<JsonNode> json = readEvidenceJson(evidence.get());
+        List<String> result = new ArrayList<>();
+        findText(json, "targetFlow")
+                .ifPresent(value -> result.add("Target flow: " + value));
+        findText(json, "failingScenario")
+                .ifPresent(value -> result.add("Scenario: " + value));
+        result.add("Human validation required before writing or executing a test.");
+        return result;
     }
 
     private List<String> buildMinimumFixDirection(List<EvidenceEntity> evidenceList) {
@@ -499,6 +612,72 @@ public class JiraEvidenceSnapshotBuilder {
         } catch (Exception ignored) {
             return Optional.empty();
         }
+    }
+
+    private List<JiraEvidenceMatrixItem> buildEvidenceQualityMatrix(
+            List<EvidenceEntity> evidenceList
+    ) {
+        List<JiraEvidenceMatrixItem> matrix = new ArrayList<>();
+
+        for (SnapshotEvidenceGroup group : snapshotEvidenceGroups()) {
+            List<EvidenceEntity> groupEvidence = evidenceList.stream()
+                    .filter(item -> group.types().contains(item.getEvidenceType()))
+                    .toList();
+
+            EvidenceAvailability status = groupEvidence.isEmpty()
+                    ? EvidenceAvailability.UNAVAILABLE
+                    : groupEvidence.stream().anyMatch(item ->
+                    determineAvailability(item) == EvidenceAvailability.PROBABLE)
+                    ? EvidenceAvailability.PROBABLE
+                    : EvidenceAvailability.CONFIRMED;
+
+            EvidenceEntity latest = groupEvidence.stream()
+                    .max(Comparator.comparing(
+                            EvidenceEntity::getCreatedAt,
+                            Comparator.nullsFirst(Comparator.naturalOrder())
+                    ))
+                    .orElse(null);
+
+            matrix.add(new JiraEvidenceMatrixItem(
+                    group.source(),
+                    status,
+                    buildEvidenceQualityFinding(group.source(), status),
+                    status == EvidenceAvailability.CONFIRMED
+                            ? "High"
+                            : status == EvidenceAvailability.PROBABLE
+                            ? "Medium"
+                            : "N/A",
+                    groupEvidence.stream()
+                            .map(item -> item.getEvidenceType().name())
+                            .distinct()
+                            .reduce((left, right) -> left + "," + right)
+                            .orElse("NONE"),
+                    latest != null ? latest.getSource() : null,
+                    latest != null ? latest.getId().toString() : null
+            ));
+        }
+
+        return matrix;
+    }
+
+    private String buildEvidenceQualityFinding(
+            String source,
+            EvidenceAvailability status
+    ) {
+        if (status == EvidenceAvailability.UNAVAILABLE) {
+            return "No evidence record found.";
+        }
+        if ("LOKI".equals(source) && status == EvidenceAvailability.PROBABLE) {
+            return "Evidence exists but matched rows are weak or zero.";
+        }
+        if ("TEMPO".equals(source) && status == EvidenceAvailability.PROBABLE) {
+            return "Evidence exists but no trace was found.";
+        }
+        if ("SOURCE_CONTEXT".equals(source)
+                && status == EvidenceAvailability.PROBABLE) {
+            return "Evidence exists but no matched file was found.";
+        }
+        return "Evidence record exists.";
     }
 
     private Optional<String> findText(Optional<JsonNode> node, String... fieldNames) {
@@ -673,5 +852,11 @@ public class JiraEvidenceSnapshotBuilder {
             }
         }
         return null;
+    }
+
+    private record SnapshotEvidenceGroup(
+            String source,
+            List<EvidenceType> types
+    ) {
     }
 }
