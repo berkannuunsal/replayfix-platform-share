@@ -5,6 +5,7 @@ import com.etiya.replayfix.domain.EvidenceType;
 import com.etiya.replayfix.domain.ReplayCaseEntity;
 import com.etiya.replayfix.model.SuspectSignalCategory;
 import com.etiya.replayfix.model.SuspectSignalExtractionResponse;
+import com.etiya.replayfix.model.SuspectSignalStrength;
 import com.etiya.replayfix.model.SuspectSourceSignal;
 import com.etiya.replayfix.repository.EvidenceRepository;
 import com.etiya.replayfix.repository.ReplayCaseRepository;
@@ -49,12 +50,59 @@ public class SuspectSignalExtractionService {
             "billing",
             "business",
             "flow",
+            "gl",
+            "i2i",
             "mismatch",
             "province",
             "region",
             "tax",
             "timezone",
             "user"
+    );
+
+    private static final Set<String> KNOWN_DOMAIN_TERMS = Set.of(
+            "billingaccount",
+            "businessflow",
+            "gl",
+            "i2i",
+            "initialize",
+            "preferredprovince",
+            "province",
+            "provincemismatch",
+            "region",
+            "taxinfo",
+            "timezone",
+            "update"
+    );
+
+    private static final Set<String> STRONG_TECHNICAL_TOKENS = Set.of(
+            "businessflow",
+            "billingaccount",
+            "gl",
+            "i2i",
+            "initialize",
+            "preferredprovince",
+            "region",
+            "regionupdate",
+            "taxinfo",
+            "timezone",
+            "user"
+    );
+
+    private static final Set<String> FILLER_WORDS = Set.of(
+            "account ya da",
+            "edilirken",
+            "description",
+            "icin",
+            "ile",
+            "mevcut",
+            "olan",
+            "selamlar",
+            "sirasinda",
+            "var",
+            "ve",
+            "ya",
+            "ya da"
     );
 
     private final ReplayCaseRepository caseRepository;
@@ -73,6 +121,14 @@ public class SuspectSignalExtractionService {
 
     @Transactional(readOnly = true)
     public SuspectSignalExtractionResponse extract(UUID caseId) {
+        return extract(caseId, false);
+    }
+
+    @Transactional(readOnly = true)
+    public SuspectSignalExtractionResponse extract(
+            UUID caseId,
+            boolean includeWeak
+    ) {
         ReplayCaseEntity caseEntity = caseRepository.findById(caseId)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Case not found: " + caseId
@@ -81,13 +137,13 @@ public class SuspectSignalExtractionService {
         List<EvidenceEntity> evidenceList =
                 evidenceRepository.findByCaseIdOrderByCreatedAtAsc(caseId);
 
-        Map<String, SignalAccumulator> signals = new LinkedHashMap<>();
+        ExtractionContext context = new ExtractionContext(includeWeak);
         List<String> warnings = new ArrayList<>();
 
         Optional<EvidenceEntity> rovoEvidence =
                 latest(evidenceList, EvidenceType.ROVO_RCA);
         if (rovoEvidence.isPresent()) {
-            extractFromRovo(rovoEvidence.get(), signals);
+            extractFromRovo(rovoEvidence.get(), context);
         } else if (hasAnyRelevantEvidence(evidenceList)) {
             warnings.add(
                     "ROVO_RCA evidence not found; signals were extracted from other case evidence."
@@ -95,11 +151,11 @@ public class SuspectSignalExtractionService {
         }
 
         latest(evidenceList, EvidenceType.DETERMINISTIC_ROOT_CAUSE)
-                .ifPresent(evidence -> extractFromEvidence(evidence, signals));
+                .ifPresent(evidence -> extractFromEvidence(evidence, context));
         latest(evidenceList, EvidenceType.AI_INPUT_BUNDLE)
-                .ifPresent(evidence -> extractFromEvidence(evidence, signals));
+                .ifPresent(evidence -> extractFromEvidence(evidence, context));
         latest(evidenceList, EvidenceType.JIRA_ISSUE)
-                .ifPresent(evidence -> extractFromEvidence(evidence, signals));
+                .ifPresent(evidence -> extractFromEvidence(evidence, context));
 
         RepositoryContext repositoryContext =
                 repositoryContext(caseEntity, evidenceList);
@@ -109,21 +165,22 @@ public class SuspectSignalExtractionService {
                 caseEntity.getJiraKey(),
                 repositoryContext.repository(),
                 repositoryContext.branch(),
-                signals.values()
+                context.signals().values()
                         .stream()
                         .map(SignalAccumulator::toSignal)
                         .toList(),
+                context.filteredCount(),
                 warnings
         );
     }
 
     private void extractFromRovo(
             EvidenceEntity evidence,
-            Map<String, SignalAccumulator> signals
+            ExtractionContext context
     ) {
         Optional<JsonNode> json = readJson(evidence);
         if (json.isEmpty()) {
-            extractFromEvidence(evidence, signals);
+            extractFromEvidence(evidence, context);
             return;
         }
 
@@ -134,14 +191,14 @@ public class SuspectSignalExtractionService {
             extractFromText(
                     collectText(normalized),
                     evidence.getEvidenceType(),
-                    signals,
+                    context,
                     "Signal from Rovo RCA normalized JSON"
             );
         } else {
             extractFromText(
                     collectText(envelope),
                     evidence.getEvidenceType(),
-                    signals,
+                    context,
                     "Signal from Rovo RCA JSON"
             );
         }
@@ -151,7 +208,7 @@ public class SuspectSignalExtractionService {
             extractFromText(
                     rawHumanReport.asText(),
                     evidence.getEvidenceType(),
-                    signals,
+                    context,
                     "Signal from Rovo RCA human report"
             );
         }
@@ -159,7 +216,7 @@ public class SuspectSignalExtractionService {
 
     private void extractFromEvidence(
             EvidenceEntity evidence,
-            Map<String, SignalAccumulator> signals
+            ExtractionContext context
     ) {
         String text = readJson(evidence)
                 .map(this::collectText)
@@ -171,7 +228,7 @@ public class SuspectSignalExtractionService {
         extractFromText(
                 text,
                 evidence.getEvidenceType(),
-                signals,
+                context,
                 "Signal from " + evidence.getEvidenceType()
         );
     }
@@ -179,20 +236,20 @@ public class SuspectSignalExtractionService {
     private void extractFromText(
             String text,
             EvidenceType evidenceType,
-            Map<String, SignalAccumulator> signals,
+            ExtractionContext context,
             String reason
     ) {
         if (text == null || text.isBlank()) {
             return;
         }
 
-        extractEndpoints(text, evidenceType, signals, reason);
+        extractEndpoints(text, evidenceType, context, reason);
         extractPattern(
                 text,
                 CONSTANT_PATTERN,
                 SuspectSignalCategory.CONSTANT,
                 evidenceType,
-                signals,
+                context,
                 reason
         );
         extractPattern(
@@ -200,7 +257,7 @@ public class SuspectSignalExtractionService {
                 SNAKE_PATTERN,
                 SuspectSignalCategory.BUSINESS_TERM,
                 evidenceType,
-                signals,
+                context,
                 reason
         );
         extractPattern(
@@ -208,7 +265,7 @@ public class SuspectSignalExtractionService {
                 KEBAB_PATTERN,
                 SuspectSignalCategory.BUSINESS_TERM,
                 evidenceType,
-                signals,
+                context,
                 reason
         );
         extractPattern(
@@ -216,7 +273,7 @@ public class SuspectSignalExtractionService {
                 CAMEL_PATTERN,
                 SuspectSignalCategory.BUSINESS_TERM,
                 evidenceType,
-                signals,
+                context,
                 reason
         );
         extractPattern(
@@ -224,17 +281,18 @@ public class SuspectSignalExtractionService {
                 PASCAL_PATTERN,
                 SuspectSignalCategory.BUSINESS_TERM,
                 evidenceType,
-                signals,
+                context,
                 reason
         );
-        extractBusinessTerms(text, evidenceType, signals, reason);
-        extractKeywordTerms(text, evidenceType, signals, reason);
+        extractBusinessTerms(text, evidenceType, context, reason);
+        extractKeywordTerms(text, evidenceType, context, reason);
+        extractKnownTechnicalTokens(text, evidenceType, context, reason);
     }
 
     private void extractEndpoints(
             String text,
             EvidenceType evidenceType,
-            Map<String, SignalAccumulator> signals,
+            ExtractionContext context,
             String reason
     ) {
         Matcher matcher = ENDPOINT_PATTERN.matcher(text);
@@ -243,8 +301,9 @@ public class SuspectSignalExtractionService {
             addSignal(
                     endpoint,
                     SuspectSignalCategory.ENDPOINT,
+                    SuspectSignalStrength.STRONG,
                     evidenceType,
-                    signals,
+                    context,
                     reason
             );
 
@@ -253,11 +312,12 @@ public class SuspectSignalExtractionService {
                 addSignal(
                         segment,
                         SuspectSignalCategory.VARIANT,
+                        endpointSegmentStrength(segment),
                         evidenceType,
-                        signals,
+                        context,
                         "Endpoint segment from " + endpoint
                 );
-                addVariants(segment, evidenceType, signals, endpoint);
+                addVariants(segment, evidenceType, context, endpoint);
             }
 
             if (segments.size() >= 2) {
@@ -266,13 +326,40 @@ public class SuspectSignalExtractionService {
                         segments.size()
                 );
                 addSignal(
+                        toCamelCase(tail),
+                        SuspectSignalCategory.VARIANT,
+                        SuspectSignalStrength.STRONG,
+                        evidenceType,
+                        context,
+                        "Endpoint operation variant from " + endpoint
+                );
+                addSignal(
                         toPascalCase(tail),
                         SuspectSignalCategory.VARIANT,
+                        SuspectSignalStrength.STRONG,
                         evidenceType,
-                        signals,
+                        context,
                         "Endpoint operation variant from " + endpoint
                 );
             }
+        }
+
+        Matcher singleEndpointMatcher =
+                Pattern.compile("(?<!:)\\/[A-Za-z][A-Za-z0-9_{}-]+\\b")
+                        .matcher(text);
+        while (singleEndpointMatcher.find()) {
+            String endpoint = cleanToken(singleEndpointMatcher.group());
+            if (endpoint.contains("//")) {
+                continue;
+            }
+            addSignal(
+                    endpoint,
+                    SuspectSignalCategory.ENDPOINT,
+                    SuspectSignalStrength.STRONG,
+                    evidenceType,
+                    context,
+                    reason
+            );
         }
     }
 
@@ -281,47 +368,59 @@ public class SuspectSignalExtractionService {
             Pattern pattern,
             SuspectSignalCategory category,
             EvidenceType evidenceType,
-            Map<String, SignalAccumulator> signals,
+            ExtractionContext context,
             String reason
     ) {
         Matcher matcher = pattern.matcher(text);
         while (matcher.find()) {
             String value = cleanToken(matcher.group());
             if (!isUsefulSignal(value)) {
+                context.incrementFilteredCount();
                 continue;
             }
-            addSignal(value, category, evidenceType, signals, reason);
-            addVariants(value, evidenceType, signals, value);
+            SuspectSignalStrength strength = strength(value, category);
+            addSignal(value, category, strength, evidenceType, context, reason);
+            if (shouldGenerateVariants(value, strength)) {
+                addVariants(value, evidenceType, context, value);
+            }
         }
     }
 
     private void extractBusinessTerms(
             String text,
             EvidenceType evidenceType,
-            Map<String, SignalAccumulator> signals,
+            ExtractionContext context,
             String reason
     ) {
         Matcher matcher = BUSINESS_TERM_PATTERN.matcher(text.toLowerCase(Locale.ROOT));
         while (matcher.find()) {
             String value = matcher.group().trim();
-            if (!containsBusinessKeyword(value)) {
+            if (!containsBusinessKeyword(value) || isFillerPhrase(value)) {
+                context.incrementFilteredCount();
                 continue;
             }
+            SuspectSignalStrength strength = strength(
+                    value,
+                    SuspectSignalCategory.BUSINESS_TERM
+            );
             addSignal(
                     value,
                     SuspectSignalCategory.BUSINESS_TERM,
+                    strength,
                     evidenceType,
-                    signals,
+                    context,
                     reason
             );
-            addVariants(value, evidenceType, signals, value);
+            if (shouldGenerateVariants(value, strength)) {
+                addVariants(value, evidenceType, context, value);
+            }
         }
     }
 
     private void extractKeywordTerms(
             String text,
             EvidenceType evidenceType,
-            Map<String, SignalAccumulator> signals,
+            ExtractionContext context,
             String reason
     ) {
         List<String> words = normalizedWords(text);
@@ -331,11 +430,12 @@ public class SuspectSignalExtractionService {
                 addSignal(
                         word,
                         SuspectSignalCategory.BUSINESS_TERM,
+                        strength(word, SuspectSignalCategory.BUSINESS_TERM),
                         evidenceType,
-                        signals,
+                        context,
                         reason
                 );
-                addVariants(word, evidenceType, signals, word);
+                addVariants(word, evidenceType, context, word);
             }
         }
 
@@ -343,25 +443,63 @@ public class SuspectSignalExtractionService {
             for (int index = 0; index + size <= words.size(); index++) {
                 List<String> phraseWords = words.subList(index, index + size);
                 String phrase = String.join(" ", phraseWords);
-                if (!containsBusinessKeyword(phrase)) {
+                if (!containsBusinessKeyword(phrase) || isFillerPhrase(phrase)) {
+                    context.incrementFilteredCount();
                     continue;
                 }
+                SuspectSignalStrength strength = strength(
+                        phrase,
+                        SuspectSignalCategory.BUSINESS_TERM
+                );
                 addSignal(
                         phrase,
                         SuspectSignalCategory.BUSINESS_TERM,
+                        strength,
                         evidenceType,
-                        signals,
+                        context,
                         reason
                 );
-                addVariants(phrase, evidenceType, signals, phrase);
+                if (shouldGenerateVariants(phrase, strength)) {
+                    addVariants(phrase, evidenceType, context, phrase);
+                }
             }
+        }
+    }
+
+    private void extractKnownTechnicalTokens(
+            String text,
+            EvidenceType evidenceType,
+            ExtractionContext context,
+            String reason
+    ) {
+        Matcher matcher = Pattern.compile(
+                        "\\b(?:GL|i2i)\\b",
+                        Pattern.CASE_INSENSITIVE
+                )
+                .matcher(text);
+        while (matcher.find()) {
+            String value = matcher.group();
+            if ("gl".equalsIgnoreCase(value)) {
+                value = "GL";
+            } else if ("i2i".equalsIgnoreCase(value)) {
+                value = "i2i";
+            }
+
+            addSignal(
+                    value,
+                    SuspectSignalCategory.BUSINESS_TERM,
+                    strength(value, SuspectSignalCategory.BUSINESS_TERM),
+                    evidenceType,
+                    context,
+                    reason
+            );
         }
     }
 
     private void addVariants(
             String value,
             EvidenceType evidenceType,
-            Map<String, SignalAccumulator> signals,
+            ExtractionContext context,
             String base
     ) {
         List<String> words = words(value);
@@ -381,8 +519,9 @@ public class SuspectSignalExtractionService {
                 addSignal(
                         variant,
                         SuspectSignalCategory.VARIANT,
+                        variantStrength(variant),
                         evidenceType,
-                        signals,
+                        context,
                         "Search variant of " + base
                 );
             }
@@ -392,24 +531,44 @@ public class SuspectSignalExtractionService {
     private void addSignal(
             String value,
             SuspectSignalCategory category,
+            SuspectSignalStrength strength,
             EvidenceType evidenceType,
-            Map<String, SignalAccumulator> signals,
+            ExtractionContext context,
             String reason
     ) {
         if (value == null || value.isBlank() || !isUsefulSignal(value)) {
+            context.incrementFilteredCount();
             return;
         }
 
         String cleaned = cleanToken(value);
         if (cleaned.isBlank()) {
+            context.incrementFilteredCount();
+            return;
+        }
+
+        if (isFillerPhrase(cleaned)) {
+            context.incrementFilteredCount();
+            return;
+        }
+
+        if (strength == SuspectSignalStrength.WEAK && !context.includeWeak()) {
+            context.incrementFilteredCount();
             return;
         }
 
         String key = signalKey(cleaned, category);
-        signals.computeIfAbsent(
+        SignalAccumulator accumulator = context.signals().computeIfAbsent(
                 key,
-                ignored -> new SignalAccumulator(cleaned, category, reason)
-        ).addEvidenceType(evidenceType);
+                ignored -> new SignalAccumulator(
+                        cleaned,
+                        category,
+                        strength,
+                        reason
+                )
+        );
+        accumulator.promoteStrength(strength);
+        accumulator.addEvidenceType(evidenceType);
     }
 
     private String signalKey(String value, SuspectSignalCategory category) {
@@ -418,6 +577,143 @@ public class SuspectSignalExtractionService {
             return category + ":" + value.toLowerCase(Locale.ROOT);
         }
         return category + ":" + value;
+    }
+
+    private SuspectSignalStrength strength(
+            String value,
+            SuspectSignalCategory category
+    ) {
+        String normalized = normalizeSignal(value);
+
+        if (category == SuspectSignalCategory.ENDPOINT
+                || category == SuspectSignalCategory.CONSTANT) {
+            return SuspectSignalStrength.STRONG;
+        }
+
+        if (category == SuspectSignalCategory.BUSINESS_TERM
+                && value.contains(" ")
+                && STRONG_TECHNICAL_TOKENS.contains(normalized)) {
+            return SuspectSignalStrength.MEDIUM;
+        }
+
+        if (STRONG_TECHNICAL_TOKENS.contains(normalized)) {
+            return SuspectSignalStrength.STRONG;
+        }
+
+        if (KNOWN_DOMAIN_TERMS.contains(normalized)
+                || containsStrongTechnicalToken(value)) {
+            return SuspectSignalStrength.MEDIUM;
+        }
+
+        if (!value.contains(" ") && containsBusinessKeyword(value)) {
+            return SuspectSignalStrength.MEDIUM;
+        }
+
+        if (value.contains(" ") && containsBusinessKeyword(value)) {
+            return SuspectSignalStrength.WEAK;
+        }
+
+        return SuspectSignalStrength.WEAK;
+    }
+
+    private SuspectSignalStrength endpointSegmentStrength(String value) {
+        String normalized = normalizeSignal(value);
+        if (STRONG_TECHNICAL_TOKENS.contains(normalized)
+                || "businessflow".equals(normalized)
+                || "initialize".equals(normalized)) {
+            return SuspectSignalStrength.STRONG;
+        }
+        return SuspectSignalStrength.MEDIUM;
+    }
+
+    private SuspectSignalStrength variantStrength(String value) {
+        String normalized = normalizeSignal(value);
+        if (STRONG_TECHNICAL_TOKENS.contains(normalized)
+                || Character.isUpperCase(value.charAt(0))
+                || value.contains("_")
+                || value.contains("-")) {
+            return SuspectSignalStrength.STRONG;
+        }
+        return SuspectSignalStrength.MEDIUM;
+    }
+
+    private boolean shouldGenerateVariants(
+            String value,
+            SuspectSignalStrength strength
+    ) {
+        return strength != SuspectSignalStrength.WEAK
+                && !isFillerPhrase(value)
+                && (isKnownDomainTerm(value)
+                || containsStrongTechnicalToken(value)
+                || value.contains("_")
+                || value.contains("-")
+                || hasCaseBoundary(value)
+                || value.contains(" "));
+    }
+
+    private boolean isKnownDomainTerm(String value) {
+        return KNOWN_DOMAIN_TERMS.contains(normalizeSignal(value));
+    }
+
+    private boolean containsStrongTechnicalToken(String value) {
+        for (String word : words(value)) {
+            if (STRONG_TECHNICAL_TOKENS.contains(word)
+                    || KNOWN_DOMAIN_TERMS.contains(word)) {
+                return true;
+            }
+        }
+        return STRONG_TECHNICAL_TOKENS.contains(normalizeSignal(value));
+    }
+
+    private boolean hasCaseBoundary(String value) {
+        return Pattern.compile("[a-z0-9][A-Z]").matcher(value).find();
+    }
+
+    private boolean isFillerPhrase(String value) {
+        String lower = " " + foldTurkish(value)
+                .toLowerCase(Locale.ROOT)
+                .trim() + " ";
+
+        for (String filler : FILLER_WORDS) {
+            if (filler.contains(" ")) {
+                if (lower.contains(" " + filler + " ")) {
+                    return true;
+                }
+            } else if (lower.contains(" " + filler + " ")) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private String foldTurkish(String value) {
+        return value == null
+                ? ""
+                : value
+                .replace('\u00e7', 'c')
+                .replace('\u00c7', 'C')
+                .replace('\u011f', 'g')
+                .replace('\u011e', 'G')
+                .replace('\u0131', 'i')
+                .replace('\u0130', 'I')
+                .replace('\u00f6', 'o')
+                .replace('\u00d6', 'O')
+                .replace('\u015f', 's')
+                .replace('\u015e', 'S')
+                .replace('\u00fc', 'u')
+                .replace('\u00dc', 'U');
+    }
+
+    private String normalizeSignal(String value) {
+        return cleanToken(value)
+                .replaceAll("([a-z0-9])([A-Z])", "$1 $2")
+                .replace('_', ' ')
+                .replace('-', ' ')
+                .replaceAll("\\s+", " ")
+                .trim()
+                .replace(" ", "")
+                .toLowerCase(Locale.ROOT);
     }
 
     private Optional<EvidenceEntity> latest(
@@ -599,6 +895,9 @@ public class SuspectSignalExtractionService {
             return false;
         }
         String cleaned = cleanToken(value);
+        if ("GL".equals(cleaned) || "i2i".equalsIgnoreCase(cleaned)) {
+            return true;
+        }
         if (cleaned.length() < 3) {
             return false;
         }
@@ -695,20 +994,56 @@ public class SuspectSignalExtractionService {
     ) {
     }
 
+    private static final class ExtractionContext {
+        private final boolean includeWeak;
+        private final Map<String, SignalAccumulator> signals =
+                new LinkedHashMap<>();
+        private int filteredCount;
+
+        private ExtractionContext(boolean includeWeak) {
+            this.includeWeak = includeWeak;
+        }
+
+        private boolean includeWeak() {
+            return includeWeak;
+        }
+
+        private Map<String, SignalAccumulator> signals() {
+            return signals;
+        }
+
+        private int filteredCount() {
+            return filteredCount;
+        }
+
+        private void incrementFilteredCount() {
+            filteredCount++;
+        }
+    }
+
     private static final class SignalAccumulator {
         private final String value;
         private final SuspectSignalCategory category;
+        private SuspectSignalStrength strength;
         private final Set<String> sourceEvidenceTypes = new LinkedHashSet<>();
         private final String reason;
 
         private SignalAccumulator(
                 String value,
                 SuspectSignalCategory category,
+                SuspectSignalStrength strength,
                 String reason
         ) {
             this.value = value;
             this.category = category;
+            this.strength = strength;
             this.reason = reason;
+        }
+
+        private void promoteStrength(SuspectSignalStrength candidate) {
+            if (candidate.ordinal() < strength.ordinal()) {
+                strength = candidate;
+            }
         }
 
         private void addEvidenceType(EvidenceType evidenceType) {
@@ -719,6 +1054,7 @@ public class SuspectSignalExtractionService {
             return new SuspectSourceSignal(
                     value,
                     category,
+                    strength,
                     List.copyOf(sourceEvidenceTypes),
                     reason
             );

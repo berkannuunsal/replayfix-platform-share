@@ -4,6 +4,7 @@ import com.etiya.replayfix.model.SuspectSignalExtractionResponse;
 import com.etiya.replayfix.service.SuspectSignalExtractionService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
@@ -25,9 +26,10 @@ public class SourceSuspectSignalController {
 
     @GetMapping("/{caseId}/source/suspect-signals")
     public Mono<SuspectSignalExtractionResponse> suspectSignals(
-            @PathVariable UUID caseId
+            @PathVariable UUID caseId,
+            @RequestParam(defaultValue = "false") boolean includeWeak
     ) {
-        return Mono.fromCallable(() -> service.extract(caseId))
+        return Mono.fromCallable(() -> service.extract(caseId, includeWeak))
                 .subscribeOn(Schedulers.boundedElastic());
     }
 }

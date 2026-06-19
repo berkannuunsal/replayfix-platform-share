@@ -2,6 +2,7 @@ package com.etiya.replayfix.api;
 
 import com.etiya.replayfix.model.SuspectSignalCategory;
 import com.etiya.replayfix.model.SuspectSignalExtractionResponse;
+import com.etiya.replayfix.model.SuspectSignalStrength;
 import com.etiya.replayfix.model.SuspectSourceSignal;
 import com.etiya.replayfix.service.SuspectSignalExtractionService;
 import org.junit.jupiter.api.Test;
@@ -32,16 +33,18 @@ class SourceSuspectSignalControllerTest {
                         List.of(new SuspectSourceSignal(
                                 "tax_info",
                                 SuspectSignalCategory.BUSINESS_TERM,
+                                SuspectSignalStrength.STRONG,
                                 List.of("ROVO_RCA"),
                                 "Signal from Rovo RCA normalized JSON"
                         )),
+                        0,
                         List.of()
                 );
 
-        when(service.extract(caseId)).thenReturn(response);
+        when(service.extract(caseId, false)).thenReturn(response);
 
         SuspectSignalExtractionResponse actual =
-                controller.suspectSignals(caseId).block();
+                controller.suspectSignals(caseId, false).block();
 
         assertEquals(caseId, actual.caseId());
         assertEquals("FIZZMS-10228", actual.jiraKey());
@@ -51,6 +54,47 @@ class SourceSuspectSignalControllerTest {
         assertEquals(
                 SuspectSignalCategory.BUSINESS_TERM,
                 actual.signals().get(0).category()
+        );
+        assertEquals(
+                SuspectSignalStrength.STRONG,
+                actual.signals().get(0).strength()
+        );
+    }
+
+    @Test
+    void shouldReturnWeakSignalsWhenRequested() {
+        UUID caseId = UUID.randomUUID();
+        SuspectSignalExtractionService service =
+                mock(SuspectSignalExtractionService.class);
+        SourceSuspectSignalController controller =
+                new SourceSuspectSignalController(service);
+
+        SuspectSignalExtractionResponse response =
+                new SuspectSignalExtractionResponse(
+                        caseId,
+                        "FIZZMS-10228",
+                        "DCE/backend",
+                        "test2",
+                        List.of(new SuspectSourceSignal(
+                                "account creation",
+                                SuspectSignalCategory.BUSINESS_TERM,
+                                SuspectSignalStrength.WEAK,
+                                List.of("ROVO_RCA"),
+                                "Signal from Rovo RCA human report"
+                        )),
+                        0,
+                        List.of()
+                );
+
+        when(service.extract(caseId, true)).thenReturn(response);
+
+        SuspectSignalExtractionResponse actual =
+                controller.suspectSignals(caseId, true).block();
+
+        assertEquals("account creation", actual.signals().get(0).value());
+        assertEquals(
+                SuspectSignalStrength.WEAK,
+                actual.signals().get(0).strength()
         );
     }
 }

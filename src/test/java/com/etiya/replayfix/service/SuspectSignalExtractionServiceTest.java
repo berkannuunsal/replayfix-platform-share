@@ -5,6 +5,7 @@ import com.etiya.replayfix.domain.EvidenceType;
 import com.etiya.replayfix.domain.ReplayCaseEntity;
 import com.etiya.replayfix.domain.ReplayCaseStatus;
 import com.etiya.replayfix.model.SuspectSignalExtractionResponse;
+import com.etiya.replayfix.model.SuspectSignalStrength;
 import com.etiya.replayfix.repository.EvidenceRepository;
 import com.etiya.replayfix.repository.ReplayCaseRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -51,7 +52,7 @@ class SuspectSignalExtractionServiceTest {
                         "rovo-incident-commander",
                         """
                                 {
-                                  "rawHumanReport": "Billing Account Creation / Update Flow has province mismatch for billing account.",
+                                  "rawHumanReport": "Billing Account Creation / Update Flow has province mismatch for billing account. /Region GL i2i",
                                   "normalizedRovoJson": {
                                     "probableRootCause": "Missing validation around /businessFlow/initialize and /user/region/update.",
                                     "minimumFixDirection": [
@@ -97,8 +98,89 @@ class SuspectSignalExtractionServiceTest {
         assertSignal(response, "initialize");
         assertSignal(response, "user");
         assertSignal(response, "region");
+        assertSignal(response, "Region");
         assertSignal(response, "update");
+        assertSignal(response, "/Region");
+        assertSignal(response, "province");
+        assertSignal(response, "Province");
+        assertSignal(response, "i2i");
+        assertSignal(response, "GL");
+        assertSignal(response, "regionUpdate");
         assertSignal(response, "RegionUpdate");
+        assertSignalStrength(response, "/businessFlow/initialize", SuspectSignalStrength.STRONG);
+        assertSignalStrength(response, "billing account", SuspectSignalStrength.MEDIUM);
+    }
+
+    @Test
+    void shouldFilterNaturalLanguageFillerPhrases() {
+        UUID caseId = UUID.randomUUID();
+
+        List<EvidenceEntity> evidence = List.of(
+                evidence(caseId, EvidenceType.ROVO_RCA,
+                        "rovo-incident-commander",
+                        """
+                                {
+                                  "rawHumanReport": "selamlar ni2i billing account at i2i description. billing account ya da update edilirken region ve timezone bilgileri.",
+                                  "normalizedRovoJson": {
+                                    "probableRootCause": "Billing account region timezone validation is missing."
+                                  }
+                                }
+                                """)
+        );
+
+        when(caseRepository.findById(caseId))
+                .thenReturn(Optional.of(caseEntity(caseId)));
+        when(evidenceRepository.findByCaseIdOrderByCreatedAtAsc(caseId))
+                .thenReturn(evidence);
+
+        SuspectSignalExtractionResponse response = service.extract(caseId);
+
+        assertNoSignal(response, "billing account ya");
+        assertNoSignal(response, "account ya da");
+        assertNoSignal(response, "selamlar ni2i billing");
+        assertNoSignal(response, "billingAccountYa");
+        assertNoSignal(response, "accountYaDa");
+        assertNoSignal(response, "updateEdilirkenRegion");
+        assertNoSignal(response, "edilirkenRegionVe");
+        assertSignal(response, "billing account");
+        assertSignal(response, "BillingAccount");
+        assertSignal(response, "billingAccount");
+        assertTrue(response.filteredCount() > 0);
+    }
+
+    @Test
+    void shouldExcludeWeakSignalsByDefaultAndIncludeThemWhenRequested() {
+        UUID caseId = UUID.randomUUID();
+
+        List<EvidenceEntity> evidence = List.of(
+                evidence(caseId, EvidenceType.ROVO_RCA,
+                        "rovo-incident-commander",
+                        """
+                                {
+                                  "rawHumanReport": "account creation needs review.",
+                                  "normalizedRovoJson": {
+                                    "probableRootCause": "account creation needs review."
+                                  }
+                                }
+                                """)
+        );
+
+        when(caseRepository.findById(caseId))
+                .thenReturn(Optional.of(caseEntity(caseId)));
+        when(evidenceRepository.findByCaseIdOrderByCreatedAtAsc(caseId))
+                .thenReturn(evidence);
+
+        SuspectSignalExtractionResponse defaultResponse =
+                service.extract(caseId);
+        assertNoSignal(defaultResponse, "account creation");
+
+        SuspectSignalExtractionResponse weakResponse =
+                service.extract(caseId, true);
+        assertSignalStrength(
+                weakResponse,
+                "account creation",
+                SuspectSignalStrength.WEAK
+        );
     }
 
     @Test
@@ -164,6 +246,36 @@ class SuspectSignalExtractionServiceTest {
                         .stream()
                         .anyMatch(signal -> value.equals(signal.value())),
                 "Expected signal not found: " + value
+        );
+    }
+
+    private void assertNoSignal(
+            SuspectSignalExtractionResponse response,
+            String value
+    ) {
+        assertFalse(
+                response.signals()
+                        .stream()
+                        .anyMatch(signal -> value.equals(signal.value())),
+                "Unexpected signal found: " + value
+        );
+    }
+
+    private void assertSignalStrength(
+            SuspectSignalExtractionResponse response,
+            String value,
+            SuspectSignalStrength strength
+    ) {
+        assertEquals(
+                strength,
+                response.signals()
+                        .stream()
+                        .filter(signal -> value.equals(signal.value()))
+                        .findFirst()
+                        .orElseThrow(() -> new AssertionError(
+                                "Expected signal not found: " + value
+                        ))
+                        .strength()
         );
     }
 

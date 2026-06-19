@@ -9,6 +9,7 @@ public record SuspectSignalExtractionResponse(
         String repository,
         String branch,
         List<SuspectSourceSignal> signals,
+        int filteredCount,
         List<String> warnings
 ) {
 }
