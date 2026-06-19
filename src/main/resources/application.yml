@@ -4,6 +4,7 @@ spring:
   config:
     import:
       - optional:file:./config/external-services.yml
+      - optional:file:./config/ai-company-local.yml
       - optional:file:./config/replay-targets.yml
       - optional:file:./config/log-parsers.yml
   datasource:
