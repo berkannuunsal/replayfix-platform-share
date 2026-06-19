@@ -89,18 +89,59 @@ public class SuspectSignalExtractionService {
             "user"
     );
 
+    private static final Set<String> ALLOWLISTED_BUSINESS_PHRASES = Set.of(
+            "billing account",
+            "billing account creation update flow",
+            "preferred province",
+            "province mismatch",
+            "region mismatch",
+            "timezone mismatch",
+            "tax info"
+    );
+
+    private static final Set<String> WEAK_ALLOWLISTED_BUSINESS_PHRASES = Set.of(
+            "account creation"
+    );
+
+    private static final Set<String> START_FILLER_WORDS = Set.of(
+            "and",
+            "description",
+            "edilirken",
+            "olan",
+            "or",
+            "selamlar",
+            "ve",
+            "ya"
+    );
+
+    private static final Set<String> END_FILLER_WORDS = Set.of(
+            "and",
+            "at",
+            "da",
+            "description",
+            "or",
+            "ve",
+            "when",
+            "ya"
+    );
+
     private static final Set<String> FILLER_WORDS = Set.of(
             "account ya da",
+            "and",
+            "at",
             "edilirken",
             "description",
             "icin",
             "ile",
             "mevcut",
             "olan",
+            "or",
             "selamlar",
             "sirasinda",
+            "summary",
             "var",
             "ve",
+            "when",
             "ya",
             "ya da"
     );
@@ -284,6 +325,7 @@ public class SuspectSignalExtractionService {
                 context,
                 reason
         );
+        extractAllowlistedBusinessPhrases(text, evidenceType, context, reason);
         extractBusinessTerms(text, evidenceType, context, reason);
         extractKeywordTerms(text, evidenceType, context, reason);
         extractKnownTechnicalTokens(text, evidenceType, context, reason);
@@ -413,6 +455,40 @@ public class SuspectSignalExtractionService {
             );
             if (shouldGenerateVariants(value, strength)) {
                 addVariants(value, evidenceType, context, value);
+            }
+        }
+    }
+
+    private void extractAllowlistedBusinessPhrases(
+            String text,
+            EvidenceType evidenceType,
+            ExtractionContext context,
+            String reason
+    ) {
+        String normalizedText = normalizePhrase(text);
+        for (String phrase : ALLOWLISTED_BUSINESS_PHRASES) {
+            if (normalizedText.contains(phrase)) {
+                addSignal(
+                        phrase,
+                        SuspectSignalCategory.BUSINESS_TERM,
+                        strength(phrase, SuspectSignalCategory.BUSINESS_TERM),
+                        evidenceType,
+                        context,
+                        reason
+                );
+                addVariants(phrase, evidenceType, context, phrase);
+            }
+        }
+        for (String phrase : WEAK_ALLOWLISTED_BUSINESS_PHRASES) {
+            if (normalizedText.contains(phrase)) {
+                addSignal(
+                        phrase,
+                        SuspectSignalCategory.BUSINESS_TERM,
+                        SuspectSignalStrength.WEAK,
+                        evidenceType,
+                        context,
+                        reason
+                );
             }
         }
     }
@@ -552,6 +628,13 @@ public class SuspectSignalExtractionService {
             return;
         }
 
+        if (category == SuspectSignalCategory.BUSINESS_TERM
+                && cleaned.contains(" ")
+                && !isAllowedBusinessPhrase(cleaned)) {
+            context.incrementFilteredCount();
+            return;
+        }
+
         if (strength == SuspectSignalStrength.WEAK && !context.includeWeak()) {
             context.incrementFilteredCount();
             return;
@@ -584,6 +667,7 @@ public class SuspectSignalExtractionService {
             SuspectSignalCategory category
     ) {
         String normalized = normalizeSignal(value);
+        String normalizedPhrase = normalizePhrase(value);
 
         if (category == SuspectSignalCategory.ENDPOINT
                 || category == SuspectSignalCategory.CONSTANT) {
@@ -592,7 +676,7 @@ public class SuspectSignalExtractionService {
 
         if (category == SuspectSignalCategory.BUSINESS_TERM
                 && value.contains(" ")
-                && STRONG_TECHNICAL_TOKENS.contains(normalized)) {
+                && ALLOWLISTED_BUSINESS_PHRASES.contains(normalizedPhrase)) {
             return SuspectSignalStrength.MEDIUM;
         }
 
@@ -644,11 +728,12 @@ public class SuspectSignalExtractionService {
         return strength != SuspectSignalStrength.WEAK
                 && !isFillerPhrase(value)
                 && (isKnownDomainTerm(value)
+                || isAllowedBusinessPhrase(value)
                 || containsStrongTechnicalToken(value)
                 || value.contains("_")
                 || value.contains("-")
                 || hasCaseBoundary(value)
-                || value.contains(" "));
+                || (value.contains(" ") && isAllowedBusinessPhrase(value)));
     }
 
     private boolean isKnownDomainTerm(String value) {
@@ -670,9 +755,21 @@ public class SuspectSignalExtractionService {
     }
 
     private boolean isFillerPhrase(String value) {
-        String lower = " " + foldTurkish(value)
-                .toLowerCase(Locale.ROOT)
-                .trim() + " ";
+        List<String> words = normalizedPhraseWords(value);
+        if (words.isEmpty()) {
+            return false;
+        }
+
+        if (START_FILLER_WORDS.contains(words.get(0))
+                || END_FILLER_WORDS.contains(words.get(words.size() - 1))) {
+            return true;
+        }
+
+        if (words.size() > 3 && !isAllowedBusinessPhrase(value)) {
+            return true;
+        }
+
+        String lower = " " + String.join(" ", words) + " ";
 
         for (String filler : FILLER_WORDS) {
             if (filler.contains(" ")) {
@@ -685,6 +782,12 @@ public class SuspectSignalExtractionService {
         }
 
         return false;
+    }
+
+    private boolean isAllowedBusinessPhrase(String value) {
+        String normalized = normalizePhrase(value);
+        return ALLOWLISTED_BUSINESS_PHRASES.contains(normalized)
+                || WEAK_ALLOWLISTED_BUSINESS_PHRASES.contains(normalized);
     }
 
     private String foldTurkish(String value) {
@@ -714,6 +817,26 @@ public class SuspectSignalExtractionService {
                 .trim()
                 .replace(" ", "")
                 .toLowerCase(Locale.ROOT);
+    }
+
+    private String normalizePhrase(String value) {
+        return String.join(" ", normalizedPhraseWords(value));
+    }
+
+    private List<String> normalizedPhraseWords(String value) {
+        List<String> words = new ArrayList<>();
+        String normalized = foldTurkish(cleanToken(value))
+                .replaceAll("([a-z0-9])([A-Z])", "$1 $2")
+                .replace('_', ' ')
+                .replace('-', ' ')
+                .replace('/', ' ')
+                .toLowerCase(Locale.ROOT);
+        Matcher matcher = Pattern.compile("\\b[a-z0-9]+\\b")
+                .matcher(normalized);
+        while (matcher.find()) {
+            words.add(matcher.group());
+        }
+        return words;
     }
 
     private Optional<EvidenceEntity> latest(

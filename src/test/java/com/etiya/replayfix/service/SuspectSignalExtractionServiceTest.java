@@ -120,9 +120,10 @@ class SuspectSignalExtractionServiceTest {
                         "rovo-incident-commander",
                         """
                                 {
-                                  "rawHumanReport": "selamlar ni2i billing account at i2i description. billing account ya da update edilirken region ve timezone bilgileri.",
+                                  "rawHumanReport": "selamlar ni2i billing account at i2i description. billing account ya da update edilirken region ve timezone bilgileri. uyumsuz olan billing accountlar mevcut. sale billing sorun. account at i2i description. mismatch when or updating billing region and and timezone.",
                                   "normalizedRovoJson": {
-                                    "probableRootCause": "Billing account region timezone validation is missing."
+                                    "probableRootCause": "Billing account region timezone validation is missing.",
+                                    "minimumFixDirection": "Validate /businessFlow/initialize, /user/region/update, PREFERRED_PROVINCE, tax_info, GL and i2i."
                                   }
                                 }
                                 """)
@@ -135,17 +136,61 @@ class SuspectSignalExtractionServiceTest {
 
         SuspectSignalExtractionResponse response = service.extract(caseId);
 
-        assertNoSignal(response, "billing account ya");
-        assertNoSignal(response, "account ya da");
-        assertNoSignal(response, "selamlar ni2i billing");
-        assertNoSignal(response, "billingAccountYa");
-        assertNoSignal(response, "accountYaDa");
-        assertNoSignal(response, "updateEdilirkenRegion");
-        assertNoSignal(response, "edilirkenRegionVe");
+        assertNoSignals(response, List.of(
+                "billing account ya",
+                "account ya da",
+                "selamlar ni2i billing",
+                "update edilirken region",
+                "edilirken region ve",
+                "ve timezone bilgileri",
+                "uyumsuz olan billing",
+                "billing accountlar mevcut",
+                "sale billing sorun",
+                "account at i2i description",
+                "mismatch when",
+                "or updating billing",
+                "region and",
+                "and timezone",
+                "billingAccountYa",
+                "accountYaDa",
+                "updateEdilirkenRegion",
+                "edilirkenRegionVe"
+        ));
+        assertSignal(response, "/businessFlow/initialize");
+        assertSignal(response, "/user/region/update");
+        assertSignal(response, "PREFERRED_PROVINCE");
+        assertSignal(response, "preferredProvince");
         assertSignal(response, "billing account");
         assertSignal(response, "BillingAccount");
         assertSignal(response, "billingAccount");
+        assertSignal(response, "tax_info");
+        assertSignal(response, "taxInfo");
+        assertSignal(response, "GL");
+        assertSignal(response, "i2i");
         assertTrue(response.filteredCount() > 0);
+
+        SuspectSignalExtractionResponse weakResponse =
+                service.extract(caseId, true);
+        assertNoSignals(weakResponse, List.of(
+                "billing account ya",
+                "account ya da",
+                "selamlar ni2i billing",
+                "update edilirken region",
+                "edilirken region ve",
+                "ve timezone bilgileri",
+                "uyumsuz olan billing",
+                "billing accountlar mevcut",
+                "sale billing sorun",
+                "account at i2i description",
+                "mismatch when",
+                "or updating billing",
+                "region and",
+                "and timezone",
+                "billingAccountYa",
+                "accountYaDa",
+                "updateEdilirkenRegion",
+                "edilirkenRegionVe"
+        ));
     }
 
     @Test
@@ -181,6 +226,75 @@ class SuspectSignalExtractionServiceTest {
                 "account creation",
                 SuspectSignalStrength.WEAK
         );
+    }
+
+    @Test
+    void shouldFilterRealisticBundleAndJiraProseNoise() {
+        UUID caseId = UUID.randomUUID();
+
+        String noisyText = """
+                selamlar ni2i billing account at i2i description
+                billing account ya da update edilirken region ve timezone bilgileri
+                uyumsuz olan billing accountlar mevcut sale billing sorun
+                account at i2i description mismatch when or updating billing
+                region and and timezone
+                Endpoint /businessFlow/initialize calls /user/region/update and /Region.
+                PREFERRED_PROVINCE tax_info billing account province timezone GL i2i.
+                """;
+
+        List<EvidenceEntity> evidence = List.of(
+                evidence(caseId, EvidenceType.AI_INPUT_BUNDLE,
+                        "ai-input-bundle",
+                        "{\"context\":\"" + jsonEscape(noisyText) + "\"}"),
+                evidence(caseId, EvidenceType.JIRA_ISSUE,
+                        "jira",
+                        "{\"summary\":\"" + jsonEscape(noisyText) + "\"}")
+        );
+
+        when(caseRepository.findById(caseId))
+                .thenReturn(Optional.of(caseEntity(caseId)));
+        when(evidenceRepository.findByCaseIdOrderByCreatedAtAsc(caseId))
+                .thenReturn(evidence);
+
+        SuspectSignalExtractionResponse response = service.extract(caseId);
+
+        assertFalse(response.warnings().isEmpty());
+        assertNoSignals(response, List.of(
+                "billing account ya",
+                "account ya da",
+                "selamlar ni2i billing",
+                "update edilirken region",
+                "edilirken region ve",
+                "ve timezone bilgileri",
+                "uyumsuz olan billing",
+                "billing accountlar mevcut",
+                "sale billing sorun",
+                "account at i2i description",
+                "mismatch when",
+                "or updating billing",
+                "region and",
+                "and timezone"
+        ));
+        assertSignal(response, "/businessFlow/initialize");
+        assertSignal(response, "/user/region/update");
+        assertSignal(response, "/Region");
+        assertSignal(response, "PREFERRED_PROVINCE");
+        assertSignal(response, "preferredProvince");
+        assertSignal(response, "PreferredProvince");
+        assertSignal(response, "tax_info");
+        assertSignal(response, "taxInfo");
+        assertSignal(response, "TaxInfo");
+        assertSignal(response, "billing account");
+        assertSignal(response, "BillingAccount");
+        assertSignal(response, "billingAccount");
+        assertSignal(response, "region");
+        assertSignal(response, "Region");
+        assertSignal(response, "province");
+        assertSignal(response, "timezone");
+        assertSignal(response, "timeZone");
+        assertSignal(response, "TimeZone");
+        assertSignal(response, "GL");
+        assertSignal(response, "i2i");
     }
 
     @Test
@@ -261,6 +375,13 @@ class SuspectSignalExtractionServiceTest {
         );
     }
 
+    private void assertNoSignals(
+            SuspectSignalExtractionResponse response,
+            List<String> values
+    ) {
+        values.forEach(value -> assertNoSignal(response, value));
+    }
+
     private void assertSignalStrength(
             SuspectSignalExtractionResponse response,
             String value,
@@ -304,5 +425,13 @@ class SuspectSignalExtractionServiceTest {
         evidence.setCreatedAt(Instant.now());
         evidence.setSanitized(true);
         return evidence;
+    }
+
+    private String jsonEscape(String value) {
+        return value
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\r", "\\r")
+                .replace("\n", "\\n");
     }
 }
