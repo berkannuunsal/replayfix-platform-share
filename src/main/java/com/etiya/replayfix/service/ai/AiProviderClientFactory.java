@@ -10,15 +10,18 @@ public class AiProviderClientFactory {
     private final ReplayFixProperties properties;
     private final DisabledAiProviderClient disabledProvider;
     private final MockAiProviderClient mockProvider;
+    private final CompanyLlmProviderClient companyLlmProvider;
 
     public AiProviderClientFactory(
             ReplayFixProperties properties,
             DisabledAiProviderClient disabledProvider,
-            MockAiProviderClient mockProvider
+            MockAiProviderClient mockProvider,
+            CompanyLlmProviderClient companyLlmProvider
     ) {
         this.properties = properties;
         this.disabledProvider = disabledProvider;
         this.mockProvider = mockProvider;
+        this.companyLlmProvider = companyLlmProvider;
     }
 
     public AiProviderClient getProvider() {
@@ -34,6 +37,7 @@ public class AiProviderClientFactory {
         return switch (providerType) {
             case DISABLED -> disabledProvider;
             case MOCK -> mockProvider;
+            case COMPANY_LLM -> companyLlmProvider;
             case OPENAI_COMPATIBLE, LOCAL_PRIVATE -> throw new UnsupportedOperationException(
                     "Provider " + providerType + " not yet implemented in this POC"
             );

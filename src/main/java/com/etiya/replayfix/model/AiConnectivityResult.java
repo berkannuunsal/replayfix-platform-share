@@ -9,7 +9,11 @@ public record AiConnectivityResult(
         String model,
         boolean modelConfigured,
         boolean authConfigured,
+        boolean baseUrlConfigured,
+        boolean tokenConfigured,
+        boolean reachable,
         Integer httpStatus,
         long latencyMs,
+        String sanitizedErrorMessage,
         List<String> warnings
 ) {}

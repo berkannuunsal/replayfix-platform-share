@@ -53,8 +53,12 @@ public class MockAiProviderClient implements AiProviderClient {
                 model,
                 true,
                 true,
+                true,
+                true,
+                true,
                 200,
                 0L,
+                null,
                 List.of("Synthetic AI provider for local validation.")
         );
     }

@@ -25,6 +25,7 @@ public class AiIntegrationController {
             AiConnectivityResult result = provider.connectivity();
             return ResponseEntity.ok(result);
         } catch (Exception e) {
+            String sanitizedError = sanitizeError(e.getMessage());
             return ResponseEntity.ok(new AiConnectivityResult(
                     false,
                     false,
@@ -32,10 +33,21 @@ public class AiIntegrationController {
                     null,
                     false,
                     false,
+                    false,
+                    false,
+                    false,
                     null,
                     0L,
-                    java.util.List.of("Connectivity check failed: " + e.getMessage())
+                    sanitizedError,
+                    java.util.List.of("Connectivity check failed: " + sanitizedError)
             ));
         }
+    }
+
+    private String sanitizeError(String message) {
+        if (message == null || message.isBlank()) {
+            return "Connectivity check failed.";
+        }
+        return message.replaceAll("(?i)(authorization|token|cookie|password)\\s*[:=]\\s*[^\\s,;]+", "$1=[REDACTED]");
     }
 }

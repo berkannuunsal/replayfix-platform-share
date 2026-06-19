@@ -49,6 +49,15 @@ replayfix:
     max-output-chars: ${REPLAYFIX_AI_MAX_OUTPUT_CHARS:30000}
     temperature: ${REPLAYFIX_AI_TEMPERATURE:0.1}
     include-source-code: ${REPLAYFIX_AI_INCLUDE_SOURCE_CODE:false}
+    company:
+      base-url: ${REPLAYFIX_AI_COMPANY_BASE_URL:}
+      endpoint: ${REPLAYFIX_AI_COMPANY_ENDPOINT:/v1/chat/completions}
+      model: ${REPLAYFIX_AI_COMPANY_MODEL:${REPLAYFIX_AI_MODEL:}}
+      auth-type: ${REPLAYFIX_AI_COMPANY_AUTH_TYPE:BEARER}
+      token: ${REPLAYFIX_AI_COMPANY_TOKEN:}
+      timeout-ms: ${REPLAYFIX_AI_COMPANY_TIMEOUT_MS:30000}
+      max-input-chars: ${REPLAYFIX_AI_COMPANY_MAX_INPUT_CHARS:${REPLAYFIX_AI_MAX_INPUT_CHARS:120000}}
+      max-output-chars: ${REPLAYFIX_AI_COMPANY_MAX_OUTPUT_CHARS:${REPLAYFIX_AI_MAX_OUTPUT_CHARS:30000}}
   notifications:
     webhook:
       enabled: ${REPLAYFIX_NOTIFICATION_WEBHOOK_ENABLED:false}

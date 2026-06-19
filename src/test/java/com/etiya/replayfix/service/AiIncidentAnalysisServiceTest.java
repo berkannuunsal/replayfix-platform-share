@@ -10,6 +10,7 @@ import com.etiya.replayfix.repository.ReplayCaseRepository;
 import com.etiya.replayfix.event.AiAnalysisCompletedEvent;
 import com.etiya.replayfix.service.ai.AiProviderClient;
 import com.etiya.replayfix.service.ai.AiProviderClientFactory;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -81,7 +82,7 @@ class AiIncidentAnalysisServiceTest {
         ReplayCaseEntity caseEntity = createCaseEntity(caseId);
         
         when(caseRepository.findById(caseId)).thenReturn(Optional.of(caseEntity));
-        when(properties.getAi().isEnabled()).thenReturn(false);
+        properties.getAi().setEnabled(false);
         
         assertThatThrownBy(() -> service.analyze(caseId))
                 .isInstanceOf(IllegalStateException.class)
@@ -287,6 +288,82 @@ class AiIncidentAnalysisServiceTest {
         
         // Event should be published
         verify(eventPublisher).publishEvent(any(AiAnalysisCompletedEvent.class));
+    }
+
+    @Test
+    void testAnalyze_CompanyLlmPersistsCompanyEvidenceSource() throws Exception {
+        UUID caseId = UUID.randomUUID();
+        ReplayCaseEntity caseEntity = createCaseEntity(caseId);
+        properties.getAi().setProvider(AiProviderType.COMPANY_LLM);
+        properties.getAi().setModel("company-model");
+
+        List<EvidenceEntity> evidenceList = List.of(
+                createEvidence(EvidenceType.JIRA_ISSUE),
+                createEvidence(EvidenceType.LOKI_LOGS),
+                createEvidence(EvidenceType.AI_INPUT_BUNDLE)
+        );
+
+        when(caseRepository.findById(caseId)).thenReturn(Optional.of(caseEntity));
+        when(evidenceRepository.findByCaseId(caseId)).thenReturn(evidenceList);
+        when(providerFactory.getProvider()).thenReturn(mockProvider);
+        when(mockProvider.providerName()).thenReturn("COMPANY_LLM");
+
+        StructuredAiRootCauseAnalysis companyAnalysis =
+                new StructuredAiRootCauseAnalysis(
+                        caseId,
+                        "COMPANY_LLM_ANALYSIS",
+                        "summary",
+                        "API validation mismatch",
+                        "backend",
+                        0.42,
+                        List.of("fact"),
+                        List.of(),
+                        List.of("inference"),
+                        List.of(),
+                        List.of("review action"),
+                        List.of("missing trace"),
+                        "Human review required",
+                        "COMPANY_LLM",
+                        "company-model",
+                        false,
+                        List.of("warning")
+                );
+        when(mockProvider.generate(any(AiGenerationRequest.class)))
+                .thenReturn(new AiGenerationResponse(
+                        true,
+                        "COMPANY_LLM",
+                        "company-model",
+                        UUID.randomUUID().toString(),
+                        "completed",
+                        100L,
+                        1000,
+                        2000,
+                        objectMapper.valueToTree(companyAnalysis),
+                        List.of(),
+                        null,
+                        null
+                ));
+
+        service.analyze(caseId);
+
+        ArgumentCaptor<EvidenceEntity> evidenceCaptor =
+                ArgumentCaptor.forClass(EvidenceEntity.class);
+        verify(evidenceRepository).save(evidenceCaptor.capture());
+
+        EvidenceEntity savedEvidence = evidenceCaptor.getValue();
+        assertThat(savedEvidence.getEvidenceType()).isEqualTo(EvidenceType.AI_ROOT_CAUSE);
+        assertThat(savedEvidence.getSource()).isEqualTo("company-llm");
+        JsonNode content = objectMapper.readTree(savedEvidence.getContentText());
+        assertThat(content.path("provider").asText()).isEqualTo("COMPANY_LLM");
+        assertThat(content.path("model").asText()).isEqualTo("company-model");
+        assertThat(content.path("status").asText()).isEqualTo("HYPOTHESIS");
+        assertThat(content.path("probableRootCause").asText())
+                .isEqualTo("API validation mismatch");
+        assertThat(content.path("facts").get(0).asText()).isEqualTo("fact");
+        assertThat(content.path("inferences").get(0).asText()).isEqualTo("inference");
+        assertThat(content.path("unknowns").get(0).asText()).isEqualTo("missing trace");
+        assertThat(content.path("recommendedActions").get(0).asText())
+                .isEqualTo("review action");
     }
 
     @Test

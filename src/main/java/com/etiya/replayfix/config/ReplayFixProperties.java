@@ -208,6 +208,7 @@ public class ReplayFixProperties {
         private int maxInputChars = 120000;
         private int maxOutputChars = 30000;
         private boolean includeSourceCode = false;
+        private Company company = new Company();
 
         public com.etiya.replayfix.domain.AiProviderType getProvider() { return provider; }
         public void setProvider(com.etiya.replayfix.domain.AiProviderType value) { this.provider = value; }
@@ -225,6 +226,36 @@ public class ReplayFixProperties {
         public void setMaxOutputChars(int value) { this.maxOutputChars = value; }
         public boolean isIncludeSourceCode() { return includeSourceCode; }
         public void setIncludeSourceCode(boolean value) { this.includeSourceCode = value; }
+        public Company getCompany() { return company; }
+        public void setCompany(Company value) { this.company = value; }
+    }
+
+    public static class Company {
+        private String baseUrl = "";
+        private String endpoint = "/v1/chat/completions";
+        private String model = "";
+        private String authType = "BEARER";
+        private String token = "";
+        private long timeoutMs = 30000;
+        private int maxInputChars = 120000;
+        private int maxOutputChars = 30000;
+
+        public String getBaseUrl() { return baseUrl; }
+        public void setBaseUrl(String value) { this.baseUrl = value; }
+        public String getEndpoint() { return endpoint; }
+        public void setEndpoint(String value) { this.endpoint = value; }
+        public String getModel() { return model; }
+        public void setModel(String value) { this.model = value; }
+        public String getAuthType() { return authType; }
+        public void setAuthType(String value) { this.authType = value; }
+        public String getToken() { return token; }
+        public void setToken(String value) { this.token = value; }
+        public long getTimeoutMs() { return timeoutMs; }
+        public void setTimeoutMs(long value) { this.timeoutMs = value; }
+        public int getMaxInputChars() { return maxInputChars; }
+        public void setMaxInputChars(int value) { this.maxInputChars = value; }
+        public int getMaxOutputChars() { return maxOutputChars; }
+        public void setMaxOutputChars(int value) { this.maxOutputChars = value; }
     }
 
     public static class Jenkins extends Endpoint {

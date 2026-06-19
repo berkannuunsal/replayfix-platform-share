@@ -19,8 +19,12 @@ public class DisabledAiProviderClient implements AiProviderClient {
                 null,
                 false,
                 false,
+                false,
+                false,
+                false,
                 null,
                 0L,
+                "AI integration is disabled.",
                 List.of("AI integration is disabled.")
         );
     }

@@ -7,6 +7,10 @@ import java.util.regex.Pattern;
 
 @Service
 public class EvidenceSanitizer {
+    private final Pattern jsonSecretPattern = Pattern.compile(
+            "(?i)(\"(?:authorization|cookie|token|password)\"\\s*:\\s*\")([^\"]+)(\")"
+    );
+
     private final List<Pattern> sensitivePatterns = List.of(
             Pattern.compile("(?i)(authorization|cookie|token|password)\\s*[:=]\\s*(bearer\\s+)?[^\\s,;]+"),
             Pattern.compile("(?i)[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}"),
@@ -16,7 +20,8 @@ public class EvidenceSanitizer {
 
     public String sanitize(String text) {
         if (text == null) return "";
-        String result = text;
+        String result = jsonSecretPattern.matcher(text)
+                .replaceAll("$1[REDACTED]$3");
         for (Pattern pattern : sensitivePatterns) {
             result = pattern.matcher(result).replaceAll("[REDACTED]");
         }

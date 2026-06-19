@@ -249,12 +249,18 @@ public class AiIncidentAnalysisService {
 
     private void persistAnalysis(UUID caseId, StructuredAiRootCauseAnalysis analysis, String providerName) {
         try {
-            String content = objectMapper.writeValueAsString(analysis);
+            String content = objectMapper.writeValueAsString(
+                    companyLlmProvider(providerName)
+                            ? companyLlmEvidenceContent(analysis)
+                            : analysis
+            );
             
             EvidenceEntity evidence = new EvidenceEntity();
             evidence.setCaseId(caseId);
             evidence.setEvidenceType(EvidenceType.AI_ROOT_CAUSE);
-            evidence.setSource("ai-provider-" + providerName.toLowerCase());
+            evidence.setSource(companyLlmProvider(providerName)
+                    ? "company-llm"
+                    : "ai-provider-" + providerName.toLowerCase());
             evidence.setContentText(content);
             evidence.setBody(content);
             evidence.setSanitized(true);
@@ -267,6 +273,43 @@ public class AiIncidentAnalysisService {
         } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
             throw new RuntimeException("Failed to serialize AI analysis to JSON", e);
         }
+    }
+
+    private boolean companyLlmProvider(String providerName) {
+        return "COMPANY_LLM".equalsIgnoreCase(providerName);
+    }
+
+    private Map<String, Object> companyLlmEvidenceContent(
+            StructuredAiRootCauseAnalysis analysis
+    ) {
+        Map<String, Object> content = new LinkedHashMap<>();
+        content.put("provider", "COMPANY_LLM");
+        content.put("model", analysis.model());
+        content.put("status", "HYPOTHESIS");
+        content.put("probableRootCause", analysis.probableRootCause());
+        content.put("confidence", analysis.confidence());
+        content.put("facts", safeList(analysis.failureChain()));
+        content.put("inferences", safeList(analysis.competingHypotheses()));
+        content.put("unknowns", safeList(analysis.missingEvidence()));
+        content.put("missingEvidence", safeList(analysis.missingEvidence()));
+        content.put("recommendedActions", recommendedActions(analysis));
+        content.put("warnings", safeList(analysis.warnings()));
+        return content;
+    }
+
+    private List<String> recommendedActions(
+            StructuredAiRootCauseAnalysis analysis
+    ) {
+        List<String> actions = new ArrayList<>(safeList(analysis.minimumFixDirection()));
+        if (analysis.recommendedNextAction() != null
+                && !analysis.recommendedNextAction().isBlank()) {
+            actions.add(analysis.recommendedNextAction());
+        }
+        return actions;
+    }
+
+    private List<String> safeList(List<String> values) {
+        return values == null ? List.of() : values;
     }
 
     private StructuredAiRootCauseAnalysis parseStructuredResponse(AiGenerationResponse response) {
