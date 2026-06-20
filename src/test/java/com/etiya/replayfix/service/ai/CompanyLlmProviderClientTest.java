@@ -89,6 +89,173 @@ class CompanyLlmProviderClientTest {
     }
 
     @Test
+    void parsesChoicesMessageContent() {
+        UUID caseId = UUID.randomUUID();
+        when(evidenceRepository.findByCaseIdAndEvidenceType(caseId, EvidenceType.AI_INPUT_BUNDLE))
+                .thenReturn(List.of(aiInputBundle("{}")));
+
+        CompanyLlmProviderClient client = client(chatResponse(
+                "stop",
+                sourceJson("content response"),
+                sourceJson("reasoning response"),
+                sourceJson("text response")
+        ));
+
+        AiGenerationResponse response = client.generate(request(caseId));
+
+        assertThat(response.success()).isTrue();
+        assertThat(response.structuredResponse().path("probableRootCause").asText())
+                .isEqualTo("content response");
+    }
+
+    @Test
+    void trimsLeadingAndTrailingWhitespaceAroundContent() {
+        UUID caseId = UUID.randomUUID();
+        when(evidenceRepository.findByCaseIdAndEvidenceType(caseId, EvidenceType.AI_INPUT_BUNDLE))
+                .thenReturn(List.of(aiInputBundle("{}")));
+
+        CompanyLlmProviderClient client = client(chatResponse(
+                "stop",
+                "\n  " + sourceJson("trimmed content") + "  \n",
+                null,
+                null
+        ));
+
+        AiGenerationResponse response = client.generate(request(caseId));
+
+        assertThat(response.success()).isTrue();
+        assertThat(response.structuredResponse().path("probableRootCause").asText())
+                .isEqualTo("trimmed content");
+    }
+
+    @Test
+    void parsesJsonContentString() {
+        UUID caseId = UUID.randomUUID();
+        when(evidenceRepository.findByCaseIdAndEvidenceType(caseId, EvidenceType.AI_INPUT_BUNDLE))
+                .thenReturn(List.of(aiInputBundle("{}")));
+
+        CompanyLlmProviderClient client = client(chatResponse(
+                "stop",
+                quoted(sourceJson("json string content")),
+                null,
+                null
+        ));
+
+        AiGenerationResponse response = client.generate(request(caseId));
+
+        assertThat(response.success()).isTrue();
+        assertThat(response.structuredResponse().path("probableRootCause").asText())
+                .isEqualTo("json string content");
+    }
+
+    @Test
+    void doesNotExposeRawReasoningContentWhenContentExists() {
+        UUID caseId = UUID.randomUUID();
+        when(evidenceRepository.findByCaseIdAndEvidenceType(caseId, EvidenceType.AI_INPUT_BUNDLE))
+                .thenReturn(List.of(aiInputBundle("{}")));
+        String rawReasoning = "private chain of thought SECRET_REASONING "
+                + sourceJson("reasoning response");
+
+        CompanyLlmProviderClient client = client(chatResponse(
+                "stop",
+                sourceJson("content response"),
+                rawReasoning,
+                sourceJson("text response")
+        ));
+
+        AiGenerationResponse response = client.generate(request(caseId));
+
+        assertThat(response.success()).isTrue();
+        assertThat(response.structuredResponse().path("probableRootCause").asText())
+                .isEqualTo("content response");
+        assertThat(response.toString()).doesNotContain("SECRET_REASONING");
+    }
+
+    @Test
+    void extractsJsonFromReasoningContentOnlyWhenContentIsBlank() {
+        UUID caseId = UUID.randomUUID();
+        when(evidenceRepository.findByCaseIdAndEvidenceType(caseId, EvidenceType.AI_INPUT_BUNDLE))
+                .thenReturn(List.of(aiInputBundle("{}")));
+
+        CompanyLlmProviderClient client = client(chatResponse(
+                "stop",
+                "   ",
+                "internal reasoning that must not leak\nfinal answer:\n"
+                        + sourceJson("reasoning json fallback"),
+                "   "
+        ));
+
+        AiGenerationResponse response = client.generate(request(caseId));
+
+        assertThat(response.success()).isTrue();
+        assertThat(response.structuredResponse().path("probableRootCause").asText())
+                .isEqualTo("reasoning json fallback");
+        assertThat(response.toString()).doesNotContain("internal reasoning");
+    }
+
+    @Test
+    void blankContentFallsBackToChoiceTextBeforeReasoningContent() {
+        UUID caseId = UUID.randomUUID();
+        when(evidenceRepository.findByCaseIdAndEvidenceType(caseId, EvidenceType.AI_INPUT_BUNDLE))
+                .thenReturn(List.of(aiInputBundle("{}")));
+
+        CompanyLlmProviderClient client = client(chatResponse(
+                "stop",
+                "   ",
+                sourceJson("reasoning response"),
+                sourceJson("text response")
+        ));
+
+        AiGenerationResponse response = client.generate(request(caseId));
+
+        assertThat(response.success()).isTrue();
+        assertThat(response.structuredResponse().path("probableRootCause").asText())
+                .isEqualTo("text response");
+    }
+
+    @Test
+    void addsCompanyLlmOutputTruncatedWhenFinishReasonIsLength() {
+        UUID caseId = UUID.randomUUID();
+        when(evidenceRepository.findByCaseIdAndEvidenceType(caseId, EvidenceType.AI_INPUT_BUNDLE))
+                .thenReturn(List.of(aiInputBundle("{}")));
+
+        CompanyLlmProviderClient client = client(chatResponse(
+                "length",
+                sourceJson("truncated response"),
+                null,
+                null
+        ));
+
+        AiGenerationResponse response = client.generate(request(caseId));
+
+        assertThat(response.success()).isTrue();
+        assertThat(response.warnings())
+                .contains(CompanyLlmProviderClient.COMPANY_LLM_OUTPUT_TRUNCATED);
+    }
+
+    @Test
+    void addsCompanyLlmEmptyResponseWhenNoOutputExists() {
+        UUID caseId = UUID.randomUUID();
+        when(evidenceRepository.findByCaseIdAndEvidenceType(caseId, EvidenceType.AI_INPUT_BUNDLE))
+                .thenReturn(List.of(aiInputBundle("{}")));
+
+        CompanyLlmProviderClient client = client(chatResponse(
+                "stop",
+                "   ",
+                "reasoning without usable json",
+                "   "
+        ));
+
+        AiGenerationResponse response = client.generate(request(caseId));
+
+        assertThat(response.success()).isFalse();
+        assertThat(response.errorCategory()).isEqualTo("EMPTY_RESPONSE");
+        assertThat(response.warnings())
+                .contains(CompanyLlmProviderClient.COMPANY_LLM_EMPTY_RESPONSE);
+        assertThat(response.toString()).doesNotContain("reasoning without usable json");
+    }
+
+    @Test
     void shouldHandleInvalidJsonGracefully() {
         UUID caseId = UUID.randomUUID();
         when(evidenceRepository.findByCaseIdAndEvidenceType(caseId, EvidenceType.AI_INPUT_BUNDLE))
@@ -224,6 +391,61 @@ class CompanyLlmProviderClientTest {
                   ]
                 }
                 """;
+    }
+
+    private String chatResponse(
+            String finishReason,
+            String content,
+            String reasoningContent,
+            String text
+    ) {
+        Map<String, Object> message = new java.util.LinkedHashMap<>();
+        message.put("content", content);
+        if (reasoningContent != null) {
+            message.put("reasoning_content", reasoningContent);
+        }
+
+        Map<String, Object> choice = new java.util.LinkedHashMap<>();
+        choice.put("finish_reason", finishReason);
+        choice.put("message", message);
+        if (text != null) {
+            choice.put("text", text);
+        }
+
+        Map<String, Object> response = new java.util.LinkedHashMap<>();
+        response.put("id", "chatcmpl-test");
+        response.put("choices", List.of(choice));
+        try {
+            return objectMapper.writeValueAsString(response);
+        } catch (Exception exception) {
+            throw new IllegalStateException(exception);
+        }
+    }
+
+    private String sourceJson(String probableRootCause) {
+        try {
+            return objectMapper.writeValueAsString(Map.of(
+                    "status", "HYPOTHESIS",
+                    "probableRootCause", probableRootCause,
+                    "confidence", 0.42,
+                    "facts", List.of("fact"),
+                    "inferences", List.of("inference"),
+                    "unknowns", List.of("unknown"),
+                    "missingEvidence", List.of("trace"),
+                    "recommendedActions", List.of("review"),
+                    "warnings", List.of()
+            ));
+        } catch (Exception exception) {
+            throw new IllegalStateException(exception);
+        }
+    }
+
+    private String quoted(String value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (Exception exception) {
+            throw new IllegalStateException(exception);
+        }
     }
 
     private AiGenerationRequest request(UUID caseId) {
