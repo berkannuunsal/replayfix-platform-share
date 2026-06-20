@@ -3,11 +3,13 @@ package com.etiya.replayfix.api;
 import com.etiya.replayfix.model.SourceReasoningContext;
 import com.etiya.replayfix.model.SourceSuspectChangeAnalysisResponse;
 import com.etiya.replayfix.service.SourceSuspectChangeAnalysisService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -28,6 +30,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class SourceSuspectChangeAnalysisControllerTest {
+
+    private final ObjectMapper objectMapper =
+            new ObjectMapper().findAndRegisterModules();
 
     @Test
     void endpointWorksWithCompanyLlmDisabled() {
@@ -170,5 +175,164 @@ class SourceSuspectChangeAnalysisControllerTest {
                 .andExpect(content().string(not(containsString(
                         "internal stack trace"
                 ))));
+    }
+
+    @Test
+    void objectMapperCanSerializeFallbackResponseWhenServiceThrows()
+            throws Exception {
+        UUID caseId = UUID.randomUUID();
+        SourceSuspectChangeAnalysisService service =
+                mock(SourceSuspectChangeAnalysisService.class);
+        when(service.analyze(
+                eq(caseId),
+                anyInt(),
+                anyInt(),
+                anyInt(),
+                anyBoolean(),
+                anyBoolean()
+        )).thenThrow(new IllegalStateException("internal stack trace"));
+        SourceSuspectChangeAnalysisController controller =
+                new SourceSuspectChangeAnalysisController(service);
+
+        SourceSuspectChangeAnalysisResponse response =
+                controller.analyze(caseId, 45, 20, 10, false, false).block();
+        String json = objectMapper.writeValueAsString(response);
+
+        assertThat(json).contains("\"status\":\"HYPOTHESIS\"");
+        assertThat(json).contains("\"analysisMode\":\"DETERMINISTIC_ONLY\"");
+        assertThat(json).contains("\"partial\":true");
+        assertThat(json).doesNotContain("IllegalStateException");
+        assertThat(json).doesNotContain("internal stack trace");
+    }
+
+    @Test
+    void controllerReturnsHttp200WhenResponseContainsEmptyLists()
+            throws Exception {
+        UUID caseId = UUID.randomUUID();
+        SourceSuspectChangeAnalysisService service =
+                mock(SourceSuspectChangeAnalysisService.class);
+        when(service.analyze(caseId, 45, 20, 10, false, false))
+                .thenReturn(emptyResponse(caseId));
+
+        MockMvc mockMvc = MockMvcBuilders
+                .standaloneSetup(new SourceSuspectChangeAnalysisController(service))
+                .build();
+
+        MvcResult result = mockMvc.perform(get(
+                        "/api/v1/cases/{caseId}/source/suspect-change-analysis",
+                        caseId
+                ))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        mockMvc.perform(asyncDispatch(result))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("HYPOTHESIS"))
+                .andExpect(jsonPath("$.analysisMode")
+                        .value("DETERMINISTIC_ONLY"))
+                .andExpect(jsonPath("$.partial").value(false))
+                .andExpect(jsonPath("$.flowAnchors").isArray())
+                .andExpect(jsonPath("$.candidateFlowChain").isArray())
+                .andExpect(jsonPath("$.suspectChanges").isArray());
+    }
+
+    @Test
+    void controllerReturnsHttp200WhenReasoningContextContainsRiskyValue()
+            throws Exception {
+        UUID caseId = UUID.randomUUID();
+        SourceSuspectChangeAnalysisService service =
+                mock(SourceSuspectChangeAnalysisService.class);
+        SourceSuspectChangeAnalysisResponse response =
+                new SourceSuspectChangeAnalysisResponse(
+                        caseId,
+                        "FIZZMS-10228",
+                        "DCE/backend",
+                        "test2",
+                        "abc123",
+                        45,
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        new SourceReasoningContext(
+                                Map.of("workspace", Path.of("work", "case")),
+                                Map.of("pattern", java.util.regex.Pattern
+                                        .compile("FIZZMS-\\d+")),
+                                "",
+                                List.of(),
+                                List.of(),
+                                List.of(),
+                                List.of(),
+                                List.of(),
+                                List.of(),
+                                List.of()
+                        ),
+                        false,
+                        List.of(),
+                        "HYPOTHESIS",
+                        0.0,
+                        List.of(),
+                        "DETERMINISTIC_ONLY",
+                        false
+                );
+        when(service.analyze(caseId, 45, 20, 10, false, false))
+                .thenReturn(response);
+
+        MockMvc mockMvc = MockMvcBuilders
+                .standaloneSetup(new SourceSuspectChangeAnalysisController(service))
+                .build();
+
+        MvcResult result = mockMvc.perform(get(
+                        "/api/v1/cases/{caseId}/source/suspect-change-analysis",
+                        caseId
+                ))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        mockMvc.perform(asyncDispatch(result))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sourceReasoningContext.caseInfo.workspace")
+                        .value(containsString("work")))
+                .andExpect(jsonPath("$.sourceReasoningContext.jira.pattern")
+                        .value("FIZZMS-\\d+"))
+                .andExpect(jsonPath("$.analysisMode")
+                        .value("DETERMINISTIC_ONLY"))
+                .andExpect(jsonPath("$.partial").value(false));
+    }
+
+    private SourceSuspectChangeAnalysisResponse emptyResponse(UUID caseId) {
+        return new SourceSuspectChangeAnalysisResponse(
+                caseId,
+                "FIZZMS-10228",
+                "DCE/backend",
+                "test2",
+                "abc123",
+                45,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                new SourceReasoningContext(
+                        Map.of(),
+                        Map.of(),
+                        "",
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        List.of()
+                ),
+                false,
+                List.of(),
+                "HYPOTHESIS",
+                0.0,
+                List.of(),
+                "DETERMINISTIC_ONLY",
+                false
+        );
     }
 }

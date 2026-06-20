@@ -124,6 +124,26 @@ class SourceSuspectChangeAnalysisServiceTest {
     }
 
     @Test
+    void objectMapperCanSerializeDeterministicServiceResponse()
+            throws Exception {
+        writeWorkspaceFile();
+
+        var response = service.analyze(
+                caseId,
+                45,
+                20,
+                10,
+                false,
+                false
+        );
+        String json = objectMapper.writeValueAsString(response);
+
+        assertThat(json).contains("\"status\":\"HYPOTHESIS\"");
+        assertThat(json).contains("\"analysisMode\":\"DETERMINISTIC_ONLY\"");
+        assertThat(json).contains("\"partial\":");
+    }
+
+    @Test
     void serviceReturnsWarningWhenSourceDiscoveryThrows() throws Exception {
         writeWorkspaceFile();
         FlowAwareSourceDiscoveryService throwingDiscovery =

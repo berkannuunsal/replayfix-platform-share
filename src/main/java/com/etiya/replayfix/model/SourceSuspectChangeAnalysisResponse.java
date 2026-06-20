@@ -24,4 +24,33 @@ public record SourceSuspectChangeAnalysisResponse(
         String analysisMode,
         boolean partial
 ) {
+    public SourceSuspectChangeAnalysisResponse {
+        jiraKey = jiraKey == null ? "" : jiraKey;
+        repository = repository == null ? "" : repository;
+        branch = branch == null ? "" : branch;
+        incidentCommitSha = incidentCommitSha == null ? "" : incidentCommitSha;
+        flowAnchors = JsonSafeValueSanitizer.safeList(flowAnchors);
+        candidateFlowChain = JsonSafeValueSanitizer.safeList(candidateFlowChain);
+        candidateFiles = JsonSafeValueSanitizer.safeList(candidateFiles);
+        candidateMethods = JsonSafeValueSanitizer.safeList(candidateMethods);
+        recentCommits = JsonSafeValueSanitizer.safeList(recentCommits);
+        if (sourceReasoningContext == null) {
+            sourceReasoningContext = new SourceReasoningContext(
+                    java.util.Map.of(),
+                    java.util.Map.of(),
+                    "",
+                    java.util.List.of(),
+                    java.util.List.of(),
+                    java.util.List.of(),
+                    java.util.List.of(),
+                    java.util.List.of(),
+                    java.util.List.of(),
+                    java.util.List.of()
+            );
+        }
+        suspectChanges = JsonSafeValueSanitizer.safeList(suspectChanges);
+        status = status == null ? "HYPOTHESIS" : status;
+        warnings = JsonSafeValueSanitizer.safeList(warnings);
+        analysisMode = analysisMode == null ? "DETERMINISTIC_ONLY" : analysisMode;
+    }
 }

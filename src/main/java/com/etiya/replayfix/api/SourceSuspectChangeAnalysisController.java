@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -24,6 +25,7 @@ public class SourceSuspectChangeAnalysisController {
     private static final Logger log = LoggerFactory.getLogger(
             SourceSuspectChangeAnalysisController.class
     );
+    private static final Duration ENDPOINT_TIMEOUT = Duration.ofSeconds(20);
 
     private final SourceSuspectChangeAnalysisService service;
 
@@ -51,14 +53,48 @@ public class SourceSuspectChangeAnalysisController {
                         useCompanyLlm
                 ))
                 .subscribeOn(Schedulers.boundedElastic())
+                .map(this::jsonSafeResponse)
+                .timeout(ENDPOINT_TIMEOUT)
                 .onErrorResume(exception -> {
+                    String endpointPath = "/api/v1/cases/"
+                            + caseId
+                            + "/source/suspect-change-analysis";
                     log.warn(
-                            "Source suspect change analysis endpoint fallback for caseId={}",
+                            "Source suspect change analysis endpoint fallback endpointPath={} caseId={} exceptionClass={} exceptionMessage={}",
+                            endpointPath,
                             caseId,
+                            exception.getClass().getName(),
+                            exception.getMessage(),
                             exception
                     );
                     return Mono.just(fallbackResponse(caseId, lookbackDays));
                 });
+    }
+
+    private SourceSuspectChangeAnalysisResponse jsonSafeResponse(
+            SourceSuspectChangeAnalysisResponse response
+    ) {
+        return new SourceSuspectChangeAnalysisResponse(
+                response.caseId(),
+                response.jiraKey(),
+                response.repository(),
+                response.branch(),
+                response.incidentCommitSha(),
+                response.lookbackDays(),
+                response.flowAnchors(),
+                response.candidateFlowChain(),
+                response.candidateFiles(),
+                response.candidateMethods(),
+                response.recentCommits(),
+                response.sourceReasoningContext(),
+                response.llmUsed(),
+                response.suspectChanges(),
+                response.status(),
+                response.confidence(),
+                response.warnings(),
+                response.analysisMode(),
+                response.partial()
+        );
     }
 
     private SourceSuspectChangeAnalysisResponse fallbackResponse(
