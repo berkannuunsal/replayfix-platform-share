@@ -37,7 +37,10 @@ public record SourceSuspectChangeAnalysisResponse(
         List<String> resolvedServiceTypes,
         List<String> resolvedImplementationFiles,
         List<String> unresolvedServiceCalls,
-        List<SourceLastCommitDiagnostic> lastCommitDiagnostics
+        List<SourceLastCommitDiagnostic> lastCommitDiagnostics,
+        int companyLlmTimeoutSeconds,
+        long companyLlmElapsedMs,
+        String companyLlmStatus
 ) {
     public SourceSuspectChangeAnalysisResponse(
             UUID caseId,
@@ -93,7 +96,10 @@ public record SourceSuspectChangeAnalysisResponse(
                 List.of(),
                 List.of(),
                 List.of(),
-                List.of()
+                List.of(),
+                0,
+                0L,
+                "NOT_REQUESTED"
         );
     }
 
@@ -154,7 +160,10 @@ public record SourceSuspectChangeAnalysisResponse(
                 List.of(),
                 List.of(),
                 List.of(),
-                List.of()
+                List.of(),
+                0,
+                0L,
+                "NOT_REQUESTED"
         );
     }
 
@@ -197,5 +206,8 @@ public record SourceSuspectChangeAnalysisResponse(
                 JsonSafeValueSanitizer.safeList(resolvedImplementationFiles);
         unresolvedServiceCalls = JsonSafeValueSanitizer.safeList(unresolvedServiceCalls);
         lastCommitDiagnostics = JsonSafeValueSanitizer.safeList(lastCommitDiagnostics);
+        companyLlmStatus = companyLlmStatus == null
+                ? "NOT_REQUESTED"
+                : companyLlmStatus;
     }
 }

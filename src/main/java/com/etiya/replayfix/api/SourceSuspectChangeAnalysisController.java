@@ -26,7 +26,7 @@ public class SourceSuspectChangeAnalysisController {
     private static final Logger log = LoggerFactory.getLogger(
             SourceSuspectChangeAnalysisController.class
     );
-    private static final Duration ENDPOINT_TIMEOUT = Duration.ofSeconds(20);
+    private static final Duration ENDPOINT_TIMEOUT = Duration.ofSeconds(30);
 
     private final SourceSuspectChangeAnalysisService service;
 
@@ -48,7 +48,8 @@ public class SourceSuspectChangeAnalysisController {
             @RequestParam(defaultValue = "256") int maxFileSizeKb,
             @RequestParam(defaultValue = "false") boolean includeTests,
             @RequestParam(defaultValue = "10") int sourceDiscoveryTimeoutSeconds,
-            @RequestParam(defaultValue = "8") int gitHistoryTimeoutSeconds
+            @RequestParam(defaultValue = "8") int gitHistoryTimeoutSeconds,
+            @RequestParam(defaultValue = "8") int companyLlmTimeoutSeconds
     ) {
         return Mono.fromCallable(() -> service.analyze(
                         caseId,
@@ -61,7 +62,8 @@ public class SourceSuspectChangeAnalysisController {
                         maxFileSizeKb,
                         includeTests,
                         sourceDiscoveryTimeoutSeconds,
-                        gitHistoryTimeoutSeconds
+                        gitHistoryTimeoutSeconds,
+                        companyLlmTimeoutSeconds
                 ))
                 .subscribeOn(Schedulers.boundedElastic())
                 .map(this::jsonSafeResponse)
@@ -122,7 +124,10 @@ public class SourceSuspectChangeAnalysisController {
                 response.resolvedServiceTypes(),
                 response.resolvedImplementationFiles(),
                 response.unresolvedServiceCalls(),
-                response.lastCommitDiagnostics()
+                response.lastCommitDiagnostics(),
+                response.companyLlmTimeoutSeconds(),
+                response.companyLlmElapsedMs(),
+                response.companyLlmStatus()
         );
     }
 
@@ -179,7 +184,10 @@ public class SourceSuspectChangeAnalysisController {
                 List.of(),
                 List.of(),
                 List.of(),
-                List.of()
+                List.of(),
+                0,
+                0L,
+                "NOT_REQUESTED"
         );
     }
 

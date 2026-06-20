@@ -23,6 +23,10 @@ public class CompanySourceReasoningService {
 
     public static final String COMPANY_LLM_UNAVAILABLE =
             "COMPANY_LLM_UNAVAILABLE";
+    public static final String COMPANY_LLM_INVALID_RESPONSE =
+            "COMPANY_LLM_INVALID_RESPONSE";
+    public static final String COMPANY_LLM_TIMEOUT =
+            "COMPANY_LLM_TIMEOUT";
 
     private final ReplayFixProperties properties;
     private final AiProviderClientFactory aiProviderClientFactory;
@@ -62,8 +66,11 @@ public class CompanySourceReasoningService {
                     Map.of("requestType", "SOURCE_CHANGE_ANALYSIS")
             ));
 
-            if (!response.success() || response.structuredResponse() == null) {
-                return unavailable();
+            if (!response.success()) {
+                return failed(response.errorCategory());
+            }
+            if (response.structuredResponse() == null) {
+                return invalidResponse();
             }
 
             return parse(response.structuredResponse(), response.warnings());
@@ -125,6 +132,51 @@ public class CompanySourceReasoningService {
                 "",
                 List.of(COMPANY_LLM_UNAVAILABLE)
         );
+    }
+
+    private ReasoningResult invalidResponse() {
+        return new ReasoningResult(
+                false,
+                List.of(),
+                "HYPOTHESIS",
+                0.0,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                "",
+                List.of(COMPANY_LLM_INVALID_RESPONSE)
+        );
+    }
+
+    private ReasoningResult timeout() {
+        return new ReasoningResult(
+                false,
+                List.of(),
+                "HYPOTHESIS",
+                0.0,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                "",
+                List.of(COMPANY_LLM_TIMEOUT)
+        );
+    }
+
+    private ReasoningResult failed(String errorCategory) {
+        if ("INVALID_JSON".equalsIgnoreCase(errorCategory)) {
+            return invalidResponse();
+        }
+        if ("TIMEOUT".equalsIgnoreCase(errorCategory)) {
+            return timeout();
+        }
+        if (errorCategory != null
+                && errorCategory.toUpperCase(java.util.Locale.ROOT)
+                .startsWith("HTTP_503")) {
+            return unavailable();
+        }
+        return unavailable();
     }
 
     private String systemPrompt() {

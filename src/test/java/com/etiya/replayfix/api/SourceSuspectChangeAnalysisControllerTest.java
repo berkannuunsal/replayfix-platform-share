@@ -86,6 +86,7 @@ class SourceSuspectChangeAnalysisControllerTest {
                 256,
                 false,
                 10,
+                8,
                 8
         ))
                 .thenReturn(response);
@@ -102,6 +103,7 @@ class SourceSuspectChangeAnalysisControllerTest {
                         256,
                         false,
                         10,
+                        8,
                         8
                 ).block();
 
@@ -160,6 +162,7 @@ class SourceSuspectChangeAnalysisControllerTest {
                 256,
                 false,
                 10,
+                8,
                 8
         ))
                 .thenReturn(response);
@@ -176,6 +179,7 @@ class SourceSuspectChangeAnalysisControllerTest {
                         256,
                         false,
                         10,
+                        8,
                         8
                 ).block();
 
@@ -199,6 +203,7 @@ class SourceSuspectChangeAnalysisControllerTest {
                 anyInt(),
                 anyInt(),
                 anyBoolean(),
+                anyInt(),
                 anyInt(),
                 anyInt()
         )).thenThrow(new IllegalStateException("internal stack trace"));
@@ -248,6 +253,7 @@ class SourceSuspectChangeAnalysisControllerTest {
                 anyInt(),
                 anyBoolean(),
                 anyInt(),
+                anyInt(),
                 anyInt()
         )).thenThrow(new IllegalStateException("internal stack trace"));
         SourceSuspectChangeAnalysisController controller =
@@ -265,6 +271,7 @@ class SourceSuspectChangeAnalysisControllerTest {
                         256,
                         false,
                         10,
+                        8,
                         8
                 ).block();
         String json = objectMapper.writeValueAsString(response);
@@ -293,6 +300,7 @@ class SourceSuspectChangeAnalysisControllerTest {
                 256,
                 false,
                 10,
+                8,
                 8
         ))
                 .thenReturn(emptyResponse(caseId));
@@ -373,6 +381,7 @@ class SourceSuspectChangeAnalysisControllerTest {
                 256,
                 false,
                 10,
+                8,
                 8
         ))
                 .thenReturn(response);

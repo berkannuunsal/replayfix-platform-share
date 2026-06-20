@@ -1,0 +1,146 @@
+package com.etiya.replayfix.service;
+
+import com.etiya.replayfix.config.ReplayFixProperties;
+import com.etiya.replayfix.domain.AiProviderType;
+import com.etiya.replayfix.model.AiGenerationResponse;
+import com.etiya.replayfix.model.SourceReasoningContext;
+import com.etiya.replayfix.service.ai.AiProviderClient;
+import com.etiya.replayfix.service.ai.AiProviderClientFactory;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+class CompanySourceReasoningServiceTest {
+
+    private ReplayFixProperties properties;
+    private AiProviderClientFactory factory;
+    private AiProviderClient provider;
+    private CompanySourceReasoningService service;
+
+    @BeforeEach
+    void setUp() {
+        properties = new ReplayFixProperties();
+        properties.getAi().setEnabled(true);
+        properties.getAi().setProvider(AiProviderType.COMPANY_LLM);
+        properties.getAi().getCompany().setModel("AI-Coder-PR-Review");
+        properties.getAi().setTemperature(0.1);
+        factory = mock(AiProviderClientFactory.class);
+        provider = mock(AiProviderClient.class);
+        when(factory.getProvider()).thenReturn(provider);
+        service = new CompanySourceReasoningService(
+                properties,
+                factory,
+                new ObjectMapper().findAndRegisterModules()
+        );
+    }
+
+    @Test
+    void validSourceReasoningJsonReturnsLlmUsed() {
+        when(provider.generate(any())).thenReturn(new AiGenerationResponse(
+                true,
+                "COMPANY_LLM",
+                "AI-Coder-PR-Review",
+                "request-1",
+                "stop",
+                25,
+                10,
+                10,
+                new ObjectMapper().valueToTree(Map.of(
+                        "status", "CONFIRMED",
+                        "confidence", 0.8,
+                        "suspectChanges", List.of(Map.of(
+                                "file", "A.java",
+                                "className", "A",
+                                "methodName", "m",
+                                "layer", "SERVICE",
+                                "suspectReason", "reason",
+                                "confidence", 0.8
+                        ))
+                )),
+                List.of(),
+                null,
+                null
+        ));
+
+        var result = service.reason(UUID.randomUUID(), context());
+
+        assertThat(result.llmUsed()).isTrue();
+        assertThat(result.status()).isEqualTo("HYPOTHESIS");
+        assertThat(result.suspectChanges()).hasSize(1);
+        assertThat(result.suspectChanges().get(0).status())
+                .isEqualTo("HYPOTHESIS");
+    }
+
+    @Test
+    void invalidJsonCategoryReturnsInvalidResponseWarning() {
+        when(provider.generate(any())).thenReturn(new AiGenerationResponse(
+                false,
+                "COMPANY_LLM",
+                "AI-Coder-PR-Review",
+                null,
+                "error",
+                10,
+                0,
+                0,
+                null,
+                List.of(),
+                "INVALID_JSON",
+                "not valid JSON"
+        ));
+
+        var result = service.reason(UUID.randomUUID(), context());
+
+        assertThat(result.llmUsed()).isFalse();
+        assertThat(result.warnings())
+                .contains(CompanySourceReasoningService
+                        .COMPANY_LLM_INVALID_RESPONSE);
+    }
+
+    @Test
+    void http503CategoryReturnsUnavailableWarning() {
+        when(provider.generate(any())).thenReturn(new AiGenerationResponse(
+                false,
+                "COMPANY_LLM",
+                "AI-Coder-PR-Review",
+                null,
+                "error",
+                10,
+                0,
+                0,
+                null,
+                List.of(),
+                "HTTP_503",
+                "service unavailable"
+        ));
+
+        var result = service.reason(UUID.randomUUID(), context());
+
+        assertThat(result.llmUsed()).isFalse();
+        assertThat(result.warnings())
+                .contains(CompanySourceReasoningService.COMPANY_LLM_UNAVAILABLE);
+    }
+
+    private SourceReasoningContext context() {
+        return new SourceReasoningContext(
+                Map.of(),
+                Map.of(),
+                "",
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of()
+        );
+    }
+}

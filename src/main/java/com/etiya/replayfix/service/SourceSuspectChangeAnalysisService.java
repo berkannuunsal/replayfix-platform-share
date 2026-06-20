@@ -68,6 +68,8 @@ public class SourceSuspectChangeAnalysisService {
             "NO_RECENT_COMMITS_FOUND";
     public static final String ONLY_GENERIC_MATCHES_FOUND =
             "ONLY_GENERIC_MATCHES_FOUND";
+    public static final String COMPANY_LLM_TIMEOUT =
+            CompanySourceReasoningService.COMPANY_LLM_TIMEOUT;
 
     private final ReplayCaseRepository caseRepository;
     private final EvidenceRepository evidenceRepository;
@@ -124,6 +126,7 @@ public class SourceSuspectChangeAnalysisService {
                 256,
                 false,
                 10,
+                8,
                 8
         );
     }
@@ -142,10 +145,46 @@ public class SourceSuspectChangeAnalysisService {
             int sourceDiscoveryTimeoutSeconds,
             int gitHistoryTimeoutSeconds
     ) {
+        return analyze(
+                caseId,
+                lookbackDays,
+                maxCandidates,
+                maxCommitsPerFile,
+                includeDiffSnippets,
+                useCompanyLlm,
+                maxScannedFiles,
+                maxFileSizeKb,
+                includeTests,
+                sourceDiscoveryTimeoutSeconds,
+                gitHistoryTimeoutSeconds,
+                8
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public SourceSuspectChangeAnalysisResponse analyze(
+            UUID caseId,
+            int lookbackDays,
+            int maxCandidates,
+            int maxCommitsPerFile,
+            boolean includeDiffSnippets,
+            boolean useCompanyLlm,
+            int maxScannedFiles,
+            int maxFileSizeKb,
+            boolean includeTests,
+            int sourceDiscoveryTimeoutSeconds,
+            int gitHistoryTimeoutSeconds,
+            int companyLlmTimeoutSeconds
+    ) {
         List<String> warnings = new ArrayList<>();
         PhaseTimings timings = new PhaseTimings();
         String lastCompletedPhase = "";
         String currentPhaseOnTimeout = null;
+        CompanyLlmPhase companyLlmPhase = new CompanyLlmPhase(
+                Math.max(1, companyLlmTimeoutSeconds),
+                0L,
+                useCompanyLlm ? "UNAVAILABLE" : "NOT_REQUESTED"
+        );
         ReplayCaseEntity replayCase = defaultCase(caseId);
         RepositoryContext repositoryContext =
                 new RepositoryContext("", "", "test2");
@@ -272,6 +311,7 @@ public class SourceSuspectChangeAnalysisService {
                         warnings,
                         "DETERMINISTIC_ONLY",
                         discovery,
+                        companyLlmPhase,
                         timings,
                         lastCompletedPhase,
                         currentPhaseOnTimeout
@@ -421,8 +461,15 @@ public class SourceSuspectChangeAnalysisService {
             if (useCompanyLlm) {
                 timings.start("companyLlm");
                 try {
+                    SourceReasoningContext llmContext = context;
                     CompanySourceReasoningService.ReasoningResult reasoning =
-                            companyReasoningService.reason(caseId, context);
+                            runWithTimeout(
+                                    () -> companyReasoningService.reason(
+                                            caseId,
+                                            llmContext
+                                    ),
+                                    Math.max(1, companyLlmTimeoutSeconds)
+                            );
                     warnings.addAll(reasoning.warnings());
                     llmUsed = reasoning.llmUsed();
                     if (reasoning.llmUsed()) {
@@ -432,6 +479,25 @@ public class SourceSuspectChangeAnalysisService {
                             && !reasoning.suspectChanges().isEmpty()) {
                         suspectChanges = reasoning.suspectChanges();
                     }
+                    companyLlmPhase = new CompanyLlmPhase(
+                            Math.max(1, companyLlmTimeoutSeconds),
+                            timings.currentElapsedMs(),
+                            reasoning.llmUsed()
+                                    ? "SUCCESS"
+                                    : companyLlmStatus(reasoning.warnings())
+                    );
+                } catch (TimeoutException exception) {
+                    log.warn(
+                            "Source suspect change analysis company LLM timed out for caseId={}",
+                            caseId,
+                            exception
+                    );
+                    warnings.add(CompanySourceReasoningService.COMPANY_LLM_TIMEOUT);
+                    companyLlmPhase = new CompanyLlmPhase(
+                            Math.max(1, companyLlmTimeoutSeconds),
+                            timings.currentElapsedMs(),
+                            "TIMEOUT"
+                    );
                 } catch (Exception exception) {
                     log.warn(
                             "Source suspect change analysis company LLM failed for caseId={}",
@@ -440,6 +506,11 @@ public class SourceSuspectChangeAnalysisService {
                     );
                     warnings.add(CompanySourceReasoningService
                             .COMPANY_LLM_UNAVAILABLE);
+                    companyLlmPhase = new CompanyLlmPhase(
+                            Math.max(1, companyLlmTimeoutSeconds),
+                            timings.currentElapsedMs(),
+                            "ERROR"
+                    );
                 } finally {
                     timings.stop("companyLlm");
                 }
@@ -462,6 +533,7 @@ public class SourceSuspectChangeAnalysisService {
                     warnings,
                     analysisMode,
                     discovery,
+                    companyLlmPhase,
                     timings,
                     lastCompletedPhase,
                     currentPhaseOnTimeout
@@ -489,6 +561,7 @@ public class SourceSuspectChangeAnalysisService {
                     warnings,
                     "DETERMINISTIC_ONLY",
                     discovery,
+                    companyLlmPhase,
                     timings,
                     lastCompletedPhase,
                     currentPhaseOnTimeout
@@ -512,6 +585,7 @@ public class SourceSuspectChangeAnalysisService {
             List<String> warnings,
             String analysisMode,
             FlowAwareSourceDiscoveryService.DiscoveryResult discovery,
+            CompanyLlmPhase companyLlmPhase,
             PhaseTimings timings,
             String lastCompletedPhase,
             String currentPhaseOnTimeout
@@ -554,7 +628,10 @@ public class SourceSuspectChangeAnalysisService {
                 discovery.resolvedServiceTypes(),
                 discovery.resolvedImplementationFiles(),
                 discovery.unresolvedServiceCalls(),
-                lastCommitDiagnostics
+                lastCommitDiagnostics,
+                companyLlmPhase.timeoutSeconds(),
+                companyLlmPhase.elapsedMs(),
+                companyLlmPhase.status()
         );
     }
 
@@ -575,6 +652,21 @@ public class SourceSuspectChangeAnalysisService {
         } finally {
             executor.shutdownNow();
         }
+    }
+
+    private String companyLlmStatus(List<String> warnings) {
+        if (warnings.contains(CompanySourceReasoningService.COMPANY_LLM_TIMEOUT)) {
+            return "TIMEOUT";
+        }
+        if (warnings.contains(CompanySourceReasoningService
+                .COMPANY_LLM_INVALID_RESPONSE)) {
+            return "ERROR";
+        }
+        if (warnings.contains(CompanySourceReasoningService
+                .COMPANY_LLM_UNAVAILABLE)) {
+            return "UNAVAILABLE";
+        }
+        return "UNAVAILABLE";
     }
 
     private ReplayCaseEntity defaultCase(UUID caseId) {
@@ -818,6 +910,20 @@ public class SourceSuspectChangeAnalysisService {
         private long elapsedMs(long startedAt) {
             return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
         }
+
+        private long currentElapsedMs() {
+            if (activePhase == null) {
+                return 0L;
+            }
+            return elapsedMs(activeStartedAt);
+        }
+    }
+
+    private record CompanyLlmPhase(
+            int timeoutSeconds,
+            long elapsedMs,
+            String status
+    ) {
     }
 
     private record RepositoryContext(

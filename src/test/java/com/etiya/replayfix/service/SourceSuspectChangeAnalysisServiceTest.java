@@ -7,6 +7,7 @@ import com.etiya.replayfix.domain.ReplayCaseEntity;
 import com.etiya.replayfix.domain.ReplayCaseStatus;
 import com.etiya.replayfix.model.SourceCandidateFlowChainItem;
 import com.etiya.replayfix.model.SourceLastCommitDiagnostic;
+import com.etiya.replayfix.model.SourceSuspectChange;
 import com.etiya.replayfix.model.SuspectSignalCategory;
 import com.etiya.replayfix.model.SuspectSignalExtractionResponse;
 import com.etiya.replayfix.model.SuspectSignalStrength;
@@ -144,6 +145,227 @@ class SourceSuspectChangeAnalysisServiceTest {
         assertThat(json).contains("\"partial\":");
         assertThat(json).contains("\"phaseTimingsMs\"");
         assertThat(json).contains("\"lastCompletedPhase\"");
+    }
+
+    @Test
+    void useCompanyLlmFalseReturnsDeterministicCandidates()
+            throws Exception {
+        writeWorkspaceFile();
+        FlowAwareSourceDiscoveryService discovery =
+                mock(FlowAwareSourceDiscoveryService.class);
+        SourceCandidateGitHistoryService gitHistory =
+                mock(SourceCandidateGitHistoryService.class);
+        when(discovery.discover(
+                any(),
+                any(),
+                anyInt(),
+                anyInt(),
+                anyInt(),
+                anyBoolean()
+        )).thenReturn(discoveryResult());
+        when(gitHistory.collect(
+                any(),
+                any(),
+                any(),
+                anyInt(),
+                anyInt(),
+                anyBoolean()
+        )).thenReturn(historyResult());
+        service = service(discovery, gitHistory, contextBuilder);
+
+        var response = service.analyze(
+                caseId,
+                45,
+                20,
+                10,
+                false,
+                false
+        );
+
+        assertThat(response.candidateFlowChain()).isNotEmpty();
+        assertThat(response.suspectChanges()).isNotEmpty();
+        assertThat(response.companyLlmStatus()).isEqualTo("NOT_REQUESTED");
+        assertThat(response.analysisMode()).isEqualTo("DETERMINISTIC_ONLY");
+    }
+
+    @Test
+    void useCompanyLlmTrueAndSuccessReturnsLlmUsed()
+            throws Exception {
+        writeWorkspaceFile();
+        useMockDeterministicPipeline();
+        when(companyReasoningService.reason(
+                org.mockito.ArgumentMatchers.eq(caseId),
+                org.mockito.ArgumentMatchers.any()
+        )).thenReturn(new CompanySourceReasoningService.ReasoningResult(
+                true,
+                List.of(llmSuspect()),
+                "HYPOTHESIS",
+                0.7,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                "",
+                List.of()
+        ));
+
+        var response = service.analyze(
+                caseId,
+                45,
+                20,
+                10,
+                false,
+                true,
+                2_000,
+                256,
+                false,
+                10,
+                8,
+                8
+        );
+
+        assertThat(response.llmUsed()).isTrue();
+        assertThat(response.analysisMode()).isEqualTo("COMPANY_LLM");
+        assertThat(response.companyLlmStatus()).isEqualTo("SUCCESS");
+        assertThat(response.status()).isEqualTo("HYPOTHESIS");
+    }
+
+    @Test
+    void useCompanyLlmTrueAndTimeoutKeepsDeterministicCandidates()
+            throws Exception {
+        writeWorkspaceFile();
+        useMockDeterministicPipeline();
+        when(companyReasoningService.reason(
+                org.mockito.ArgumentMatchers.eq(caseId),
+                org.mockito.ArgumentMatchers.any()
+        )).thenAnswer(invocation -> {
+            Thread.sleep(1_500);
+            return new CompanySourceReasoningService.ReasoningResult(
+                    true,
+                    List.of(llmSuspect()),
+                    "HYPOTHESIS",
+                    0.7,
+                    List.of(),
+                    List.of(),
+                    List.of(),
+                    List.of(),
+                    "",
+                    List.of()
+            );
+        });
+
+        var response = service.analyze(
+                caseId,
+                45,
+                20,
+                10,
+                false,
+                true,
+                2_000,
+                256,
+                false,
+                10,
+                8,
+                1
+        );
+
+        assertThat(response.llmUsed()).isFalse();
+        assertThat(response.analysisMode()).isEqualTo("DETERMINISTIC_ONLY");
+        assertThat(response.companyLlmStatus()).isEqualTo("TIMEOUT");
+        assertThat(response.companyLlmElapsedMs()).isGreaterThan(0L);
+        assertThat(response.candidateFlowChain()).isNotEmpty();
+        assertThat(response.suspectChanges()).isNotEmpty();
+        assertThat(response.lastCommitDiagnostics()).isNotEmpty();
+        assertThat(response.warnings())
+                .contains(CompanySourceReasoningService.COMPANY_LLM_TIMEOUT)
+                .doesNotContain(SourceSuspectChangeAnalysisService
+                        .SOURCE_CHANGE_ANALYSIS_FAILED);
+    }
+
+    @Test
+    void useCompanyLlmTrueAndUnavailableKeepsDeterministicCandidates()
+            throws Exception {
+        writeWorkspaceFile();
+        useMockDeterministicPipeline();
+        when(companyReasoningService.reason(
+                org.mockito.ArgumentMatchers.eq(caseId),
+                org.mockito.ArgumentMatchers.any()
+        )).thenReturn(new CompanySourceReasoningService.ReasoningResult(
+                false,
+                List.of(),
+                "HYPOTHESIS",
+                0.0,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                "",
+                List.of(CompanySourceReasoningService.COMPANY_LLM_UNAVAILABLE)
+        ));
+
+        var response = service.analyze(
+                caseId,
+                45,
+                20,
+                10,
+                false,
+                true,
+                2_000,
+                256,
+                false,
+                10,
+                8,
+                8
+        );
+
+        assertThat(response.companyLlmStatus()).isEqualTo("UNAVAILABLE");
+        assertThat(response.warnings())
+                .contains(CompanySourceReasoningService.COMPANY_LLM_UNAVAILABLE);
+        assertThat(response.candidateFlowChain()).isNotEmpty();
+    }
+
+    @Test
+    void invalidCompanyLlmResponseKeepsDeterministicCandidates()
+            throws Exception {
+        writeWorkspaceFile();
+        useMockDeterministicPipeline();
+        when(companyReasoningService.reason(
+                org.mockito.ArgumentMatchers.eq(caseId),
+                org.mockito.ArgumentMatchers.any()
+        )).thenReturn(new CompanySourceReasoningService.ReasoningResult(
+                false,
+                List.of(),
+                "HYPOTHESIS",
+                0.0,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                "",
+                List.of(CompanySourceReasoningService
+                        .COMPANY_LLM_INVALID_RESPONSE)
+        ));
+
+        var response = service.analyze(
+                caseId,
+                45,
+                20,
+                10,
+                false,
+                true,
+                2_000,
+                256,
+                false,
+                10,
+                8,
+                8
+        );
+
+        assertThat(response.companyLlmStatus()).isEqualTo("ERROR");
+        assertThat(response.warnings())
+                .contains(CompanySourceReasoningService
+                        .COMPANY_LLM_INVALID_RESPONSE);
+        assertThat(response.candidateFlowChain()).isNotEmpty();
     }
 
     @Test
@@ -467,6 +689,63 @@ class SourceSuspectChangeAnalysisServiceTest {
                 List.of("src/main/java/com/example/BusinessFlowController.java"),
                 List.of(),
                 java.util.Map.of()
+        );
+    }
+
+    private SourceCandidateGitHistoryService.HistoryResult historyResult() {
+        return new SourceCandidateGitHistoryService.HistoryResult(
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(new SourceLastCommitDiagnostic(
+                        "src/main/java/com/example/BusinessFlowController.java",
+                        "abcdef123456",
+                        "abcdef1",
+                        "Test User",
+                        "2020-01-01T00:00:00Z",
+                        "old controller change"
+                ))
+        );
+    }
+
+    private void useMockDeterministicPipeline() {
+        FlowAwareSourceDiscoveryService discovery =
+                mock(FlowAwareSourceDiscoveryService.class);
+        SourceCandidateGitHistoryService gitHistory =
+                mock(SourceCandidateGitHistoryService.class);
+        when(discovery.discover(
+                any(),
+                any(),
+                anyInt(),
+                anyInt(),
+                anyInt(),
+                anyBoolean()
+        )).thenReturn(discoveryResult());
+        when(gitHistory.collect(
+                any(),
+                any(),
+                any(),
+                anyInt(),
+                anyInt(),
+                anyBoolean()
+        )).thenReturn(historyResult());
+        service = service(discovery, gitHistory, contextBuilder);
+    }
+
+    private SourceSuspectChange llmSuspect() {
+        return new SourceSuspectChange(
+                "src/main/java/com/example/BusinessFlowController.java",
+                "BusinessFlowController",
+                "initialize",
+                "CONTROLLER",
+                "/businessFlow/initialize",
+                List.of("/businessFlow/initialize"),
+                0,
+                List.of(),
+                "LLM hypothesis",
+                0.7,
+                "HYPOTHESIS",
+                List.of()
         );
     }
 
