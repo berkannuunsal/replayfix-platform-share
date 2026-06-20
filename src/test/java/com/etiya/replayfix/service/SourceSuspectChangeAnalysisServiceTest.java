@@ -17,6 +17,7 @@ import com.etiya.replayfix.model.SuspectSourceSignal;
 import com.etiya.replayfix.repository.EvidenceRepository;
 import com.etiya.replayfix.repository.ReplayCaseRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -37,7 +38,6 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import org.mockito.ArgumentCaptor;
 
 class SourceSuspectChangeAnalysisServiceTest {
 
@@ -101,6 +101,8 @@ class SourceSuspectChangeAnalysisServiceTest {
         writeWorkspaceFile();
         when(companyReasoningService.reason(
                 eq(caseId),
+                anyString(),
+                anyInt(),
                 anyString()
         )).thenReturn(new CompanySourceReasoningService.ReasoningResult(
                 false,
@@ -201,6 +203,8 @@ class SourceSuspectChangeAnalysisServiceTest {
         useMockDeterministicPipeline();
         when(companyReasoningService.reason(
                 eq(caseId),
+                anyString(),
+                anyInt(),
                 anyString()
         )).thenReturn(new CompanySourceReasoningService.ReasoningResult(
                 true,
@@ -243,6 +247,8 @@ class SourceSuspectChangeAnalysisServiceTest {
         useMockDeterministicPipeline();
         when(companyReasoningService.reason(
                 eq(caseId),
+                anyString(),
+                anyInt(),
                 anyString()
         )).thenAnswer(invocation -> {
             Thread.sleep(1_500);
@@ -295,6 +301,8 @@ class SourceSuspectChangeAnalysisServiceTest {
         useMockDeterministicPipeline();
         when(companyReasoningService.reason(
                 eq(caseId),
+                anyString(),
+                anyInt(),
                 anyString()
         )).thenReturn(new CompanySourceReasoningService.ReasoningResult(
                 false,
@@ -337,6 +345,8 @@ class SourceSuspectChangeAnalysisServiceTest {
         useMockDeterministicPipeline();
         when(companyReasoningService.reason(
                 eq(caseId),
+                anyString(),
+                anyInt(),
                 anyString()
         )).thenReturn(new CompanySourceReasoningService.ReasoningResult(
                 false,
@@ -379,7 +389,12 @@ class SourceSuspectChangeAnalysisServiceTest {
             throws Exception {
         writeWorkspaceFile();
         useExpandedDeterministicPipeline();
-        when(companyReasoningService.reason(eq(caseId), anyString()))
+        when(companyReasoningService.reason(
+                eq(caseId),
+                anyString(),
+                anyInt(),
+                anyString()
+        ))
                 .thenReturn(successfulReasoning());
 
         var response = service.analyze(
@@ -392,7 +407,7 @@ class SourceSuspectChangeAnalysisServiceTest {
         );
 
         ArgumentCaptor<String> packet = ArgumentCaptor.forClass(String.class);
-        verify(companyReasoningService).reason(eq(caseId), packet.capture());
+        verify(companyReasoningService).reason(eq(caseId), packet.capture(), anyInt(), anyString());
         assertThat(packet.getValue()).contains("UserController");
         assertThat(packet.getValue()).contains("UserServiceImpl");
         assertThat(packet.getValue()).contains("UpdateAplUserPrefPrvncRequest");
@@ -412,13 +427,18 @@ class SourceSuspectChangeAnalysisServiceTest {
                 EvidenceType.ROVO_RCA,
                 "{\"summary\":\"flow\",\"reasoning_content\":\"SECRET_REASONING\"}"
         )));
-        when(companyReasoningService.reason(eq(caseId), anyString()))
+        when(companyReasoningService.reason(
+                eq(caseId),
+                anyString(),
+                anyInt(),
+                anyString()
+        ))
                 .thenReturn(successfulReasoning());
 
         service.analyze(caseId, 45, 20, 10, false, true);
 
         ArgumentCaptor<String> packet = ArgumentCaptor.forClass(String.class);
-        verify(companyReasoningService).reason(eq(caseId), packet.capture());
+        verify(companyReasoningService).reason(eq(caseId), packet.capture(), anyInt(), anyString());
         assertThat(packet.getValue()).doesNotContain("SECRET_REASONING");
     }
 
@@ -427,13 +447,18 @@ class SourceSuspectChangeAnalysisServiceTest {
             throws Exception {
         writeWorkspaceFile();
         useExpandedDeterministicPipeline();
-        when(companyReasoningService.reason(eq(caseId), anyString()))
+        when(companyReasoningService.reason(
+                eq(caseId),
+                anyString(),
+                anyInt(),
+                anyString()
+        ))
                 .thenReturn(successfulReasoning());
 
         service.analyze(caseId, 45, 20, 10, false, true);
 
         ArgumentCaptor<String> packet = ArgumentCaptor.forClass(String.class);
-        verify(companyReasoningService).reason(eq(caseId), packet.capture());
+        verify(companyReasoningService).reason(eq(caseId), packet.capture(), anyInt(), anyString());
         assertThat(packet.getValue()).doesNotContain("OtherController");
         assertThat(packet.getValue()).doesNotContain("/other/debug");
     }
@@ -443,7 +468,12 @@ class SourceSuspectChangeAnalysisServiceTest {
             throws Exception {
         writeWorkspaceFile();
         useExpandedDeterministicPipeline();
-        when(companyReasoningService.reason(eq(caseId), anyString()))
+        when(companyReasoningService.reason(
+                eq(caseId),
+                anyString(),
+                anyInt(),
+                anyString()
+        ))
                 .thenReturn(successfulReasoning());
 
         var response = service.analyze(
@@ -460,17 +490,250 @@ class SourceSuspectChangeAnalysisServiceTest {
                 8,
                 8,
                 "COMPACT",
-                700
+                700,
+                500
         );
 
         ArgumentCaptor<String> packet = ArgumentCaptor.forClass(String.class);
-        verify(companyReasoningService).reason(eq(caseId), packet.capture());
+        verify(companyReasoningService).reason(eq(caseId), packet.capture(), anyInt(), anyString());
         assertThat(packet.getValue().length()).isLessThanOrEqualTo(700);
         assertThat(response.companyLlmPromptChars()).isLessThanOrEqualTo(700);
         assertThat(response.companyLlmMaxPromptChars()).isEqualTo(700);
         assertThat(response.warnings())
                 .contains(SourceSuspectChangeAnalysisService
                         .COMPANY_LLM_CONTEXT_TRUNCATED);
+    }
+
+    @Test
+    void minimalPacketIsSmallerThanCompactPacket()
+            throws Exception {
+        writeWorkspaceFile();
+        useExpandedDeterministicPipeline();
+        when(companyReasoningService.reason(
+                eq(caseId),
+                anyString(),
+                anyInt(),
+                anyString()
+        ))
+                .thenReturn(successfulReasoning());
+
+        service.analyze(caseId, 45, 20, 10, false, true);
+        ArgumentCaptor<String> packet = ArgumentCaptor.forClass(String.class);
+        verify(companyReasoningService).reason(
+                eq(caseId),
+                packet.capture(),
+                anyInt(),
+                anyString()
+        );
+        String compactPacket = packet.getValue();
+
+        org.mockito.Mockito.clearInvocations(companyReasoningService);
+        service.analyze(
+                caseId,
+                45,
+                20,
+                10,
+                false,
+                true,
+                2_000,
+                256,
+                false,
+                10,
+                8,
+                8,
+                "MINIMAL",
+                12_000,
+                500
+        );
+        verify(companyReasoningService).reason(
+                eq(caseId),
+                packet.capture(),
+                anyInt(),
+                eq("MINIMAL")
+        );
+        String minimalPacket = packet.getValue();
+
+        assertThat(minimalPacket).contains("\"contextMode\":\"MINIMAL\"");
+        assertThat(minimalPacket.length()).isLessThan(compactPacket.length());
+    }
+
+    @Test
+    void minimalPacketIncludesControllerAndServiceCandidates()
+            throws Exception {
+        writeWorkspaceFile();
+        useExpandedDeterministicPipeline();
+        when(companyReasoningService.reason(
+                eq(caseId),
+                anyString(),
+                anyInt(),
+                anyString()
+        ))
+                .thenReturn(successfulReasoning());
+
+        var response = service.analyze(
+                caseId,
+                45,
+                20,
+                10,
+                false,
+                true,
+                2_000,
+                256,
+                false,
+                10,
+                8,
+                8,
+                "MINIMAL",
+                12_000,
+                500
+        );
+
+        ArgumentCaptor<String> packet = ArgumentCaptor.forClass(String.class);
+        verify(companyReasoningService).reason(
+                eq(caseId),
+                packet.capture(),
+                anyInt(),
+                eq("MINIMAL")
+        );
+        assertThat(packet.getValue()).contains("UserController");
+        assertThat(packet.getValue()).contains("UserServiceImpl");
+        assertThat(packet.getValue()).doesNotContain(
+                "UpdateAplUserPrefPrvncRequest.java"
+        );
+        assertThat(response.companyLlmContextMode()).isEqualTo("MINIMAL");
+    }
+
+    @Test
+    void minimalPacketExcludesDiscoveredControllerEndpoints()
+            throws Exception {
+        writeWorkspaceFile();
+        useExpandedDeterministicPipeline();
+        when(companyReasoningService.reason(
+                eq(caseId),
+                anyString(),
+                anyInt(),
+                anyString()
+        ))
+                .thenReturn(successfulReasoning());
+
+        service.analyze(
+                caseId,
+                45,
+                20,
+                10,
+                false,
+                true,
+                2_000,
+                256,
+                false,
+                10,
+                8,
+                8,
+                "MINIMAL",
+                12_000,
+                500
+        );
+
+        ArgumentCaptor<String> packet = ArgumentCaptor.forClass(String.class);
+        verify(companyReasoningService).reason(
+                eq(caseId),
+                packet.capture(),
+                anyInt(),
+                eq("MINIMAL")
+        );
+        assertThat(packet.getValue()).doesNotContain("OtherController");
+        assertThat(packet.getValue()).doesNotContain("/other/debug");
+    }
+
+    @Test
+    void minimalPacketCapsSnippets()
+            throws Exception {
+        writeWorkspaceFile();
+        useExpandedDeterministicPipeline();
+        when(companyReasoningService.reason(
+                eq(caseId),
+                anyString(),
+                anyInt(),
+                anyString()
+        ))
+                .thenReturn(successfulReasoning());
+
+        service.analyze(
+                caseId,
+                45,
+                20,
+                10,
+                false,
+                true,
+                2_000,
+                256,
+                false,
+                10,
+                8,
+                8,
+                "MINIMAL",
+                12_000,
+                500
+        );
+
+        ArgumentCaptor<String> packet = ArgumentCaptor.forClass(String.class);
+        verify(companyReasoningService).reason(
+                eq(caseId),
+                packet.capture(),
+                anyInt(),
+                eq("MINIMAL")
+        );
+        var json = objectMapper.readTree(packet.getValue());
+        int totalSnippetChars = 0;
+        for (var method : json.path("candidateMethods")) {
+            totalSnippetChars += method.path("snippet").asText("").length();
+        }
+
+        assertThat(totalSnippetChars).isLessThanOrEqualTo(800);
+    }
+
+    @Test
+    void sourceChangeAnalysisPassesOutputTokenLimit()
+            throws Exception {
+        writeWorkspaceFile();
+        useExpandedDeterministicPipeline();
+        when(companyReasoningService.reason(
+                eq(caseId),
+                anyString(),
+                anyInt(),
+                anyString()
+        ))
+                .thenReturn(successfulReasoning());
+
+        var response = service.analyze(
+                caseId,
+                45,
+                20,
+                10,
+                false,
+                true,
+                2_000,
+                256,
+                false,
+                10,
+                8,
+                8,
+                "MINIMAL",
+                12_000,
+                500
+        );
+
+        ArgumentCaptor<Integer> maxOutputTokens =
+                ArgumentCaptor.forClass(Integer.class);
+        verify(companyReasoningService).reason(
+                eq(caseId),
+                anyString(),
+                maxOutputTokens.capture(),
+                eq("MINIMAL")
+        );
+        assertThat(maxOutputTokens.getValue()).isEqualTo(500);
+        assertThat(response.companyLlmOutputTokenLimit()).isEqualTo(500);
+        assertThat(response.companyLlmPromptHash()).isNotBlank();
     }
 
     @Test
@@ -928,6 +1191,7 @@ class SourceSuspectChangeAnalysisServiceTest {
                         20,
                         List.of("/user/region/update"),
                         "public void updateUserParty(UpdateAplUserPrefPrvncRequest request) { userService.updateUser(request); }"
+                                + " preferredProvince".repeat(80)
                 ),
                 new SourceCandidateMethod(
                         "CrmBackend/src/main/java/UserServiceImpl.java",
@@ -937,6 +1201,7 @@ class SourceSuspectChangeAnalysisServiceTest {
                         50,
                         List.of("userService.updateUser(request)"),
                         "public void updateUser(UpdateAplUserPrefPrvncRequest request) { validate(request); }"
+                                + " regionValidation".repeat(80)
                 ),
                 new SourceCandidateMethod(
                         "CrmBackend/src/main/java/UpdateAplUserPrefPrvncRequest.java",

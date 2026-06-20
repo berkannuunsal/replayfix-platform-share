@@ -43,7 +43,9 @@ public record SourceSuspectChangeAnalysisResponse(
         String companyLlmStatus,
         int companyLlmPromptChars,
         String companyLlmContextMode,
-        int companyLlmMaxPromptChars
+        int companyLlmMaxPromptChars,
+        int companyLlmOutputTokenLimit,
+        String companyLlmPromptHash
 ) {
     public SourceSuspectChangeAnalysisResponse(
             UUID caseId,
@@ -105,7 +107,9 @@ public record SourceSuspectChangeAnalysisResponse(
                 "NOT_REQUESTED",
                 0,
                 "COMPACT",
-                12000
+                12000,
+                500,
+                ""
         );
     }
 
@@ -172,7 +176,9 @@ public record SourceSuspectChangeAnalysisResponse(
                 "NOT_REQUESTED",
                 0,
                 "COMPACT",
-                12000
+                12000,
+                500,
+                ""
         );
     }
 
@@ -221,5 +227,8 @@ public record SourceSuspectChangeAnalysisResponse(
         companyLlmContextMode = companyLlmContextMode == null
                 ? "COMPACT"
                 : companyLlmContextMode;
+        companyLlmPromptHash = companyLlmPromptHash == null
+                ? ""
+                : companyLlmPromptHash;
     }
 }

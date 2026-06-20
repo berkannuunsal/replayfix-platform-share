@@ -24,6 +24,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -73,9 +75,11 @@ public class SourceSuspectChangeAnalysisService {
             CompanySourceReasoningService.COMPANY_LLM_TIMEOUT;
     public static final String COMPANY_LLM_CONTEXT_TRUNCATED =
             "COMPANY_LLM_CONTEXT_TRUNCATED";
+    private static final String LLM_CONTEXT_MINIMAL = "MINIMAL";
     private static final String LLM_CONTEXT_COMPACT = "COMPACT";
     private static final String LLM_CONTEXT_FULL = "FULL";
     private static final int DEFAULT_COMPANY_LLM_MAX_PROMPT_CHARS = 12_000;
+    private static final int DEFAULT_COMPANY_LLM_MAX_OUTPUT_TOKENS = 500;
 
     private final ReplayCaseRepository caseRepository;
     private final EvidenceRepository evidenceRepository;
@@ -135,7 +139,8 @@ public class SourceSuspectChangeAnalysisService {
                 8,
                 8,
                 LLM_CONTEXT_COMPACT,
-                DEFAULT_COMPANY_LLM_MAX_PROMPT_CHARS
+                DEFAULT_COMPANY_LLM_MAX_PROMPT_CHARS,
+                DEFAULT_COMPANY_LLM_MAX_OUTPUT_TOKENS
         );
     }
 
@@ -167,7 +172,8 @@ public class SourceSuspectChangeAnalysisService {
                 gitHistoryTimeoutSeconds,
                 8,
                 LLM_CONTEXT_COMPACT,
-                DEFAULT_COMPANY_LLM_MAX_PROMPT_CHARS
+                DEFAULT_COMPANY_LLM_MAX_PROMPT_CHARS,
+                DEFAULT_COMPANY_LLM_MAX_OUTPUT_TOKENS
         );
     }
 
@@ -200,7 +206,8 @@ public class SourceSuspectChangeAnalysisService {
                 gitHistoryTimeoutSeconds,
                 companyLlmTimeoutSeconds,
                 LLM_CONTEXT_COMPACT,
-                DEFAULT_COMPANY_LLM_MAX_PROMPT_CHARS
+                DEFAULT_COMPANY_LLM_MAX_PROMPT_CHARS,
+                DEFAULT_COMPANY_LLM_MAX_OUTPUT_TOKENS
         );
     }
 
@@ -221,19 +228,59 @@ public class SourceSuspectChangeAnalysisService {
             String llmContextMode,
             int companyLlmMaxPromptChars
     ) {
+        return analyze(
+                caseId,
+                lookbackDays,
+                maxCandidates,
+                maxCommitsPerFile,
+                includeDiffSnippets,
+                useCompanyLlm,
+                maxScannedFiles,
+                maxFileSizeKb,
+                includeTests,
+                sourceDiscoveryTimeoutSeconds,
+                gitHistoryTimeoutSeconds,
+                companyLlmTimeoutSeconds,
+                llmContextMode,
+                companyLlmMaxPromptChars,
+                DEFAULT_COMPANY_LLM_MAX_OUTPUT_TOKENS
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public SourceSuspectChangeAnalysisResponse analyze(
+            UUID caseId,
+            int lookbackDays,
+            int maxCandidates,
+            int maxCommitsPerFile,
+            boolean includeDiffSnippets,
+            boolean useCompanyLlm,
+            int maxScannedFiles,
+            int maxFileSizeKb,
+            boolean includeTests,
+            int sourceDiscoveryTimeoutSeconds,
+            int gitHistoryTimeoutSeconds,
+            int companyLlmTimeoutSeconds,
+            String llmContextMode,
+            int companyLlmMaxPromptChars,
+            int companyLlmMaxOutputTokens
+    ) {
         List<String> warnings = new ArrayList<>();
         PhaseTimings timings = new PhaseTimings();
         String lastCompletedPhase = "";
         String currentPhaseOnTimeout = null;
         String normalizedLlmContextMode = normalizeLlmContextMode(llmContextMode);
         int normalizedMaxPromptChars = Math.max(1, companyLlmMaxPromptChars);
+        int normalizedMaxOutputTokens = Math.max(1, companyLlmMaxOutputTokens);
         CompanyLlmPhase companyLlmPhase = new CompanyLlmPhase(
                 Math.max(1, companyLlmTimeoutSeconds),
                 0L,
                 useCompanyLlm ? "UNAVAILABLE" : "NOT_REQUESTED",
                 0,
                 normalizedLlmContextMode,
-                normalizedMaxPromptChars
+                normalizedMaxPromptChars,
+                normalizedMaxOutputTokens,
+                ""
         );
         ReplayCaseEntity replayCase = defaultCase(caseId);
         RepositoryContext repositoryContext =
@@ -524,15 +571,18 @@ public class SourceSuspectChangeAnalysisService {
                     if (llmPacket.truncated()) {
                         warnings.add(COMPANY_LLM_CONTEXT_TRUNCATED);
                     }
-                    companyLlmPhase = companyLlmPhase.withPromptChars(
-                            llmPacket.promptChars()
-                    );
                     String llmContextJson = llmPacket.contextJson();
+                    companyLlmPhase = companyLlmPhase.withPrompt(
+                            llmPacket.promptChars(),
+                            sha256(llmContextJson)
+                    );
                     CompanySourceReasoningService.ReasoningResult reasoning =
                             runWithTimeout(
                                     () -> companyReasoningService.reason(
                                             caseId,
-                                            llmContextJson
+                                            llmContextJson,
+                                            normalizedMaxOutputTokens,
+                                            normalizedLlmContextMode
                                     ),
                                     Math.max(1, companyLlmTimeoutSeconds)
                             );
@@ -553,7 +603,9 @@ public class SourceSuspectChangeAnalysisService {
                                     : companyLlmStatus(reasoning.warnings()),
                             llmPacket.promptChars(),
                             normalizedLlmContextMode,
-                            normalizedMaxPromptChars
+                            normalizedMaxPromptChars,
+                            normalizedMaxOutputTokens,
+                            sha256(llmContextJson)
                     );
                 } catch (TimeoutException exception) {
                     log.warn(
@@ -568,7 +620,9 @@ public class SourceSuspectChangeAnalysisService {
                             "TIMEOUT",
                             companyLlmPhase.promptChars(),
                             normalizedLlmContextMode,
-                            normalizedMaxPromptChars
+                            normalizedMaxPromptChars,
+                            normalizedMaxOutputTokens,
+                            companyLlmPhase.promptHash()
                     );
                 } catch (Exception exception) {
                     log.warn(
@@ -584,7 +638,9 @@ public class SourceSuspectChangeAnalysisService {
                             "ERROR",
                             companyLlmPhase.promptChars(),
                             normalizedLlmContextMode,
-                            normalizedMaxPromptChars
+                            normalizedMaxPromptChars,
+                            normalizedMaxOutputTokens,
+                            companyLlmPhase.promptHash()
                     );
                 } finally {
                     timings.stop("companyLlm");
@@ -709,7 +765,9 @@ public class SourceSuspectChangeAnalysisService {
                 companyLlmPhase.status(),
                 companyLlmPhase.promptChars(),
                 companyLlmPhase.contextMode(),
-                companyLlmPhase.maxPromptChars()
+                companyLlmPhase.maxPromptChars(),
+                companyLlmPhase.outputTokenLimit(),
+                companyLlmPhase.promptHash()
         );
     }
 
@@ -723,6 +781,23 @@ public class SourceSuspectChangeAnalysisService {
             String llmContextMode,
             int maxPromptChars
     ) throws Exception {
+        if (LLM_CONTEXT_MINIMAL.equals(llmContextMode)) {
+            String minimalJson = minimalPacketJson(
+                    replayCase,
+                    discovery,
+                    history,
+                    warnings
+            );
+            if (minimalJson.length() <= maxPromptChars) {
+                return new CompanyLlmContextPacket(
+                        minimalJson,
+                        minimalJson.length(),
+                        false
+                );
+            }
+            String fitted = fitJson(minimalJson, maxPromptChars);
+            return new CompanyLlmContextPacket(fitted, fitted.length(), true);
+        }
         if (LLM_CONTEXT_FULL.equals(llmContextMode)) {
             String fullJson = objectMapper.writeValueAsString(fullContext);
             if (fullJson.length() <= maxPromptChars) {
@@ -850,6 +925,96 @@ public class SourceSuspectChangeAnalysisService {
         return objectMapper.writeValueAsString(packet);
     }
 
+    private String minimalPacketJson(
+            ReplayCaseEntity replayCase,
+            FlowAwareSourceDiscoveryService.DiscoveryResult discovery,
+            SourceCandidateGitHistoryService.HistoryResult history,
+            List<String> warnings
+    ) throws Exception {
+        Map<String, Object> packet = new LinkedHashMap<>();
+        packet.put("contextMode", LLM_CONTEXT_MINIMAL);
+        packet.put("caseId", replayCase.getId().toString());
+        packet.put("jiraKey", safeString(replayCase.getJiraKey()));
+        packet.put("matchedEndpointAnchors", discovery.matchedEndpointAnchors());
+        packet.put("candidateFlowChain", discovery.candidateFlowChain().stream()
+                .limit(2)
+                .map(this::minimalChainItem)
+                .toList());
+        packet.put("candidateMethods", minimalMethods(
+                discovery.candidateMethods()
+        ));
+        packet.put("lastCommitDiagnostics", minimalCommitSummary(
+                history.lastCommitDiagnostics()
+        ));
+        packet.put("warnings", warnings.stream().limit(10).toList());
+        packet.put("outputSchema", Map.of(
+                "status", "HYPOTHESIS",
+                "confidence", 0.0,
+                "suspectReason", "",
+                "recommendedNextAction", "",
+                "facts", List.of(),
+                "inferences", List.of(),
+                "unknowns", List.of(),
+                "warnings", List.of()
+        ));
+        return objectMapper.writeValueAsString(packet);
+    }
+
+    private Map<String, Object> minimalChainItem(
+            SourceCandidateFlowChainItem item
+    ) {
+        Map<String, Object> value = new LinkedHashMap<>();
+        value.put("layer", item.layer());
+        value.put("className", item.className());
+        value.put("methodName", item.methodName());
+        value.put("file", item.file());
+        return value;
+    }
+
+    private List<Map<String, Object>> minimalMethods(
+            List<SourceCandidateMethod> methods
+    ) {
+        List<SourceCandidateMethod> selected = methods.stream()
+                .limit(2)
+                .toList();
+        int remainingSnippetChars = 800;
+        List<Map<String, Object>> values = new ArrayList<>();
+        for (int index = 0; index < selected.size(); index++) {
+            SourceCandidateMethod method = selected.get(index);
+            int remainingMethods = selected.size() - index;
+            int maxSnippetChars = remainingMethods <= 0
+                    ? remainingSnippetChars
+                    : remainingSnippetChars / remainingMethods;
+            String snippet = truncate(
+                    sanitizeCompactText(method.snippet()),
+                    Math.max(0, maxSnippetChars)
+            );
+            remainingSnippetChars = Math.max(
+                    0,
+                    remainingSnippetChars - snippet.length()
+            );
+            Map<String, Object> value = new LinkedHashMap<>();
+            value.put("file", method.file());
+            value.put("className", method.className());
+            value.put("methodName", method.methodName());
+            value.put("snippet", snippet);
+            values.add(value);
+        }
+        return values;
+    }
+
+    private Map<String, Object> minimalCommitSummary(
+            List<SourceLastCommitDiagnostic> diagnostics
+    ) {
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("count", diagnostics.size());
+        summary.put("items", diagnostics.stream()
+                .limit(5)
+                .map(diagnostic -> compactDiagnostic(diagnostic, 120))
+                .toList());
+        return summary;
+    }
+
     private Map<String, Object> compactChainItem(
             SourceCandidateFlowChainItem item
     ) {
@@ -926,6 +1091,9 @@ public class SourceSuspectChangeAnalysisService {
     }
 
     private String normalizeLlmContextMode(String value) {
+        if (LLM_CONTEXT_MINIMAL.equalsIgnoreCase(safeString(value))) {
+            return LLM_CONTEXT_MINIMAL;
+        }
         if (LLM_CONTEXT_FULL.equalsIgnoreCase(safeString(value))) {
             return LLM_CONTEXT_FULL;
         }
@@ -961,6 +1129,20 @@ public class SourceSuspectChangeAnalysisService {
             return minimal;
         }
         return "{}";
+    }
+
+    private String sha256(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(safeString(value).getBytes(StandardCharsets.UTF_8));
+            StringBuilder builder = new StringBuilder();
+            for (byte item : digest) {
+                builder.append(String.format("%02x", item));
+            }
+            return builder.toString();
+        } catch (Exception exception) {
+            return Integer.toHexString(safeString(value).hashCode());
+        }
     }
 
     private <T> T runWithTimeout(Callable<T> callable, int timeoutSeconds)
@@ -1253,16 +1435,23 @@ public class SourceSuspectChangeAnalysisService {
             String status,
             int promptChars,
             String contextMode,
-            int maxPromptChars
+            int maxPromptChars,
+            int outputTokenLimit,
+            String promptHash
     ) {
-        private CompanyLlmPhase withPromptChars(int promptChars) {
+        private CompanyLlmPhase withPrompt(
+                int promptChars,
+                String promptHash
+        ) {
             return new CompanyLlmPhase(
                     timeoutSeconds,
                     elapsedMs,
                     status,
                     promptChars,
                     contextMode,
-                    maxPromptChars
+                    maxPromptChars,
+                    outputTokenLimit,
+                    promptHash
             );
         }
     }

@@ -57,6 +57,15 @@ public class CompanySourceReasoningService {
             UUID caseId,
             String contextJson
     ) {
+        return reason(caseId, contextJson, 500, "COMPACT");
+    }
+
+    public ReasoningResult reason(
+            UUID caseId,
+            String contextJson,
+            int maxOutputTokens,
+            String contextMode
+    ) {
         if (!properties.getAi().isEnabled()
                 || properties.getAi().getProvider() != AiProviderType.COMPANY_LLM) {
             return unavailable();
@@ -67,13 +76,18 @@ public class CompanySourceReasoningService {
             AiGenerationResponse response = provider.generate(new AiGenerationRequest(
                     caseId,
                     "SOURCE_CHANGE_ANALYSIS",
-                    systemPrompt(),
-                    userPrompt(contextJson),
+                    systemPrompt(contextMode),
+                    userPrompt(contextJson, contextMode),
                     properties.getAi().getCompany().getModel(),
                     properties.getAi().getTemperature(),
-                    properties.getAi().getCompany().getMaxOutputChars(),
+                    Math.max(1, maxOutputTokens),
                     true,
-                    Map.of("requestType", "SOURCE_CHANGE_ANALYSIS")
+                    Map.of(
+                            "requestType", "SOURCE_CHANGE_ANALYSIS",
+                            "contextMode", contextMode == null
+                                    ? "COMPACT"
+                                    : contextMode
+                    )
             ));
 
             if (!response.success()) {
@@ -189,7 +203,17 @@ public class CompanySourceReasoningService {
         return unavailable();
     }
 
-    private String systemPrompt() {
+    private String systemPrompt(String contextMode) {
+        if ("MINIMAL".equalsIgnoreCase(contextMode)) {
+            return """
+                    Return only compact JSON.
+                    Do not explain.
+                    Do not include markdown.
+                    Do not include reasoning.
+                    Do not include code blocks.
+                    Do not mark anything CONFIRMED.
+                    """;
+        }
         return """
                 You are ReplayFix source reasoning AI. Return valid JSON only.
                 Use only supplied evidence. Separate FACT, INFERENCE and UNKNOWN.
@@ -198,7 +222,25 @@ public class CompanySourceReasoningService {
                 """;
     }
 
-    private String userPrompt(String contextJson) {
+    private String userPrompt(String contextJson, String contextMode) {
+        if ("MINIMAL".equalsIgnoreCase(contextMode)) {
+            return """
+                    Given this small ReplayFix evidence packet, produce only:
+                    {
+                      "status": "HYPOTHESIS",
+                      "confidence": 0.0,
+                      "suspectReason": "",
+                      "recommendedNextAction": "",
+                      "facts": [],
+                      "inferences": [],
+                      "unknowns": [],
+                      "warnings": []
+                    }
+
+                    Packet:
+                    %s
+                    """.formatted(contextJson);
+        }
         return """
                 Analyze this bounded ReplayFix source reasoning context.
 

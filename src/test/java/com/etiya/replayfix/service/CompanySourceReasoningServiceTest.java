@@ -2,11 +2,13 @@ package com.etiya.replayfix.service;
 
 import com.etiya.replayfix.config.ReplayFixProperties;
 import com.etiya.replayfix.domain.AiProviderType;
+import com.etiya.replayfix.model.AiGenerationRequest;
 import com.etiya.replayfix.model.AiGenerationResponse;
 import com.etiya.replayfix.model.SourceReasoningContext;
 import com.etiya.replayfix.service.ai.AiProviderClient;
 import com.etiya.replayfix.service.ai.AiProviderClientFactory;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -16,6 +18,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -127,6 +130,47 @@ class CompanySourceReasoningServiceTest {
         assertThat(result.llmUsed()).isFalse();
         assertThat(result.warnings())
                 .contains(CompanySourceReasoningService.COMPANY_LLM_UNAVAILABLE);
+    }
+
+    @Test
+    void minimalSourceReasoningRequestUsesOutputTokenLimit() {
+        when(provider.generate(any())).thenReturn(new AiGenerationResponse(
+                true,
+                "COMPANY_LLM",
+                "AI-Coder-PR-Review",
+                "request-1",
+                "stop",
+                25,
+                10,
+                10,
+                new ObjectMapper().valueToTree(Map.of(
+                        "status", "HYPOTHESIS",
+                        "confidence", 0.4,
+                        "facts", List.of("fact")
+                )),
+                List.of(),
+                null,
+                null
+        ));
+
+        service.reason(
+                UUID.randomUUID(),
+                "{\"contextMode\":\"MINIMAL\"}",
+                500,
+                "MINIMAL"
+        );
+
+        ArgumentCaptor<AiGenerationRequest> request =
+                ArgumentCaptor.forClass(AiGenerationRequest.class);
+        verify(provider).generate(request.capture());
+        assertThat(request.getValue().requestType())
+                .isEqualTo("SOURCE_CHANGE_ANALYSIS");
+        assertThat(request.getValue().maxOutputChars()).isEqualTo(500);
+        assertThat(request.getValue().systemPrompt())
+                .contains("Return only compact JSON");
+        assertThat(request.getValue().userPrompt())
+                .contains("Given this small ReplayFix evidence packet")
+                .contains("\"status\": \"HYPOTHESIS\"");
     }
 
     private SourceReasoningContext context() {

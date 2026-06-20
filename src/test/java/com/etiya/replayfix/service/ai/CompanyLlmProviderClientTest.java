@@ -71,6 +71,30 @@ class CompanyLlmProviderClientTest {
     }
 
     @Test
+    void sourceChangeAnalysisPayloadUsesRequestMaxOutputTokens() {
+        CompanyLlmProviderClient client = client(okResponse());
+        AiGenerationRequest request = new AiGenerationRequest(
+                UUID.randomUUID(),
+                "SOURCE_CHANGE_ANALYSIS",
+                "Return only compact JSON.",
+                "{\"contextMode\":\"MINIMAL\"}",
+                "company-model",
+                0.1,
+                500,
+                true,
+                Map.of("requestType", "SOURCE_CHANGE_ANALYSIS")
+        );
+
+        JsonNode payload = client.buildSourceReasoningPayload(request);
+
+        assertThat(payload.path("max_tokens").asInt()).isEqualTo(500);
+        assertThat(payload.path("messages").path(0).path("content").asText())
+                .isEqualTo("Return only compact JSON.");
+        assertThat(payload.path("messages").path(1).path("content").asText())
+                .contains("\"contextMode\":\"MINIMAL\"");
+    }
+
+    @Test
     void shouldParseSuccessfulResponse() {
         UUID caseId = UUID.randomUUID();
         when(evidenceRepository.findByCaseIdAndEvidenceType(caseId, EvidenceType.AI_INPUT_BUNDLE))

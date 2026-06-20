@@ -241,10 +241,22 @@ public class CompanyLlmProviderClient implements AiProviderClient {
                 ""
         ));
         prompt = truncate(prompt, company().getMaxInputChars());
-        return buildChatPayload(prompt, company().getMaxOutputChars());
+        return buildChatPayload(
+                firstNonBlank(request.systemPrompt(), systemPrompt()),
+                prompt,
+                Math.max(1, request.maxOutputChars())
+        );
     }
 
     private JsonNode buildChatPayload(String prompt, int maxOutputChars) {
+        return buildChatPayload(systemPrompt(), prompt, maxOutputChars);
+    }
+
+    private JsonNode buildChatPayload(
+            String systemPrompt,
+            String prompt,
+            int maxOutputChars
+    ) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("model", model());
         payload.put("temperature", properties.getAi().getTemperature());
@@ -254,7 +266,7 @@ public class CompanyLlmProviderClient implements AiProviderClient {
                         "role",
                         "system",
                         "content",
-                        systemPrompt()
+                        systemPrompt
                 ),
                 Map.of(
                         "role",

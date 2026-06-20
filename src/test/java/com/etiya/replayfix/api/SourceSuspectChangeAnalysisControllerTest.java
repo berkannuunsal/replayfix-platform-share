@@ -90,7 +90,8 @@ class SourceSuspectChangeAnalysisControllerTest {
                 8,
                 8,
                 "COMPACT",
-                12_000
+                12_000,
+                500
         ))
                 .thenReturn(response);
 
@@ -109,7 +110,8 @@ class SourceSuspectChangeAnalysisControllerTest {
                         8,
                         8,
                         "COMPACT",
-                        12_000
+                        12_000,
+                        500
                 ).block();
 
         assertThat(actual.status()).isEqualTo("HYPOTHESIS");
@@ -170,7 +172,8 @@ class SourceSuspectChangeAnalysisControllerTest {
                 8,
                 8,
                 "COMPACT",
-                12_000
+                12_000,
+                500
         ))
                 .thenReturn(response);
 
@@ -189,7 +192,8 @@ class SourceSuspectChangeAnalysisControllerTest {
                         8,
                         8,
                         "COMPACT",
-                        12_000
+                        12_000,
+                        500
                 ).block();
 
         assertThat(actual.llmUsed()).isFalse();
@@ -216,6 +220,7 @@ class SourceSuspectChangeAnalysisControllerTest {
                 anyInt(),
                 anyInt(),
                 anyString(),
+                anyInt(),
                 anyInt()
         )).thenThrow(new IllegalStateException("internal stack trace"));
 
@@ -267,6 +272,7 @@ class SourceSuspectChangeAnalysisControllerTest {
                 anyInt(),
                 anyInt(),
                 anyString(),
+                anyInt(),
                 anyInt()
         )).thenThrow(new IllegalStateException("internal stack trace"));
         SourceSuspectChangeAnalysisController controller =
@@ -287,7 +293,8 @@ class SourceSuspectChangeAnalysisControllerTest {
                         8,
                         8,
                         "COMPACT",
-                        12_000
+                        12_000,
+                        500
                 ).block();
         String json = objectMapper.writeValueAsString(response);
 
@@ -318,7 +325,8 @@ class SourceSuspectChangeAnalysisControllerTest {
                 8,
                 8,
                 "COMPACT",
-                12_000
+                12_000,
+                500
         ))
                 .thenReturn(emptyResponse(caseId));
 
@@ -401,7 +409,8 @@ class SourceSuspectChangeAnalysisControllerTest {
                 8,
                 8,
                 "COMPACT",
-                12_000
+                12_000,
+                500
         ))
                 .thenReturn(response);
 
