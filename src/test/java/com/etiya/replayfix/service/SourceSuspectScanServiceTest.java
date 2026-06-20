@@ -385,6 +385,59 @@ class SourceSuspectScanServiceTest {
                 .containsExactly("PREFERRED_PROVINCE");
     }
 
+    @Test
+    void prefersPreparedRepositoryWorkspaceOverLegacyRepository()
+            throws Exception {
+        Path legacyRoot = sourceRoot();
+        Files.createDirectories(legacyRoot.resolve("src/main/java/com/example"));
+        Files.writeString(
+                legacyRoot.resolve("src/main/java/com/example/Legacy.java"),
+                "class Legacy { String p = \"legacy\"; }\n"
+        );
+
+        Path preparedRoot = Path.of(
+                properties.getWorkspaceDir(),
+                caseId.toString(),
+                "repositories",
+                "backend"
+        );
+        Files.createDirectories(
+                preparedRoot.resolve("src/main/java/com/example")
+        );
+        Files.writeString(
+                preparedRoot.resolve("src/main/java/com/example/Prepared.java"),
+                "class Prepared { String p = \"PREFERRED_PROVINCE\"; }\n"
+        );
+
+        stubSignalsWithBranch("", "PREFERRED_PROVINCE");
+        when(evidenceRepository.findByCaseIdAndEvidenceType(
+                caseId,
+                EvidenceType.REPOSITORY_RESOLUTION
+        )).thenReturn(List.of(evidence(
+                EvidenceType.REPOSITORY_RESOLUTION,
+                """
+                        {
+                          "projectKey": "DCE",
+                          "primaryRepositorySlug": "backend",
+                          "sourceBranch": "test2"
+                        }
+                        """
+        )));
+
+        SourceSuspectScanResponse response = service.scan(
+                caseId,
+                20,
+                5,
+                false
+        );
+
+        assertThat(response.branch()).isEqualTo("test2");
+        assertThat(response.scannedRoot())
+                .contains("repositories/backend");
+        assertThat(response.candidateFiles().get(0).relativePath())
+                .contains("Prepared.java");
+    }
+
     private Path sourceRoot() throws Exception {
         Path root = Path.of(
                 properties.getWorkspaceDir(),

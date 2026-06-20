@@ -626,7 +626,10 @@ public class SourceSuspectScanService {
                 firstNonBlank(
                         branch,
                         repositoryContext.branch(),
-                        sourceContext.branch()
+                        sourceContext.branch(),
+                        "backend".equalsIgnoreCase(repositorySlug)
+                                ? "test2"
+                                : null
                 ),
                 sourceWorkspacePaths
         );
@@ -734,7 +737,7 @@ public class SourceSuspectScanService {
             UUID caseId,
             ResolutionContext context
     ) {
-        List<Path> candidates = new ArrayList<>(context.workspaceCandidates());
+        List<Path> candidates = new ArrayList<>();
 
         Path caseWorkspace = Path.of(
                         properties.getWorkspaceDir(),
@@ -757,6 +760,7 @@ public class SourceSuspectScanService {
                     .normalize());
         }
 
+        candidates.addAll(context.workspaceCandidates());
         candidates.add(caseWorkspace.resolve("repository").normalize());
 
         properties.getTargets()
