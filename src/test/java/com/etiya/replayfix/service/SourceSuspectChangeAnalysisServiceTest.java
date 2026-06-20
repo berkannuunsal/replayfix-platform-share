@@ -5,6 +5,7 @@ import com.etiya.replayfix.domain.EvidenceEntity;
 import com.etiya.replayfix.domain.EvidenceType;
 import com.etiya.replayfix.domain.ReplayCaseEntity;
 import com.etiya.replayfix.domain.ReplayCaseStatus;
+import com.etiya.replayfix.model.SourceCandidateFlowChainItem;
 import com.etiya.replayfix.model.SuspectSignalCategory;
 import com.etiya.replayfix.model.SuspectSignalExtractionResponse;
 import com.etiya.replayfix.model.SuspectSignalStrength;
@@ -24,6 +25,9 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -39,6 +43,11 @@ class SourceSuspectChangeAnalysisServiceTest {
     private CompanySourceReasoningService companyReasoningService;
     private SourceSuspectChangeAnalysisService service;
     private ReplayFixProperties properties;
+    private SourceFlowAnchorExtractionService anchorExtractionService;
+    private FlowAwareSourceDiscoveryService discoveryService;
+    private SourceCandidateGitHistoryService gitHistoryService;
+    private SourceReasoningContextBuilder contextBuilder;
+    private ObjectMapper objectMapper;
 
     @BeforeEach
     void setUp() {
@@ -49,6 +58,18 @@ class SourceSuspectChangeAnalysisServiceTest {
         companyReasoningService = mock(CompanySourceReasoningService.class);
         properties = new ReplayFixProperties();
         properties.setWorkspaceDir(temporaryDirectory.resolve("work").toString());
+        objectMapper = new ObjectMapper().findAndRegisterModules();
+        anchorExtractionService = new SourceFlowAnchorExtractionService();
+        discoveryService = new FlowAwareSourceDiscoveryService();
+        gitHistoryService = new SourceCandidateGitHistoryService(
+                properties,
+                new EvidenceSanitizer()
+        );
+        contextBuilder = new SourceReasoningContextBuilder(
+                evidenceRepository,
+                new EvidenceSanitizer(),
+                objectMapper
+        );
 
         when(caseRepository.findById(caseId))
                 .thenReturn(Optional.of(caseEntity()));
@@ -63,25 +84,7 @@ class SourceSuspectChangeAnalysisServiceTest {
         when(signalExtractionService.extract(caseId, false))
                 .thenReturn(signalResponse());
 
-        service = new SourceSuspectChangeAnalysisService(
-                caseRepository,
-                evidenceRepository,
-                signalExtractionService,
-                new SourceFlowAnchorExtractionService(),
-                new FlowAwareSourceDiscoveryService(),
-                new SourceCandidateGitHistoryService(
-                        properties,
-                        new EvidenceSanitizer()
-                ),
-                new SourceReasoningContextBuilder(
-                        evidenceRepository,
-                        new EvidenceSanitizer(),
-                        new ObjectMapper().findAndRegisterModules()
-                ),
-                companyReasoningService,
-                new ObjectMapper().findAndRegisterModules(),
-                properties
-        );
+        service = service(discoveryService, gitHistoryService, contextBuilder);
     }
 
     @Test
@@ -120,6 +123,121 @@ class SourceSuspectChangeAnalysisServiceTest {
                 .contains(CompanySourceReasoningService.COMPANY_LLM_UNAVAILABLE);
     }
 
+    @Test
+    void serviceReturnsWarningWhenSourceDiscoveryThrows() throws Exception {
+        writeWorkspaceFile();
+        FlowAwareSourceDiscoveryService throwingDiscovery =
+                mock(FlowAwareSourceDiscoveryService.class);
+        when(throwingDiscovery.discover(any(), any(), anyInt()))
+                .thenThrow(new IllegalStateException("boom stack trace"));
+        service = service(throwingDiscovery, gitHistoryService, contextBuilder);
+
+        var response = service.analyze(
+                caseId,
+                45,
+                20,
+                10,
+                false,
+                false
+        );
+
+        assertThat(response.status()).isEqualTo("HYPOTHESIS");
+        assertThat(response.partial()).isTrue();
+        assertThat(response.warnings())
+                .contains(SourceSuspectChangeAnalysisService.SOURCE_DISCOVERY_FAILED);
+        assertThat(response.toString())
+                .doesNotContain("IllegalStateException")
+                .doesNotContain("boom stack trace");
+    }
+
+    @Test
+    void endpointStatusRemainsHypothesisWhenGitHistoryThrows()
+            throws Exception {
+        writeWorkspaceFile();
+        FlowAwareSourceDiscoveryService discovery =
+                mock(FlowAwareSourceDiscoveryService.class);
+        SourceCandidateGitHistoryService throwingGit =
+                mock(SourceCandidateGitHistoryService.class);
+        when(discovery.discover(any(), any(), anyInt()))
+                .thenReturn(discoveryResult());
+        when(throwingGit.collect(
+                any(),
+                any(),
+                any(),
+                anyInt(),
+                anyInt(),
+                anyBoolean()
+        )).thenThrow(new IllegalStateException("git failed"));
+        service = service(discovery, throwingGit, contextBuilder);
+
+        var response = service.analyze(
+                caseId,
+                45,
+                20,
+                10,
+                false,
+                false
+        );
+
+        assertThat(response.status()).isEqualTo("HYPOTHESIS");
+        assertThat(response.partial()).isTrue();
+        assertThat(response.warnings())
+                .contains(SourceSuspectChangeAnalysisService.SOURCE_GIT_HISTORY_FAILED);
+    }
+
+    @Test
+    void endpointStatusRemainsHypothesisWhenContextBuilderThrows()
+            throws Exception {
+        writeWorkspaceFile();
+        FlowAwareSourceDiscoveryService discovery =
+                mock(FlowAwareSourceDiscoveryService.class);
+        SourceCandidateGitHistoryService gitHistory =
+                mock(SourceCandidateGitHistoryService.class);
+        SourceReasoningContextBuilder throwingContextBuilder =
+                mock(SourceReasoningContextBuilder.class);
+        when(discovery.discover(any(), any(), anyInt()))
+                .thenReturn(discoveryResult());
+        when(gitHistory.collect(
+                any(),
+                any(),
+                any(),
+                anyInt(),
+                anyInt(),
+                anyBoolean()
+        )).thenReturn(new SourceCandidateGitHistoryService.HistoryResult(
+                List.of(),
+                List.of(),
+                List.of()
+        ));
+        when(throwingContextBuilder.build(
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any()
+        )).thenThrow(new IllegalStateException("context failed"));
+        service = service(discovery, gitHistory, throwingContextBuilder);
+
+        var response = service.analyze(
+                caseId,
+                45,
+                20,
+                10,
+                false,
+                false
+        );
+
+        assertThat(response.status()).isEqualTo("HYPOTHESIS");
+        assertThat(response.partial()).isTrue();
+        assertThat(response.sourceReasoningContext()).isNotNull();
+        assertThat(response.warnings())
+                .contains(SourceSuspectChangeAnalysisService
+                        .SOURCE_REASONING_CONTEXT_FAILED);
+    }
+
     private void writeWorkspaceFile() throws Exception {
         Path file = Path.of(
                 properties.getWorkspaceDir(),
@@ -136,6 +254,42 @@ class SourceSuspectChangeAnalysisServiceTest {
                     public void initialize() {}
                 }
                 """);
+    }
+
+    private FlowAwareSourceDiscoveryService.DiscoveryResult discoveryResult() {
+        return new FlowAwareSourceDiscoveryService.DiscoveryResult(
+                List.of(new SourceCandidateFlowChainItem(
+                        "CONTROLLER",
+                        "src/main/java/com/example/BusinessFlowController.java",
+                        "BusinessFlowController",
+                        "initialize",
+                        List.of("/businessFlow/initialize"),
+                        "Controller mapping annotation matched endpoint anchor.",
+                        "HYPOTHESIS"
+                )),
+                List.of("src/main/java/com/example/BusinessFlowController.java"),
+                List.of(),
+                java.util.Map.of()
+        );
+    }
+
+    private SourceSuspectChangeAnalysisService service(
+            FlowAwareSourceDiscoveryService discovery,
+            SourceCandidateGitHistoryService gitHistory,
+            SourceReasoningContextBuilder builder
+    ) {
+        return new SourceSuspectChangeAnalysisService(
+                caseRepository,
+                evidenceRepository,
+                signalExtractionService,
+                anchorExtractionService,
+                discovery,
+                gitHistory,
+                builder,
+                companyReasoningService,
+                objectMapper,
+                properties
+        );
     }
 
     private ReplayCaseEntity caseEntity() {

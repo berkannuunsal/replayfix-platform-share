@@ -15,6 +15,8 @@ import com.etiya.replayfix.repository.EvidenceRepository;
 import com.etiya.replayfix.repository.ReplayCaseRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,6 +33,18 @@ import java.util.UUID;
 @Service
 public class SourceSuspectChangeAnalysisService {
 
+    private static final Logger log = LoggerFactory.getLogger(
+            SourceSuspectChangeAnalysisService.class
+    );
+
+    public static final String SOURCE_CHANGE_ANALYSIS_FAILED =
+            "SOURCE_CHANGE_ANALYSIS_FAILED";
+    public static final String SOURCE_DISCOVERY_FAILED =
+            "SOURCE_DISCOVERY_FAILED";
+    public static final String SOURCE_GIT_HISTORY_FAILED =
+            "SOURCE_GIT_HISTORY_FAILED";
+    public static final String SOURCE_REASONING_CONTEXT_FAILED =
+            "SOURCE_REASONING_CONTEXT_FAILED";
     public static final String SOURCE_WORKSPACE_NOT_FOUND =
             "SOURCE_WORKSPACE_NOT_FOUND";
     public static final String NO_FLOW_ANCHOR_FOUND =
@@ -86,63 +100,148 @@ public class SourceSuspectChangeAnalysisService {
             boolean includeDiffSnippets,
             boolean useCompanyLlm
     ) {
-        ReplayCaseEntity replayCase = caseRepository.findById(caseId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Case not found: " + caseId
-                ));
         List<String> warnings = new ArrayList<>();
-
-        SuspectSignalExtractionResponse signals =
-                signalExtractionService.extract(caseId, false);
+        ReplayCaseEntity replayCase = defaultCase(caseId);
         RepositoryContext repositoryContext =
-                repositoryContext(caseId, signals.repository(), signals.branch(),
-                        replayCase);
-        String branch = repositoryContext.branch();
-
-        List<SourceFlowAnchor> anchors =
-                anchorExtractionService.extract(signals.signals());
-        if (anchors.isEmpty()) {
-            warnings.add(NO_FLOW_ANCHOR_FOUND);
-            if (!signals.signals().isEmpty()) {
-                warnings.add(ONLY_GENERIC_MATCHES_FOUND);
-            }
-        }
-
-        Optional<Path> workspace = locateWorkspace(caseId, repositoryContext);
-        if (workspace.isEmpty()) {
-            warnings.add(SOURCE_WORKSPACE_NOT_FOUND);
-            SourceReasoningContext emptyContext = emptyContext(replayCase,
-                    repositoryContext.repository(), branch, anchors);
-            return response(
-                    replayCase,
-                    repositoryContext,
-                    lookbackDays,
-                    anchors,
-                    List.of(),
-                    List.of(),
-                    List.of(),
-                    List.of(),
-                    emptyContext,
-                    false,
-                    List.of(),
-                    warnings
-            );
-        }
-
+                new RepositoryContext("", "", "test2");
+        List<SourceFlowAnchor> anchors = List.of();
         FlowAwareSourceDiscoveryService.DiscoveryResult discovery =
-                discoveryService.discover(
+                emptyDiscovery();
+        SourceCandidateGitHistoryService.HistoryResult history =
+                new SourceCandidateGitHistoryService.HistoryResult(
+                        List.of(),
+                        List.of(),
+                        List.of()
+                );
+        SourceReasoningContext context =
+                emptyContext(replayCase, "", "test2", anchors);
+
+        try {
+            try {
+                replayCase = caseRepository.findById(caseId)
+                        .orElseGet(() -> defaultCase(caseId));
+            } catch (Exception exception) {
+                log.warn(
+                        "Source suspect change analysis case lookup failed for caseId={}",
+                        caseId,
+                        exception
+                );
+                warnings.add(SOURCE_CHANGE_ANALYSIS_FAILED);
+            }
+
+            SuspectSignalExtractionResponse signals = null;
+            try {
+                signals = signalExtractionService.extract(caseId, false);
+            } catch (Exception exception) {
+                log.warn(
+                        "Source suspect change analysis signal extraction failed for caseId={}",
+                        caseId,
+                        exception
+                );
+                warnings.add(SOURCE_CHANGE_ANALYSIS_FAILED);
+            }
+
+            try {
+                repositoryContext = repositoryContext(
+                        caseId,
+                        signals == null ? "" : signals.repository(),
+                        signals == null ? "" : signals.branch(),
+                        replayCase
+                );
+            } catch (Exception exception) {
+                log.warn(
+                        "Source suspect change analysis repository context failed for caseId={}",
+                        caseId,
+                        exception
+                );
+                warnings.add(SOURCE_CHANGE_ANALYSIS_FAILED);
+                repositoryContext = new RepositoryContext(
+                        signals == null ? "" : firstNonBlank(signals.repository(), ""),
+                        repositorySlug(signals == null ? "" : signals.repository()),
+                        firstNonBlank(replayCase.getSourceBranch(), "test2")
+                );
+            }
+
+            try {
+                anchors = anchorExtractionService.extract(
+                        signals == null ? List.of() : signals.signals()
+                );
+                if (anchors.isEmpty()) {
+                    warnings.add(NO_FLOW_ANCHOR_FOUND);
+                    if (signals != null && !signals.signals().isEmpty()) {
+                        warnings.add(ONLY_GENERIC_MATCHES_FOUND);
+                    }
+                }
+            } catch (Exception exception) {
+                log.warn(
+                        "Source suspect change analysis anchor extraction failed for caseId={}",
+                        caseId,
+                        exception
+                );
+                warnings.add(SOURCE_CHANGE_ANALYSIS_FAILED);
+                anchors = List.of();
+            }
+
+            Optional<Path> workspace = Optional.empty();
+            try {
+                workspace = locateWorkspace(caseId, repositoryContext);
+            } catch (Exception exception) {
+                log.warn(
+                        "Source suspect change analysis workspace resolution failed for caseId={}",
+                        caseId,
+                        exception
+                );
+                warnings.add(SOURCE_CHANGE_ANALYSIS_FAILED);
+            }
+
+            if (workspace.isEmpty()) {
+                warnings.add(SOURCE_WORKSPACE_NOT_FOUND);
+                context = emptyContext(
+                        replayCase,
+                        repositoryContext.repository(),
+                        repositoryContext.branch(),
+                        anchors
+                );
+                return response(
+                        replayCase,
+                        repositoryContext,
+                        lookbackDays,
+                        anchors,
+                        discovery.candidateFlowChain(),
+                        discovery.candidateFiles(),
+                        discovery.candidateMethods(),
+                        history.recentCommits(),
+                        context,
+                        false,
+                        List.of(),
+                        warnings,
+                        "DETERMINISTIC_ONLY"
+                );
+            }
+
+            try {
+                discovery = discoveryService.discover(
                         workspace.get(),
                         anchors,
                         Math.max(1, maxCandidates)
                 );
-        if (discovery.candidateFlowChain()
-                .stream()
-                .noneMatch(item -> "CONTROLLER".equals(item.layer()))) {
-            warnings.add(NO_ENDPOINT_MATCH_FOUND);
-        }
+                if (discovery.candidateFlowChain()
+                        .stream()
+                        .noneMatch(item -> "CONTROLLER".equals(item.layer()))) {
+                    warnings.add(NO_ENDPOINT_MATCH_FOUND);
+                }
+            } catch (Exception exception) {
+                log.warn(
+                        "Source suspect change analysis discovery failed for caseId={}",
+                        caseId,
+                        exception
+                );
+                warnings.add(SOURCE_DISCOVERY_FAILED);
+                discovery = emptyDiscovery();
+            }
 
-        SourceCandidateGitHistoryService.HistoryResult history =
-                gitHistoryService.collect(
+            try {
+                history = gitHistoryService.collect(
                         workspace.get(),
                         discovery.candidateFiles(),
                         discovery.javaFiles(),
@@ -150,56 +249,124 @@ public class SourceSuspectChangeAnalysisService {
                         Math.max(1, maxCommitsPerFile),
                         includeDiffSnippets
                 );
-        warnings.addAll(history.warnings());
-        if (history.recentCommits().isEmpty()) {
-            warnings.add(NO_RECENT_COMMITS_FOUND);
-        }
+                warnings.addAll(history.warnings());
+                if (history.recentCommits().isEmpty()) {
+                    warnings.add(NO_RECENT_COMMITS_FOUND);
+                }
+            } catch (Exception exception) {
+                log.warn(
+                        "Source suspect change analysis git history failed for caseId={}",
+                        caseId,
+                        exception
+                );
+                warnings.add(SOURCE_GIT_HISTORY_FAILED);
+                history = new SourceCandidateGitHistoryService.HistoryResult(
+                        List.of(),
+                        List.of(),
+                        List.of()
+                );
+            }
 
-        SourceReasoningContextBuilder.ContextBuildResult contextBuild =
-                contextBuilder.build(
+            try {
+                SourceReasoningContextBuilder.ContextBuildResult contextBuild =
+                        contextBuilder.build(
                         replayCase,
                         repositoryContext.repository(),
-                        branch,
+                        repositoryContext.branch(),
                         anchors,
                         discovery.candidateFlowChain(),
                         discovery.candidateMethods(),
                         history.recentCommits(),
                         history.diffSnippets()
                 );
-        warnings.addAll(contextBuild.warnings());
-
-        List<SourceSuspectChange> deterministicChanges =
-                deterministicSuspects(
-                        discovery.candidateFlowChain(),
-                        history.recentCommits()
+                warnings.addAll(contextBuild.warnings());
+                context = contextBuild.context();
+            } catch (Exception exception) {
+                log.warn(
+                        "Source suspect change analysis context build failed for caseId={}",
+                        caseId,
+                        exception
                 );
-        boolean llmUsed = false;
-        List<SourceSuspectChange> suspectChanges = deterministicChanges;
-
-        if (useCompanyLlm) {
-            CompanySourceReasoningService.ReasoningResult reasoning =
-                    companyReasoningService.reason(caseId, contextBuild.context());
-            warnings.addAll(reasoning.warnings());
-            llmUsed = reasoning.llmUsed();
-            if (reasoning.llmUsed() && !reasoning.suspectChanges().isEmpty()) {
-                suspectChanges = reasoning.suspectChanges();
+                warnings.add(SOURCE_REASONING_CONTEXT_FAILED);
+                context = emptyContext(
+                        replayCase,
+                        repositoryContext.repository(),
+                        repositoryContext.branch(),
+                        anchors
+                );
             }
-        }
 
-        return response(
-                replayCase,
-                repositoryContext,
-                lookbackDays,
-                anchors,
-                discovery.candidateFlowChain(),
-                discovery.candidateFiles(),
-                discovery.candidateMethods(),
-                history.recentCommits(),
-                contextBuild.context(),
-                llmUsed,
-                suspectChanges,
-                warnings
-        );
+            List<SourceSuspectChange> deterministicChanges =
+                    deterministicSuspects(
+                            discovery.candidateFlowChain(),
+                            history.recentCommits()
+                    );
+            boolean llmUsed = false;
+            List<SourceSuspectChange> suspectChanges = deterministicChanges;
+            String analysisMode = "DETERMINISTIC_ONLY";
+
+            if (useCompanyLlm) {
+                try {
+                    CompanySourceReasoningService.ReasoningResult reasoning =
+                            companyReasoningService.reason(caseId, context);
+                    warnings.addAll(reasoning.warnings());
+                    llmUsed = reasoning.llmUsed();
+                    if (reasoning.llmUsed()) {
+                        analysisMode = "COMPANY_LLM";
+                    }
+                    if (reasoning.llmUsed()
+                            && !reasoning.suspectChanges().isEmpty()) {
+                        suspectChanges = reasoning.suspectChanges();
+                    }
+                } catch (Exception exception) {
+                    log.warn(
+                            "Source suspect change analysis company LLM failed for caseId={}",
+                            caseId,
+                            exception
+                    );
+                    warnings.add(CompanySourceReasoningService
+                            .COMPANY_LLM_UNAVAILABLE);
+                }
+            }
+
+            return response(
+                    replayCase,
+                    repositoryContext,
+                    lookbackDays,
+                    anchors,
+                    discovery.candidateFlowChain(),
+                    discovery.candidateFiles(),
+                    discovery.candidateMethods(),
+                    history.recentCommits(),
+                    context,
+                    llmUsed,
+                    suspectChanges,
+                    warnings,
+                    analysisMode
+            );
+        } catch (Exception exception) {
+            log.warn(
+                    "Source suspect change analysis failed for caseId={}",
+                    caseId,
+                    exception
+            );
+            warnings.add(SOURCE_CHANGE_ANALYSIS_FAILED);
+            return response(
+                    replayCase,
+                    repositoryContext,
+                    lookbackDays,
+                    anchors,
+                    discovery.candidateFlowChain(),
+                    discovery.candidateFiles(),
+                    discovery.candidateMethods(),
+                    history.recentCommits(),
+                    context,
+                    false,
+                    List.of(),
+                    warnings,
+                    "DETERMINISTIC_ONLY"
+            );
+        }
     }
 
     private SourceSuspectChangeAnalysisResponse response(
@@ -214,8 +381,10 @@ public class SourceSuspectChangeAnalysisService {
             SourceReasoningContext context,
             boolean llmUsed,
             List<SourceSuspectChange> suspectChanges,
-            List<String> warnings
+            List<String> warnings,
+            String analysisMode
     ) {
+        List<String> uniqueWarnings = List.copyOf(new LinkedHashSet<>(warnings));
         return new SourceSuspectChangeAnalysisResponse(
                 replayCase.getId(),
                 replayCase.getJiraKey(),
@@ -236,7 +405,27 @@ public class SourceSuspectChangeAnalysisService {
                         .mapToDouble(SourceSuspectChange::confidence)
                         .max()
                         .orElse(0.0),
-                List.copyOf(new LinkedHashSet<>(warnings))
+                uniqueWarnings,
+                analysisMode,
+                !uniqueWarnings.isEmpty()
+        );
+    }
+
+    private ReplayCaseEntity defaultCase(UUID caseId) {
+        ReplayCaseEntity replayCase = new ReplayCaseEntity();
+        replayCase.setId(caseId);
+        replayCase.setJiraKey("");
+        replayCase.setTargetKey("backend");
+        replayCase.setSourceBranch("test2");
+        return replayCase;
+    }
+
+    private FlowAwareSourceDiscoveryService.DiscoveryResult emptyDiscovery() {
+        return new FlowAwareSourceDiscoveryService.DiscoveryResult(
+                List.of(),
+                List.of(),
+                List.of(),
+                Map.of()
         );
     }
 
@@ -319,7 +508,8 @@ public class SourceSuspectChangeAnalysisService {
                 json == null ? null : findText(json, "sourceBranch", "branch",
                         "targetBranch", "defaultBranch").orElse(null),
                 replayCase.getSourceBranch(),
-                "backend".equalsIgnoreCase(slug) ? "test2" : null
+                "backend".equalsIgnoreCase(slug) ? "test2" : null,
+                "test2"
         );
         String repository = firstNonBlank(
                 fallbackRepository,
@@ -338,11 +528,11 @@ public class SourceSuspectChangeAnalysisService {
         return new SourceReasoningContext(
                 Map.of(
                         "caseId", replayCase.getId().toString(),
-                        "jiraKey", replayCase.getJiraKey(),
-                        "repository", repository,
-                        "branch", branch
+                        "jiraKey", safeString(replayCase.getJiraKey()),
+                        "repository", safeString(repository),
+                        "branch", safeString(branch)
                 ),
-                Map.of("jiraKey", replayCase.getJiraKey()),
+                Map.of("jiraKey", safeString(replayCase.getJiraKey())),
                 "",
                 anchors,
                 List.of(),
@@ -402,6 +592,10 @@ public class SourceSuspectChangeAnalysisService {
             }
         }
         return "";
+    }
+
+    private String safeString(String value) {
+        return value == null ? "" : value;
     }
 
     private record RepositoryContext(

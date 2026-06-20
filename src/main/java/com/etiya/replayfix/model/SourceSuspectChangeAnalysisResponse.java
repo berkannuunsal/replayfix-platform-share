@@ -20,6 +20,8 @@ public record SourceSuspectChangeAnalysisResponse(
         List<SourceSuspectChange> suspectChanges,
         String status,
         double confidence,
-        List<String> warnings
+        List<String> warnings,
+        String analysisMode,
+        boolean partial
 ) {
 }
