@@ -141,6 +141,8 @@ class SourceSuspectChangeAnalysisServiceTest {
         assertThat(json).contains("\"status\":\"HYPOTHESIS\"");
         assertThat(json).contains("\"analysisMode\":\"DETERMINISTIC_ONLY\"");
         assertThat(json).contains("\"partial\":");
+        assertThat(json).contains("\"phaseTimingsMs\"");
+        assertThat(json).contains("\"lastCompletedPhase\"");
     }
 
     @Test
@@ -148,7 +150,14 @@ class SourceSuspectChangeAnalysisServiceTest {
         writeWorkspaceFile();
         FlowAwareSourceDiscoveryService throwingDiscovery =
                 mock(FlowAwareSourceDiscoveryService.class);
-        when(throwingDiscovery.discover(any(), any(), anyInt()))
+        when(throwingDiscovery.discover(
+                any(),
+                any(),
+                anyInt(),
+                anyInt(),
+                anyInt(),
+                anyBoolean()
+        ))
                 .thenThrow(new IllegalStateException("boom stack trace"));
         service = service(throwingDiscovery, gitHistoryService, contextBuilder);
 
@@ -171,6 +180,47 @@ class SourceSuspectChangeAnalysisServiceTest {
     }
 
     @Test
+    void timeoutInSourceDiscoveryStillReturnsFlowAnchors() throws Exception {
+        writeWorkspaceFile();
+        FlowAwareSourceDiscoveryService slowDiscovery =
+                mock(FlowAwareSourceDiscoveryService.class);
+        when(slowDiscovery.discover(
+                any(),
+                any(),
+                anyInt(),
+                anyInt(),
+                anyInt(),
+                anyBoolean()
+        )).thenAnswer(invocation -> {
+            Thread.sleep(1_500);
+            return discoveryResult();
+        });
+        service = service(slowDiscovery, gitHistoryService, contextBuilder);
+
+        var response = service.analyze(
+                caseId,
+                45,
+                20,
+                10,
+                false,
+                false,
+                2_000,
+                256,
+                false,
+                1,
+                8
+        );
+
+        assertThat(response.status()).isEqualTo("HYPOTHESIS");
+        assertThat(response.flowAnchors()).isNotEmpty();
+        assertThat(response.warnings())
+                .contains(SourceSuspectChangeAnalysisService
+                        .SOURCE_DISCOVERY_TIMEOUT);
+        assertThat(response.currentPhaseOnTimeout())
+                .isEqualTo("sourceDiscovery");
+    }
+
+    @Test
     void endpointStatusRemainsHypothesisWhenGitHistoryThrows()
             throws Exception {
         writeWorkspaceFile();
@@ -178,7 +228,14 @@ class SourceSuspectChangeAnalysisServiceTest {
                 mock(FlowAwareSourceDiscoveryService.class);
         SourceCandidateGitHistoryService throwingGit =
                 mock(SourceCandidateGitHistoryService.class);
-        when(discovery.discover(any(), any(), anyInt()))
+        when(discovery.discover(
+                any(),
+                any(),
+                anyInt(),
+                anyInt(),
+                anyInt(),
+                anyBoolean()
+        ))
                 .thenReturn(discoveryResult());
         when(throwingGit.collect(
                 any(),
@@ -206,6 +263,61 @@ class SourceSuspectChangeAnalysisServiceTest {
     }
 
     @Test
+    void timeoutInGitHistoryStillReturnsCandidateFlowChain()
+            throws Exception {
+        writeWorkspaceFile();
+        FlowAwareSourceDiscoveryService discovery =
+                mock(FlowAwareSourceDiscoveryService.class);
+        SourceCandidateGitHistoryService slowGit =
+                mock(SourceCandidateGitHistoryService.class);
+        when(discovery.discover(
+                any(),
+                any(),
+                anyInt(),
+                anyInt(),
+                anyInt(),
+                anyBoolean()
+        )).thenReturn(discoveryResult());
+        when(slowGit.collect(
+                any(),
+                any(),
+                any(),
+                anyInt(),
+                anyInt(),
+                anyBoolean()
+        )).thenAnswer(invocation -> {
+            Thread.sleep(1_500);
+            return new SourceCandidateGitHistoryService.HistoryResult(
+                    List.of(),
+                    List.of(),
+                    List.of()
+            );
+        });
+        service = service(discovery, slowGit, contextBuilder);
+
+        var response = service.analyze(
+                caseId,
+                45,
+                20,
+                10,
+                false,
+                false,
+                2_000,
+                256,
+                false,
+                10,
+                1
+        );
+
+        assertThat(response.status()).isEqualTo("HYPOTHESIS");
+        assertThat(response.candidateFlowChain()).isNotEmpty();
+        assertThat(response.warnings())
+                .contains(SourceSuspectChangeAnalysisService
+                        .SOURCE_GIT_HISTORY_TIMEOUT);
+        assertThat(response.currentPhaseOnTimeout()).isEqualTo("gitHistory");
+    }
+
+    @Test
     void endpointStatusRemainsHypothesisWhenContextBuilderThrows()
             throws Exception {
         writeWorkspaceFile();
@@ -215,7 +327,14 @@ class SourceSuspectChangeAnalysisServiceTest {
                 mock(SourceCandidateGitHistoryService.class);
         SourceReasoningContextBuilder throwingContextBuilder =
                 mock(SourceReasoningContextBuilder.class);
-        when(discovery.discover(any(), any(), anyInt()))
+        when(discovery.discover(
+                any(),
+                any(),
+                anyInt(),
+                anyInt(),
+                anyInt(),
+                anyBoolean()
+        ))
                 .thenReturn(discoveryResult());
         when(gitHistory.collect(
                 any(),
@@ -256,6 +375,8 @@ class SourceSuspectChangeAnalysisServiceTest {
         assertThat(response.warnings())
                 .contains(SourceSuspectChangeAnalysisService
                         .SOURCE_REASONING_CONTEXT_FAILED);
+        assertThat(response.phaseTimingsMs()).containsKey("contextBuild");
+        assertThat(response.lastCompletedPhase()).isNotBlank();
     }
 
     private void writeWorkspaceFile() throws Exception {

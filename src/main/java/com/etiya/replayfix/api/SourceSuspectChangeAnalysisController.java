@@ -14,6 +14,7 @@ import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -42,7 +43,12 @@ public class SourceSuspectChangeAnalysisController {
             @RequestParam(defaultValue = "20") int maxCandidates,
             @RequestParam(defaultValue = "10") int maxCommitsPerFile,
             @RequestParam(defaultValue = "false") boolean includeDiffSnippets,
-            @RequestParam(defaultValue = "false") boolean useCompanyLlm
+            @RequestParam(defaultValue = "false") boolean useCompanyLlm,
+            @RequestParam(defaultValue = "2000") int maxScannedFiles,
+            @RequestParam(defaultValue = "256") int maxFileSizeKb,
+            @RequestParam(defaultValue = "false") boolean includeTests,
+            @RequestParam(defaultValue = "10") int sourceDiscoveryTimeoutSeconds,
+            @RequestParam(defaultValue = "8") int gitHistoryTimeoutSeconds
     ) {
         return Mono.fromCallable(() -> service.analyze(
                         caseId,
@@ -50,7 +56,12 @@ public class SourceSuspectChangeAnalysisController {
                         maxCandidates,
                         maxCommitsPerFile,
                         includeDiffSnippets,
-                        useCompanyLlm
+                        useCompanyLlm,
+                        maxScannedFiles,
+                        maxFileSizeKb,
+                        includeTests,
+                        sourceDiscoveryTimeoutSeconds,
+                        gitHistoryTimeoutSeconds
                 ))
                 .subscribeOn(Schedulers.boundedElastic())
                 .map(this::jsonSafeResponse)
@@ -67,7 +78,11 @@ public class SourceSuspectChangeAnalysisController {
                             exception.getMessage(),
                             exception
                     );
-                    return Mono.just(fallbackResponse(caseId, lookbackDays));
+                    return Mono.just(fallbackResponse(
+                            caseId,
+                            lookbackDays,
+                            "endpoint"
+                    ));
                 });
     }
 
@@ -93,13 +108,17 @@ public class SourceSuspectChangeAnalysisController {
                 response.confidence(),
                 response.warnings(),
                 response.analysisMode(),
-                response.partial()
+                response.partial(),
+                response.phaseTimingsMs(),
+                response.lastCompletedPhase(),
+                response.currentPhaseOnTimeout()
         );
     }
 
     private SourceSuspectChangeAnalysisResponse fallbackResponse(
             UUID caseId,
-            int lookbackDays
+            int lookbackDays,
+            String currentPhaseOnTimeout
     ) {
         return new SourceSuspectChangeAnalysisResponse(
                 caseId,
@@ -135,7 +154,23 @@ public class SourceSuspectChangeAnalysisController {
                 List.of(SourceSuspectChangeAnalysisService
                         .SOURCE_CHANGE_ANALYSIS_FAILED),
                 "DETERMINISTIC_ONLY",
-                true
+                true,
+                fallbackTimings(),
+                "",
+                currentPhaseOnTimeout
         );
+    }
+
+    private Map<String, Long> fallbackTimings() {
+        Map<String, Long> timings = new LinkedHashMap<>();
+        timings.put("evidenceResolution", 0L);
+        timings.put("flowAnchorExtraction", 0L);
+        timings.put("workspaceResolution", 0L);
+        timings.put("sourceDiscovery", 0L);
+        timings.put("gitHistory", 0L);
+        timings.put("contextBuild", 0L);
+        timings.put("companyLlm", 0L);
+        timings.put("total", ENDPOINT_TIMEOUT.toMillis());
+        return timings;
     }
 }

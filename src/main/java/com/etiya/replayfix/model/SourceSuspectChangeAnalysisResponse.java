@@ -1,6 +1,7 @@
 package com.etiya.replayfix.model;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 public record SourceSuspectChangeAnalysisResponse(
@@ -22,8 +23,58 @@ public record SourceSuspectChangeAnalysisResponse(
         double confidence,
         List<String> warnings,
         String analysisMode,
-        boolean partial
+        boolean partial,
+        Map<String, Long> phaseTimingsMs,
+        String lastCompletedPhase,
+        String currentPhaseOnTimeout
 ) {
+    public SourceSuspectChangeAnalysisResponse(
+            UUID caseId,
+            String jiraKey,
+            String repository,
+            String branch,
+            String incidentCommitSha,
+            int lookbackDays,
+            List<SourceFlowAnchor> flowAnchors,
+            List<SourceCandidateFlowChainItem> candidateFlowChain,
+            List<String> candidateFiles,
+            List<SourceCandidateMethod> candidateMethods,
+            List<SourceRecentCommit> recentCommits,
+            SourceReasoningContext sourceReasoningContext,
+            boolean llmUsed,
+            List<SourceSuspectChange> suspectChanges,
+            String status,
+            double confidence,
+            List<String> warnings,
+            String analysisMode,
+            boolean partial
+    ) {
+        this(
+                caseId,
+                jiraKey,
+                repository,
+                branch,
+                incidentCommitSha,
+                lookbackDays,
+                flowAnchors,
+                candidateFlowChain,
+                candidateFiles,
+                candidateMethods,
+                recentCommits,
+                sourceReasoningContext,
+                llmUsed,
+                suspectChanges,
+                status,
+                confidence,
+                warnings,
+                analysisMode,
+                partial,
+                Map.of(),
+                "",
+                null
+        );
+    }
+
     public SourceSuspectChangeAnalysisResponse {
         jiraKey = jiraKey == null ? "" : jiraKey;
         repository = repository == null ? "" : repository;
@@ -52,5 +103,7 @@ public record SourceSuspectChangeAnalysisResponse(
         status = status == null ? "HYPOTHESIS" : status;
         warnings = JsonSafeValueSanitizer.safeList(warnings);
         analysisMode = analysisMode == null ? "DETERMINISTIC_ONLY" : analysisMode;
+        phaseTimingsMs = phaseTimingsMs == null ? Map.of() : Map.copyOf(phaseTimingsMs);
+        lastCompletedPhase = lastCompletedPhase == null ? "" : lastCompletedPhase;
     }
 }

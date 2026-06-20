@@ -10,6 +10,7 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -74,11 +75,35 @@ class SourceSuspectChangeAnalysisControllerTest {
                         "DETERMINISTIC_ONLY",
                         false
                 );
-        when(service.analyze(caseId, 45, 20, 10, false, false))
+        when(service.analyze(
+                caseId,
+                45,
+                20,
+                10,
+                false,
+                false,
+                2_000,
+                256,
+                false,
+                10,
+                8
+        ))
                 .thenReturn(response);
 
         SourceSuspectChangeAnalysisResponse actual =
-                controller.analyze(caseId, 45, 20, 10, false, false).block();
+                controller.analyze(
+                        caseId,
+                        45,
+                        20,
+                        10,
+                        false,
+                        false,
+                        2_000,
+                        256,
+                        false,
+                        10,
+                        8
+                ).block();
 
         assertThat(actual.status()).isEqualTo("HYPOTHESIS");
         assertThat(actual.llmUsed()).isFalse();
@@ -124,11 +149,35 @@ class SourceSuspectChangeAnalysisControllerTest {
                         "DETERMINISTIC_ONLY",
                         true
                 );
-        when(service.analyze(caseId, 45, 20, 10, false, true))
+        when(service.analyze(
+                caseId,
+                45,
+                20,
+                10,
+                false,
+                true,
+                2_000,
+                256,
+                false,
+                10,
+                8
+        ))
                 .thenReturn(response);
 
         SourceSuspectChangeAnalysisResponse actual =
-                controller.analyze(caseId, 45, 20, 10, false, true).block();
+                controller.analyze(
+                        caseId,
+                        45,
+                        20,
+                        10,
+                        false,
+                        true,
+                        2_000,
+                        256,
+                        false,
+                        10,
+                        8
+                ).block();
 
         assertThat(actual.llmUsed()).isFalse();
         assertThat(actual.status()).isEqualTo("HYPOTHESIS");
@@ -146,7 +195,12 @@ class SourceSuspectChangeAnalysisControllerTest {
                 anyInt(),
                 anyInt(),
                 anyBoolean(),
-                anyBoolean()
+                anyBoolean(),
+                anyInt(),
+                anyInt(),
+                anyBoolean(),
+                anyInt(),
+                anyInt()
         )).thenThrow(new IllegalStateException("internal stack trace"));
 
         MockMvc mockMvc = MockMvcBuilders
@@ -189,13 +243,30 @@ class SourceSuspectChangeAnalysisControllerTest {
                 anyInt(),
                 anyInt(),
                 anyBoolean(),
-                anyBoolean()
+                anyBoolean(),
+                anyInt(),
+                anyInt(),
+                anyBoolean(),
+                anyInt(),
+                anyInt()
         )).thenThrow(new IllegalStateException("internal stack trace"));
         SourceSuspectChangeAnalysisController controller =
                 new SourceSuspectChangeAnalysisController(service);
 
         SourceSuspectChangeAnalysisResponse response =
-                controller.analyze(caseId, 45, 20, 10, false, false).block();
+                controller.analyze(
+                        caseId,
+                        45,
+                        20,
+                        10,
+                        false,
+                        false,
+                        2_000,
+                        256,
+                        false,
+                        10,
+                        8
+                ).block();
         String json = objectMapper.writeValueAsString(response);
 
         assertThat(json).contains("\"status\":\"HYPOTHESIS\"");
@@ -211,7 +282,19 @@ class SourceSuspectChangeAnalysisControllerTest {
         UUID caseId = UUID.randomUUID();
         SourceSuspectChangeAnalysisService service =
                 mock(SourceSuspectChangeAnalysisService.class);
-        when(service.analyze(caseId, 45, 20, 10, false, false))
+        when(service.analyze(
+                caseId,
+                45,
+                20,
+                10,
+                false,
+                false,
+                2_000,
+                256,
+                false,
+                10,
+                8
+        ))
                 .thenReturn(emptyResponse(caseId));
 
         MockMvc mockMvc = MockMvcBuilders
@@ -231,6 +314,9 @@ class SourceSuspectChangeAnalysisControllerTest {
                 .andExpect(jsonPath("$.analysisMode")
                         .value("DETERMINISTIC_ONLY"))
                 .andExpect(jsonPath("$.partial").value(false))
+                .andExpect(jsonPath("$.phaseTimingsMs").exists())
+                .andExpect(jsonPath("$.lastCompletedPhase")
+                        .value("contextBuild"))
                 .andExpect(jsonPath("$.flowAnchors").isArray())
                 .andExpect(jsonPath("$.candidateFlowChain").isArray())
                 .andExpect(jsonPath("$.suspectChanges").isArray());
@@ -276,7 +362,19 @@ class SourceSuspectChangeAnalysisControllerTest {
                         "DETERMINISTIC_ONLY",
                         false
                 );
-        when(service.analyze(caseId, 45, 20, 10, false, false))
+        when(service.analyze(
+                caseId,
+                45,
+                20,
+                10,
+                false,
+                false,
+                2_000,
+                256,
+                false,
+                10,
+                8
+        ))
                 .thenReturn(response);
 
         MockMvc mockMvc = MockMvcBuilders
@@ -332,7 +430,23 @@ class SourceSuspectChangeAnalysisControllerTest {
                 0.0,
                 List.of(),
                 "DETERMINISTIC_ONLY",
-                false
+                false,
+                phaseTimings(),
+                "contextBuild",
+                null
         );
+    }
+
+    private Map<String, Long> phaseTimings() {
+        Map<String, Long> timings = new LinkedHashMap<>();
+        timings.put("evidenceResolution", 1L);
+        timings.put("flowAnchorExtraction", 1L);
+        timings.put("workspaceResolution", 1L);
+        timings.put("sourceDiscovery", 1L);
+        timings.put("gitHistory", 1L);
+        timings.put("contextBuild", 1L);
+        timings.put("companyLlm", 0L);
+        timings.put("total", 6L);
+        return timings;
     }
 }

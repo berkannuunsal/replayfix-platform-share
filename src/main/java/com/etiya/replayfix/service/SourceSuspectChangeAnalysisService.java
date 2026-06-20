@@ -24,11 +24,17 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 @Service
 public class SourceSuspectChangeAnalysisService {
@@ -41,8 +47,12 @@ public class SourceSuspectChangeAnalysisService {
             "SOURCE_CHANGE_ANALYSIS_FAILED";
     public static final String SOURCE_DISCOVERY_FAILED =
             "SOURCE_DISCOVERY_FAILED";
+    public static final String SOURCE_DISCOVERY_TIMEOUT =
+            "SOURCE_DISCOVERY_TIMEOUT";
     public static final String SOURCE_GIT_HISTORY_FAILED =
             "SOURCE_GIT_HISTORY_FAILED";
+    public static final String SOURCE_GIT_HISTORY_TIMEOUT =
+            "SOURCE_GIT_HISTORY_TIMEOUT";
     public static final String SOURCE_REASONING_CONTEXT_FAILED =
             "SOURCE_REASONING_CONTEXT_FAILED";
     public static final String SOURCE_WORKSPACE_NOT_FOUND =
@@ -100,7 +110,39 @@ public class SourceSuspectChangeAnalysisService {
             boolean includeDiffSnippets,
             boolean useCompanyLlm
     ) {
+        return analyze(
+                caseId,
+                lookbackDays,
+                maxCandidates,
+                maxCommitsPerFile,
+                includeDiffSnippets,
+                useCompanyLlm,
+                2_000,
+                256,
+                false,
+                10,
+                8
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public SourceSuspectChangeAnalysisResponse analyze(
+            UUID caseId,
+            int lookbackDays,
+            int maxCandidates,
+            int maxCommitsPerFile,
+            boolean includeDiffSnippets,
+            boolean useCompanyLlm,
+            int maxScannedFiles,
+            int maxFileSizeKb,
+            boolean includeTests,
+            int sourceDiscoveryTimeoutSeconds,
+            int gitHistoryTimeoutSeconds
+    ) {
         List<String> warnings = new ArrayList<>();
+        PhaseTimings timings = new PhaseTimings();
+        String lastCompletedPhase = "";
+        String currentPhaseOnTimeout = null;
         ReplayCaseEntity replayCase = defaultCase(caseId);
         RepositoryContext repositoryContext =
                 new RepositoryContext("", "", "test2");
@@ -117,6 +159,7 @@ public class SourceSuspectChangeAnalysisService {
                 emptyContext(replayCase, "", "test2", anchors);
 
         try {
+            timings.start("evidenceResolution");
             try {
                 replayCase = caseRepository.findById(caseId)
                         .orElseGet(() -> defaultCase(caseId));
@@ -161,7 +204,10 @@ public class SourceSuspectChangeAnalysisService {
                         firstNonBlank(replayCase.getSourceBranch(), "test2")
                 );
             }
+            timings.stop("evidenceResolution");
+            lastCompletedPhase = "evidenceResolution";
 
+            timings.start("flowAnchorExtraction");
             try {
                 anchors = anchorExtractionService.extract(
                         signals == null ? List.of() : signals.signals()
@@ -181,8 +227,11 @@ public class SourceSuspectChangeAnalysisService {
                 warnings.add(SOURCE_CHANGE_ANALYSIS_FAILED);
                 anchors = List.of();
             }
+            timings.stop("flowAnchorExtraction");
+            lastCompletedPhase = "flowAnchorExtraction";
 
             Optional<Path> workspace = Optional.empty();
+            timings.start("workspaceResolution");
             try {
                 workspace = locateWorkspace(caseId, repositoryContext);
             } catch (Exception exception) {
@@ -193,6 +242,8 @@ public class SourceSuspectChangeAnalysisService {
                 );
                 warnings.add(SOURCE_CHANGE_ANALYSIS_FAILED);
             }
+            timings.stop("workspaceResolution");
+            lastCompletedPhase = "workspaceResolution";
 
             if (workspace.isEmpty()) {
                 warnings.add(SOURCE_WORKSPACE_NOT_FOUND);
@@ -215,21 +266,42 @@ public class SourceSuspectChangeAnalysisService {
                         false,
                         List.of(),
                         warnings,
-                        "DETERMINISTIC_ONLY"
+                        "DETERMINISTIC_ONLY",
+                        timings,
+                        lastCompletedPhase,
+                        currentPhaseOnTimeout
                 );
             }
 
+            timings.start("sourceDiscovery");
             try {
-                discovery = discoveryService.discover(
-                        workspace.get(),
-                        anchors,
-                        Math.max(1, maxCandidates)
+                Path sourceWorkspace = workspace.get();
+                List<SourceFlowAnchor> discoveryAnchors = anchors;
+                discovery = runWithTimeout(
+                        () -> discoveryService.discover(
+                                sourceWorkspace,
+                                discoveryAnchors,
+                                Math.max(1, maxCandidates),
+                                Math.max(1, maxScannedFiles),
+                                Math.max(1, maxFileSizeKb),
+                                includeTests
+                        ),
+                        Math.max(1, sourceDiscoveryTimeoutSeconds)
                 );
                 if (discovery.candidateFlowChain()
                         .stream()
                         .noneMatch(item -> "CONTROLLER".equals(item.layer()))) {
                     warnings.add(NO_ENDPOINT_MATCH_FOUND);
                 }
+                lastCompletedPhase = "sourceDiscovery";
+            } catch (TimeoutException exception) {
+                log.warn(
+                        "Source suspect change analysis discovery timed out for caseId={}",
+                        caseId,
+                        exception
+                );
+                warnings.add(SOURCE_DISCOVERY_TIMEOUT);
+                currentPhaseOnTimeout = "sourceDiscovery";
             } catch (Exception exception) {
                 log.warn(
                         "Source suspect change analysis discovery failed for caseId={}",
@@ -238,21 +310,47 @@ public class SourceSuspectChangeAnalysisService {
                 );
                 warnings.add(SOURCE_DISCOVERY_FAILED);
                 discovery = emptyDiscovery();
+            } finally {
+                timings.stop("sourceDiscovery");
             }
 
+            timings.start("gitHistory");
             try {
-                history = gitHistoryService.collect(
-                        workspace.get(),
-                        discovery.candidateFiles(),
-                        discovery.javaFiles(),
-                        Math.max(1, lookbackDays),
-                        Math.max(1, maxCommitsPerFile),
-                        includeDiffSnippets
-                );
+                if (discovery.candidateFiles().isEmpty()) {
+                    history = new SourceCandidateGitHistoryService.HistoryResult(
+                            List.of(),
+                            List.of(),
+                            List.of()
+                    );
+                } else {
+                    Path sourceWorkspace = workspace.get();
+                    FlowAwareSourceDiscoveryService.DiscoveryResult
+                            sourceDiscovery = discovery;
+                    history = runWithTimeout(
+                            () -> gitHistoryService.collect(
+                                    sourceWorkspace,
+                                    sourceDiscovery.candidateFiles(),
+                                    sourceDiscovery.javaFiles(),
+                                    Math.max(1, lookbackDays),
+                                    Math.max(1, maxCommitsPerFile),
+                                    includeDiffSnippets
+                            ),
+                            Math.max(1, gitHistoryTimeoutSeconds)
+                    );
+                }
                 warnings.addAll(history.warnings());
                 if (history.recentCommits().isEmpty()) {
                     warnings.add(NO_RECENT_COMMITS_FOUND);
                 }
+                lastCompletedPhase = "gitHistory";
+            } catch (TimeoutException exception) {
+                log.warn(
+                        "Source suspect change analysis git history timed out for caseId={}",
+                        caseId,
+                        exception
+                );
+                warnings.add(SOURCE_GIT_HISTORY_TIMEOUT);
+                currentPhaseOnTimeout = "gitHistory";
             } catch (Exception exception) {
                 log.warn(
                         "Source suspect change analysis git history failed for caseId={}",
@@ -265,8 +363,11 @@ public class SourceSuspectChangeAnalysisService {
                         List.of(),
                         List.of()
                 );
+            } finally {
+                timings.stop("gitHistory");
             }
 
+            timings.start("contextBuild");
             try {
                 SourceReasoningContextBuilder.ContextBuildResult contextBuild =
                         contextBuilder.build(
@@ -294,7 +395,10 @@ public class SourceSuspectChangeAnalysisService {
                         repositoryContext.branch(),
                         anchors
                 );
+            } finally {
+                timings.stop("contextBuild");
             }
+            lastCompletedPhase = "contextBuild";
 
             List<SourceSuspectChange> deterministicChanges =
                     deterministicSuspects(
@@ -306,6 +410,7 @@ public class SourceSuspectChangeAnalysisService {
             String analysisMode = "DETERMINISTIC_ONLY";
 
             if (useCompanyLlm) {
+                timings.start("companyLlm");
                 try {
                     CompanySourceReasoningService.ReasoningResult reasoning =
                             companyReasoningService.reason(caseId, context);
@@ -326,7 +431,10 @@ public class SourceSuspectChangeAnalysisService {
                     );
                     warnings.add(CompanySourceReasoningService
                             .COMPANY_LLM_UNAVAILABLE);
+                } finally {
+                    timings.stop("companyLlm");
                 }
+                lastCompletedPhase = "companyLlm";
             }
 
             return response(
@@ -342,7 +450,10 @@ public class SourceSuspectChangeAnalysisService {
                     llmUsed,
                     suspectChanges,
                     warnings,
-                    analysisMode
+                    analysisMode,
+                    timings,
+                    lastCompletedPhase,
+                    currentPhaseOnTimeout
             );
         } catch (Exception exception) {
             log.warn(
@@ -364,7 +475,10 @@ public class SourceSuspectChangeAnalysisService {
                     false,
                     List.of(),
                     warnings,
-                    "DETERMINISTIC_ONLY"
+                    "DETERMINISTIC_ONLY",
+                    timings,
+                    lastCompletedPhase,
+                    currentPhaseOnTimeout
             );
         }
     }
@@ -382,9 +496,13 @@ public class SourceSuspectChangeAnalysisService {
             boolean llmUsed,
             List<SourceSuspectChange> suspectChanges,
             List<String> warnings,
-            String analysisMode
+            String analysisMode,
+            PhaseTimings timings,
+            String lastCompletedPhase,
+            String currentPhaseOnTimeout
     ) {
         List<String> uniqueWarnings = List.copyOf(new LinkedHashSet<>(warnings));
+        timings.finish();
         return new SourceSuspectChangeAnalysisResponse(
                 replayCase.getId(),
                 replayCase.getJiraKey(),
@@ -407,8 +525,30 @@ public class SourceSuspectChangeAnalysisService {
                         .orElse(0.0),
                 uniqueWarnings,
                 analysisMode,
-                !uniqueWarnings.isEmpty()
+                !uniqueWarnings.isEmpty(),
+                timings.values(),
+                lastCompletedPhase,
+                currentPhaseOnTimeout
         );
+    }
+
+    private <T> T runWithTimeout(Callable<T> callable, int timeoutSeconds)
+            throws Exception {
+        var executor = Executors.newSingleThreadExecutor();
+        try {
+            var future = executor.submit(callable);
+            return future.get(timeoutSeconds, TimeUnit.SECONDS);
+        } catch (TimeoutException exception) {
+            throw exception;
+        } catch (ExecutionException exception) {
+            Throwable cause = exception.getCause();
+            if (cause instanceof Exception nested) {
+                throw nested;
+            }
+            throw new IllegalStateException(cause);
+        } finally {
+            executor.shutdownNow();
+        }
     }
 
     private ReplayCaseEntity defaultCase(UUID caseId) {
@@ -596,6 +736,62 @@ public class SourceSuspectChangeAnalysisService {
 
     private String safeString(String value) {
         return value == null ? "" : value;
+    }
+
+    private static final class PhaseTimings {
+        private static final List<String> PHASES = List.of(
+                "evidenceResolution",
+                "flowAnchorExtraction",
+                "workspaceResolution",
+                "sourceDiscovery",
+                "gitHistory",
+                "contextBuild",
+                "companyLlm",
+                "total"
+        );
+
+        private final long totalStartedAt = System.nanoTime();
+        private final Map<String, Long> values = new LinkedHashMap<>();
+        private String activePhase;
+        private long activeStartedAt;
+
+        private PhaseTimings() {
+            PHASES.forEach(phase -> values.put(phase, 0L));
+        }
+
+        private void start(String phase) {
+            stopActive();
+            activePhase = phase;
+            activeStartedAt = System.nanoTime();
+        }
+
+        private void stop(String phase) {
+            if (!phase.equals(activePhase)) {
+                return;
+            }
+            values.put(phase, elapsedMs(activeStartedAt));
+            activePhase = null;
+        }
+
+        private void finish() {
+            stopActive();
+            values.put("total", elapsedMs(totalStartedAt));
+        }
+
+        private Map<String, Long> values() {
+            return Map.copyOf(values);
+        }
+
+        private void stopActive() {
+            if (activePhase != null) {
+                values.put(activePhase, elapsedMs(activeStartedAt));
+                activePhase = null;
+            }
+        }
+
+        private long elapsedMs(long startedAt) {
+            return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
+        }
     }
 
     private record RepositoryContext(

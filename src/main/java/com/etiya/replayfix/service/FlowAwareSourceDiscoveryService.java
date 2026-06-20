@@ -24,8 +24,15 @@ import java.util.stream.Stream;
 @Service
 public class FlowAwareSourceDiscoveryService {
 
-    private static final int MAX_SCANNED_FILES = 20_000;
-    private static final long MAX_FILE_SIZE = 1_000_000;
+    private static final int DEFAULT_MAX_SCANNED_FILES = 2_000;
+    private static final int DEFAULT_MAX_FILE_SIZE_KB = 256;
+    private static final List<String> PREFERRED_SOURCE_DIRECTORIES = List.of(
+            "CrmBackend",
+            "BaseBackend",
+            "ProdBackend",
+            "OrderBackend",
+            "BpmnBackend"
+    );
 
     private static final Set<String> SUPPORTED_EXTENSIONS = Set.of(
             ".java",
@@ -49,7 +56,8 @@ public class FlowAwareSourceDiscoveryService {
             "out",
             "generated",
             "generated-sources",
-            "generated-test-sources"
+            "generated-test-sources",
+            "test-output"
     );
 
     private static final Pattern CLASS_PATTERN = Pattern.compile(
@@ -89,7 +97,30 @@ public class FlowAwareSourceDiscoveryService {
             List<SourceFlowAnchor> anchors,
             int maxCandidates
     ) {
-        Map<String, JavaFileInfo> javaFiles = loadJavaFiles(root);
+        return discover(
+                root,
+                anchors,
+                maxCandidates,
+                DEFAULT_MAX_SCANNED_FILES,
+                DEFAULT_MAX_FILE_SIZE_KB,
+                false
+        );
+    }
+
+    public DiscoveryResult discover(
+            Path root,
+            List<SourceFlowAnchor> anchors,
+            int maxCandidates,
+            int maxScannedFiles,
+            int maxFileSizeKb,
+            boolean includeTests
+    ) {
+        Map<String, JavaFileInfo> javaFiles = loadJavaFiles(
+                root,
+                Math.max(1, maxScannedFiles),
+                Math.max(1, maxFileSizeKb) * 1024L,
+                includeTests
+        );
         Map<String, JavaFileInfo> byClass = new LinkedHashMap<>();
         javaFiles.values().forEach(file -> byClass.put(file.className(), file));
 
@@ -369,25 +400,64 @@ public class FlowAwareSourceDiscoveryService {
         return "UNKNOWN";
     }
 
-    private Map<String, JavaFileInfo> loadJavaFiles(Path root) {
+    private Map<String, JavaFileInfo> loadJavaFiles(
+            Path root,
+            int maxScannedFiles,
+            long maxFileSizeBytes,
+            boolean includeTests
+    ) {
         Map<String, JavaFileInfo> files = new LinkedHashMap<>();
-        try (Stream<Path> stream = Files.walk(root)) {
-            stream.filter(Files::isRegularFile)
-                    .filter(path -> !isExcluded(root, path))
-                    .filter(path -> isSupported(path) && path.toString().endsWith(".java"))
-                    .limit(MAX_SCANNED_FILES)
-                    .sorted(Comparator.comparing(Path::toString))
-                    .forEach(path -> parseJava(root, path)
-                            .ifPresent(file -> files.put(file.relativePath(), file)));
-        } catch (Exception ignored) {
-            return Map.of();
+        List<Path> roots = scanRoots(root);
+        List<Path> paths = new ArrayList<>();
+        for (Path scanRoot : roots) {
+            try (Stream<Path> stream = Files.walk(scanRoot)) {
+                List<Path> discovered = stream.filter(Files::isRegularFile)
+                        .filter(path -> !isExcluded(root, path, includeTests))
+                        .filter(path -> isSupported(path)
+                                && path.toString().endsWith(".java"))
+                        .sorted(Comparator.comparing(Path::toString))
+                        .toList();
+                for (Path path : discovered) {
+                    if (paths.size() >= maxScannedFiles) {
+                        break;
+                    }
+                    paths.add(path);
+                }
+            } catch (Exception ignored) {
+                continue;
+            }
+            if (paths.size() >= maxScannedFiles) {
+                break;
+            }
+        }
+        for (Path path : paths) {
+            parseJava(root, path, maxFileSizeBytes)
+                    .ifPresent(file -> files.put(file.relativePath(), file));
         }
         return files;
     }
 
-    private Optional<JavaFileInfo> parseJava(Path root, Path path) {
+    private List<Path> scanRoots(Path root) {
+        List<Path> roots = new ArrayList<>();
+        for (String directory : PREFERRED_SOURCE_DIRECTORIES) {
+            Path candidate = root.resolve(directory);
+            if (Files.isDirectory(candidate)) {
+                roots.add(candidate);
+            }
+        }
+        if (roots.isEmpty()) {
+            roots.add(root);
+        }
+        return roots;
+    }
+
+    private Optional<JavaFileInfo> parseJava(
+            Path root,
+            Path path,
+            long maxFileSizeBytes
+    ) {
         try {
-            if (Files.size(path) > MAX_FILE_SIZE) {
+            if (Files.size(path) > maxFileSizeBytes) {
                 return Optional.empty();
             }
             String content = Files.readString(path, StandardCharsets.UTF_8);
@@ -522,8 +592,14 @@ public class FlowAwareSourceDiscoveryService {
         return SUPPORTED_EXTENSIONS.stream().anyMatch(fileName::endsWith);
     }
 
-    private boolean isExcluded(Path root, Path path) {
+    private boolean isExcluded(Path root, Path path, boolean includeTests) {
         Path relative = root.relativize(path);
+        String relativeValue = relative.toString().replace('\\', '/');
+        if (!includeTests
+                && (relativeValue.startsWith("src/test/")
+                || relativeValue.contains("/src/test/"))) {
+            return true;
+        }
         for (Path part : relative) {
             String value = part.toString().toLowerCase(Locale.ROOT);
             if (EXCLUDED_DIRECTORIES.contains(value)

@@ -155,6 +155,65 @@ class FlowAwareSourceDiscoveryServiceTest {
                 .contains("RegionRequest", "RegionResponse");
     }
 
+    @Test
+    void maxScannedFilesIsRespected() throws Exception {
+        writeJava(
+                "src/main/java/com/example/AController.java",
+                """
+                        package com.example;
+                        public class AController {
+                            @PostMapping("/businessFlow/initialize")
+                            public void initialize() {}
+                        }
+                        """
+        );
+        writeJava(
+                "src/main/java/com/example/BController.java",
+                """
+                        package com.example;
+                        public class BController {
+                            @PostMapping("/businessFlow/initialize")
+                            public void initialize() {}
+                        }
+                        """
+        );
+
+        var result = discoveryService.discover(
+                temporaryDirectory,
+                List.of(anchor("/businessFlow/initialize", "ENDPOINT")),
+                20,
+                1,
+                256,
+                false
+        );
+
+        assertThat(result.javaFiles()).hasSize(1);
+        assertThat(result.candidateFiles()).hasSize(1);
+    }
+
+    @Test
+    void srcTestIsSkippedByDefault() throws Exception {
+        writeJava(
+                "src/test/java/com/example/TestController.java",
+                """
+                        package com.example;
+                        public class TestController {
+                            @PostMapping("/businessFlow/initialize")
+                            public void initialize() {}
+                        }
+                        """
+        );
+
+        var result = discoveryService.discover(
+                temporaryDirectory,
+                List.of(anchor("/businessFlow/initialize", "ENDPOINT")),
+                20
+        );
+
+        assertThat(result.javaFiles()).isEmpty();
+        assertThat(result.candidateFiles()).isEmpty();
+    }
+
     private SourceFlowAnchor anchor(String value, String type) {
         return new SourceFlowAnchor(value, type, "test");
     }
