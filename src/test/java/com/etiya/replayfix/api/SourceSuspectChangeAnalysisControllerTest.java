@@ -20,6 +20,7 @@ import static org.hamcrest.Matchers.not;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -87,7 +88,9 @@ class SourceSuspectChangeAnalysisControllerTest {
                 false,
                 10,
                 8,
-                8
+                8,
+                "COMPACT",
+                12_000
         ))
                 .thenReturn(response);
 
@@ -104,7 +107,9 @@ class SourceSuspectChangeAnalysisControllerTest {
                         false,
                         10,
                         8,
-                        8
+                        8,
+                        "COMPACT",
+                        12_000
                 ).block();
 
         assertThat(actual.status()).isEqualTo("HYPOTHESIS");
@@ -163,7 +168,9 @@ class SourceSuspectChangeAnalysisControllerTest {
                 false,
                 10,
                 8,
-                8
+                8,
+                "COMPACT",
+                12_000
         ))
                 .thenReturn(response);
 
@@ -180,7 +187,9 @@ class SourceSuspectChangeAnalysisControllerTest {
                         false,
                         10,
                         8,
-                        8
+                        8,
+                        "COMPACT",
+                        12_000
                 ).block();
 
         assertThat(actual.llmUsed()).isFalse();
@@ -205,6 +214,8 @@ class SourceSuspectChangeAnalysisControllerTest {
                 anyBoolean(),
                 anyInt(),
                 anyInt(),
+                anyInt(),
+                anyString(),
                 anyInt()
         )).thenThrow(new IllegalStateException("internal stack trace"));
 
@@ -254,6 +265,8 @@ class SourceSuspectChangeAnalysisControllerTest {
                 anyBoolean(),
                 anyInt(),
                 anyInt(),
+                anyInt(),
+                anyString(),
                 anyInt()
         )).thenThrow(new IllegalStateException("internal stack trace"));
         SourceSuspectChangeAnalysisController controller =
@@ -272,7 +285,9 @@ class SourceSuspectChangeAnalysisControllerTest {
                         false,
                         10,
                         8,
-                        8
+                        8,
+                        "COMPACT",
+                        12_000
                 ).block();
         String json = objectMapper.writeValueAsString(response);
 
@@ -301,7 +316,9 @@ class SourceSuspectChangeAnalysisControllerTest {
                 false,
                 10,
                 8,
-                8
+                8,
+                "COMPACT",
+                12_000
         ))
                 .thenReturn(emptyResponse(caseId));
 
@@ -382,7 +399,9 @@ class SourceSuspectChangeAnalysisControllerTest {
                 false,
                 10,
                 8,
-                8
+                8,
+                "COMPACT",
+                12_000
         ))
                 .thenReturn(response);
 

@@ -5,6 +5,8 @@ import com.etiya.replayfix.domain.EvidenceEntity;
 import com.etiya.replayfix.domain.EvidenceType;
 import com.etiya.replayfix.domain.ReplayCaseEntity;
 import com.etiya.replayfix.domain.ReplayCaseStatus;
+import com.etiya.replayfix.model.SourceCandidateMethod;
+import com.etiya.replayfix.model.SourceDiscoveredControllerEndpoint;
 import com.etiya.replayfix.model.SourceCandidateFlowChainItem;
 import com.etiya.replayfix.model.SourceLastCommitDiagnostic;
 import com.etiya.replayfix.model.SourceSuspectChange;
@@ -30,8 +32,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import org.mockito.ArgumentCaptor;
 
 class SourceSuspectChangeAnalysisServiceTest {
 
@@ -94,8 +100,8 @@ class SourceSuspectChangeAnalysisServiceTest {
             throws Exception {
         writeWorkspaceFile();
         when(companyReasoningService.reason(
-                org.mockito.ArgumentMatchers.eq(caseId),
-                org.mockito.ArgumentMatchers.any()
+                eq(caseId),
+                anyString()
         )).thenReturn(new CompanySourceReasoningService.ReasoningResult(
                 false,
                 List.of(),
@@ -194,8 +200,8 @@ class SourceSuspectChangeAnalysisServiceTest {
         writeWorkspaceFile();
         useMockDeterministicPipeline();
         when(companyReasoningService.reason(
-                org.mockito.ArgumentMatchers.eq(caseId),
-                org.mockito.ArgumentMatchers.any()
+                eq(caseId),
+                anyString()
         )).thenReturn(new CompanySourceReasoningService.ReasoningResult(
                 true,
                 List.of(llmSuspect()),
@@ -236,8 +242,8 @@ class SourceSuspectChangeAnalysisServiceTest {
         writeWorkspaceFile();
         useMockDeterministicPipeline();
         when(companyReasoningService.reason(
-                org.mockito.ArgumentMatchers.eq(caseId),
-                org.mockito.ArgumentMatchers.any()
+                eq(caseId),
+                anyString()
         )).thenAnswer(invocation -> {
             Thread.sleep(1_500);
             return new CompanySourceReasoningService.ReasoningResult(
@@ -288,8 +294,8 @@ class SourceSuspectChangeAnalysisServiceTest {
         writeWorkspaceFile();
         useMockDeterministicPipeline();
         when(companyReasoningService.reason(
-                org.mockito.ArgumentMatchers.eq(caseId),
-                org.mockito.ArgumentMatchers.any()
+                eq(caseId),
+                anyString()
         )).thenReturn(new CompanySourceReasoningService.ReasoningResult(
                 false,
                 List.of(),
@@ -330,8 +336,8 @@ class SourceSuspectChangeAnalysisServiceTest {
         writeWorkspaceFile();
         useMockDeterministicPipeline();
         when(companyReasoningService.reason(
-                org.mockito.ArgumentMatchers.eq(caseId),
-                org.mockito.ArgumentMatchers.any()
+                eq(caseId),
+                anyString()
         )).thenReturn(new CompanySourceReasoningService.ReasoningResult(
                 false,
                 List.of(),
@@ -366,6 +372,123 @@ class SourceSuspectChangeAnalysisServiceTest {
                 .contains(CompanySourceReasoningService
                         .COMPANY_LLM_INVALID_RESPONSE);
         assertThat(response.candidateFlowChain()).isNotEmpty();
+    }
+
+    @Test
+    void compactPacketIncludesControllerServiceAndDtoCandidates()
+            throws Exception {
+        writeWorkspaceFile();
+        useExpandedDeterministicPipeline();
+        when(companyReasoningService.reason(eq(caseId), anyString()))
+                .thenReturn(successfulReasoning());
+
+        var response = service.analyze(
+                caseId,
+                45,
+                20,
+                10,
+                false,
+                true
+        );
+
+        ArgumentCaptor<String> packet = ArgumentCaptor.forClass(String.class);
+        verify(companyReasoningService).reason(eq(caseId), packet.capture());
+        assertThat(packet.getValue()).contains("UserController");
+        assertThat(packet.getValue()).contains("UserServiceImpl");
+        assertThat(packet.getValue()).contains("UpdateAplUserPrefPrvncRequest");
+        assertThat(response.companyLlmContextMode()).isEqualTo("COMPACT");
+        assertThat(response.companyLlmPromptChars()).isGreaterThan(0);
+    }
+
+    @Test
+    void compactPacketExcludesRawReasoningContent()
+            throws Exception {
+        writeWorkspaceFile();
+        useExpandedDeterministicPipeline();
+        when(evidenceRepository.findByCaseIdAndEvidenceType(
+                caseId,
+                EvidenceType.ROVO_RCA
+        )).thenReturn(List.of(evidence(
+                EvidenceType.ROVO_RCA,
+                "{\"summary\":\"flow\",\"reasoning_content\":\"SECRET_REASONING\"}"
+        )));
+        when(companyReasoningService.reason(eq(caseId), anyString()))
+                .thenReturn(successfulReasoning());
+
+        service.analyze(caseId, 45, 20, 10, false, true);
+
+        ArgumentCaptor<String> packet = ArgumentCaptor.forClass(String.class);
+        verify(companyReasoningService).reason(eq(caseId), packet.capture());
+        assertThat(packet.getValue()).doesNotContain("SECRET_REASONING");
+    }
+
+    @Test
+    void compactPacketExcludesAllDiscoveredEndpoints()
+            throws Exception {
+        writeWorkspaceFile();
+        useExpandedDeterministicPipeline();
+        when(companyReasoningService.reason(eq(caseId), anyString()))
+                .thenReturn(successfulReasoning());
+
+        service.analyze(caseId, 45, 20, 10, false, true);
+
+        ArgumentCaptor<String> packet = ArgumentCaptor.forClass(String.class);
+        verify(companyReasoningService).reason(eq(caseId), packet.capture());
+        assertThat(packet.getValue()).doesNotContain("OtherController");
+        assertThat(packet.getValue()).doesNotContain("/other/debug");
+    }
+
+    @Test
+    void compactPacketRespectsMaxChars()
+            throws Exception {
+        writeWorkspaceFile();
+        useExpandedDeterministicPipeline();
+        when(companyReasoningService.reason(eq(caseId), anyString()))
+                .thenReturn(successfulReasoning());
+
+        var response = service.analyze(
+                caseId,
+                45,
+                20,
+                10,
+                false,
+                true,
+                2_000,
+                256,
+                false,
+                10,
+                8,
+                8,
+                "COMPACT",
+                700
+        );
+
+        ArgumentCaptor<String> packet = ArgumentCaptor.forClass(String.class);
+        verify(companyReasoningService).reason(eq(caseId), packet.capture());
+        assertThat(packet.getValue().length()).isLessThanOrEqualTo(700);
+        assertThat(response.companyLlmPromptChars()).isLessThanOrEqualTo(700);
+        assertThat(response.companyLlmMaxPromptChars()).isEqualTo(700);
+        assertThat(response.warnings())
+                .contains(SourceSuspectChangeAnalysisService
+                        .COMPANY_LLM_CONTEXT_TRUNCATED);
+    }
+
+    @Test
+    void defaultLlmContextModeIsCompact() throws Exception {
+        writeWorkspaceFile();
+        useMockDeterministicPipeline();
+
+        var response = service.analyze(
+                caseId,
+                45,
+                20,
+                10,
+                false,
+                false
+        );
+
+        assertThat(response.companyLlmContextMode()).isEqualTo("COMPACT");
+        assertThat(response.companyLlmMaxPromptChars()).isEqualTo(12_000);
     }
 
     @Test
@@ -732,6 +855,140 @@ class SourceSuspectChangeAnalysisServiceTest {
         service = service(discovery, gitHistory, contextBuilder);
     }
 
+    private void useExpandedDeterministicPipeline() {
+        FlowAwareSourceDiscoveryService discovery =
+                mock(FlowAwareSourceDiscoveryService.class);
+        SourceCandidateGitHistoryService gitHistory =
+                mock(SourceCandidateGitHistoryService.class);
+        when(discovery.discover(
+                any(),
+                any(),
+                anyInt(),
+                anyInt(),
+                anyInt(),
+                anyBoolean()
+        )).thenReturn(expandedDiscoveryResult());
+        when(gitHistory.collect(
+                any(),
+                any(),
+                any(),
+                anyInt(),
+                anyInt(),
+                anyBoolean()
+        )).thenReturn(historyResult());
+        service = service(discovery, gitHistory, contextBuilder);
+    }
+
+    private FlowAwareSourceDiscoveryService.DiscoveryResult
+    expandedDiscoveryResult() {
+        List<SourceCandidateFlowChainItem> chain = List.of(
+                new SourceCandidateFlowChainItem(
+                        "CONTROLLER",
+                        "ControllerBackend/src/main/java/UserController.java",
+                        "UserController",
+                        "updateUserParty",
+                        List.of("/user/region/update"),
+                        "Controller endpoint mapping matched.",
+                        "HYPOTHESIS"
+                ),
+                new SourceCandidateFlowChainItem(
+                        "SERVICE_IMPL",
+                        "CrmBackend/src/main/java/UserServiceImpl.java",
+                        "UserServiceImpl",
+                        "updateUser",
+                        List.of("userService.updateUser(request)"),
+                        "Controller direct service call resolved.",
+                        "HYPOTHESIS"
+                ),
+                new SourceCandidateFlowChainItem(
+                        "DTO",
+                        "CrmBackend/src/main/java/UpdateAplUserPrefPrvncRequest.java",
+                        "UpdateAplUserPrefPrvncRequest",
+                        "",
+                        List.of("request DTO"),
+                        "Request DTO referenced by controller/service chain.",
+                        "HYPOTHESIS"
+                ),
+                new SourceCandidateFlowChainItem(
+                        "REPOSITORY",
+                        "CrmBackend/src/main/java/UserRepository.java",
+                        "UserRepository",
+                        "save",
+                        List.of("fallback"),
+                        "Lower priority fallback.",
+                        "HYPOTHESIS"
+                )
+        );
+        List<SourceCandidateMethod> methods = List.of(
+                new SourceCandidateMethod(
+                        "ControllerBackend/src/main/java/UserController.java",
+                        "UserController",
+                        "updateUserParty",
+                        10,
+                        20,
+                        List.of("/user/region/update"),
+                        "public void updateUserParty(UpdateAplUserPrefPrvncRequest request) { userService.updateUser(request); }"
+                ),
+                new SourceCandidateMethod(
+                        "CrmBackend/src/main/java/UserServiceImpl.java",
+                        "UserServiceImpl",
+                        "updateUser",
+                        30,
+                        50,
+                        List.of("userService.updateUser(request)"),
+                        "public void updateUser(UpdateAplUserPrefPrvncRequest request) { validate(request); }"
+                ),
+                new SourceCandidateMethod(
+                        "CrmBackend/src/main/java/UpdateAplUserPrefPrvncRequest.java",
+                        "UpdateAplUserPrefPrvncRequest",
+                        "",
+                        1,
+                        15,
+                        List.of("request DTO"),
+                        "public class UpdateAplUserPrefPrvncRequest { private String preferredProvince; }"
+                )
+        );
+        return new FlowAwareSourceDiscoveryService.DiscoveryResult(
+                chain,
+                chain.stream().map(SourceCandidateFlowChainItem::file).toList(),
+                methods,
+                java.util.Map.of(),
+                5,
+                3,
+                2,
+                List.of("/user/region/update"),
+                List.of(),
+                List.of(new SourceDiscoveredControllerEndpoint(
+                        "ControllerBackend/src/main/java/OtherController.java",
+                        "OtherController",
+                        "debug",
+                        "GET",
+                        "/other",
+                        "/debug",
+                        "/other/debug"
+                )),
+                1,
+                List.of("UserService"),
+                List.of("CrmBackend/src/main/java/UserServiceImpl.java"),
+                List.of()
+        );
+    }
+
+    private CompanySourceReasoningService.ReasoningResult successfulReasoning() {
+        return new CompanySourceReasoningService.ReasoningResult(
+                true,
+                List.of(llmSuspect()),
+                "HYPOTHESIS",
+                0.7,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                "",
+                List.of()
+        );
+    }
+
     private SourceSuspectChange llmSuspect() {
         return new SourceSuspectChange(
                 "src/main/java/com/example/BusinessFlowController.java",
@@ -821,6 +1078,18 @@ class SourceSuspectChangeAnalysisServiceTest {
         evidence.setEvidenceType(EvidenceType.ROVO_RCA);
         evidence.setSource("test");
         evidence.setContentText("{\"summary\":\"flow\"}");
+        evidence.setCreatedAt(Instant.now());
+        evidence.setSanitized(true);
+        return evidence;
+    }
+
+    private EvidenceEntity evidence(EvidenceType type, String content) {
+        EvidenceEntity evidence = new EvidenceEntity();
+        evidence.setId(UUID.randomUUID());
+        evidence.setCaseId(caseId);
+        evidence.setEvidenceType(type);
+        evidence.setSource("test");
+        evidence.setContentText(content);
         evidence.setCreatedAt(Instant.now());
         evidence.setSanitized(true);
         return evidence;

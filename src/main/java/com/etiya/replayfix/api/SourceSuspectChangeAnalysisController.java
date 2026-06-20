@@ -49,7 +49,9 @@ public class SourceSuspectChangeAnalysisController {
             @RequestParam(defaultValue = "false") boolean includeTests,
             @RequestParam(defaultValue = "10") int sourceDiscoveryTimeoutSeconds,
             @RequestParam(defaultValue = "8") int gitHistoryTimeoutSeconds,
-            @RequestParam(defaultValue = "8") int companyLlmTimeoutSeconds
+            @RequestParam(defaultValue = "8") int companyLlmTimeoutSeconds,
+            @RequestParam(defaultValue = "COMPACT") String llmContextMode,
+            @RequestParam(defaultValue = "12000") int companyLlmMaxPromptChars
     ) {
         return Mono.fromCallable(() -> service.analyze(
                         caseId,
@@ -63,7 +65,9 @@ public class SourceSuspectChangeAnalysisController {
                         includeTests,
                         sourceDiscoveryTimeoutSeconds,
                         gitHistoryTimeoutSeconds,
-                        companyLlmTimeoutSeconds
+                        companyLlmTimeoutSeconds,
+                        llmContextMode,
+                        companyLlmMaxPromptChars
                 ))
                 .subscribeOn(Schedulers.boundedElastic())
                 .map(this::jsonSafeResponse)
@@ -127,7 +131,10 @@ public class SourceSuspectChangeAnalysisController {
                 response.lastCommitDiagnostics(),
                 response.companyLlmTimeoutSeconds(),
                 response.companyLlmElapsedMs(),
-                response.companyLlmStatus()
+                response.companyLlmStatus(),
+                response.companyLlmPromptChars(),
+                response.companyLlmContextMode(),
+                response.companyLlmMaxPromptChars()
         );
     }
 
@@ -187,7 +194,10 @@ public class SourceSuspectChangeAnalysisController {
                 List.of(),
                 0,
                 0L,
-                "NOT_REQUESTED"
+                "NOT_REQUESTED",
+                0,
+                "COMPACT",
+                12000
         );
     }
 

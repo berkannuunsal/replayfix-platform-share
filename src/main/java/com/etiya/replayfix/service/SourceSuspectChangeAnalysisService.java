@@ -5,6 +5,7 @@ import com.etiya.replayfix.domain.EvidenceEntity;
 import com.etiya.replayfix.domain.EvidenceType;
 import com.etiya.replayfix.domain.ReplayCaseEntity;
 import com.etiya.replayfix.model.SourceCandidateFlowChainItem;
+import com.etiya.replayfix.model.SourceCandidateMethod;
 import com.etiya.replayfix.model.SourceFlowAnchor;
 import com.etiya.replayfix.model.SourceLastCommitDiagnostic;
 import com.etiya.replayfix.model.SourceRecentCommit;
@@ -70,6 +71,11 @@ public class SourceSuspectChangeAnalysisService {
             "ONLY_GENERIC_MATCHES_FOUND";
     public static final String COMPANY_LLM_TIMEOUT =
             CompanySourceReasoningService.COMPANY_LLM_TIMEOUT;
+    public static final String COMPANY_LLM_CONTEXT_TRUNCATED =
+            "COMPANY_LLM_CONTEXT_TRUNCATED";
+    private static final String LLM_CONTEXT_COMPACT = "COMPACT";
+    private static final String LLM_CONTEXT_FULL = "FULL";
+    private static final int DEFAULT_COMPANY_LLM_MAX_PROMPT_CHARS = 12_000;
 
     private final ReplayCaseRepository caseRepository;
     private final EvidenceRepository evidenceRepository;
@@ -127,7 +133,9 @@ public class SourceSuspectChangeAnalysisService {
                 false,
                 10,
                 8,
-                8
+                8,
+                LLM_CONTEXT_COMPACT,
+                DEFAULT_COMPANY_LLM_MAX_PROMPT_CHARS
         );
     }
 
@@ -157,7 +165,9 @@ public class SourceSuspectChangeAnalysisService {
                 includeTests,
                 sourceDiscoveryTimeoutSeconds,
                 gitHistoryTimeoutSeconds,
-                8
+                8,
+                LLM_CONTEXT_COMPACT,
+                DEFAULT_COMPANY_LLM_MAX_PROMPT_CHARS
         );
     }
 
@@ -176,14 +186,54 @@ public class SourceSuspectChangeAnalysisService {
             int gitHistoryTimeoutSeconds,
             int companyLlmTimeoutSeconds
     ) {
+        return analyze(
+                caseId,
+                lookbackDays,
+                maxCandidates,
+                maxCommitsPerFile,
+                includeDiffSnippets,
+                useCompanyLlm,
+                maxScannedFiles,
+                maxFileSizeKb,
+                includeTests,
+                sourceDiscoveryTimeoutSeconds,
+                gitHistoryTimeoutSeconds,
+                companyLlmTimeoutSeconds,
+                LLM_CONTEXT_COMPACT,
+                DEFAULT_COMPANY_LLM_MAX_PROMPT_CHARS
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public SourceSuspectChangeAnalysisResponse analyze(
+            UUID caseId,
+            int lookbackDays,
+            int maxCandidates,
+            int maxCommitsPerFile,
+            boolean includeDiffSnippets,
+            boolean useCompanyLlm,
+            int maxScannedFiles,
+            int maxFileSizeKb,
+            boolean includeTests,
+            int sourceDiscoveryTimeoutSeconds,
+            int gitHistoryTimeoutSeconds,
+            int companyLlmTimeoutSeconds,
+            String llmContextMode,
+            int companyLlmMaxPromptChars
+    ) {
         List<String> warnings = new ArrayList<>();
         PhaseTimings timings = new PhaseTimings();
         String lastCompletedPhase = "";
         String currentPhaseOnTimeout = null;
+        String normalizedLlmContextMode = normalizeLlmContextMode(llmContextMode);
+        int normalizedMaxPromptChars = Math.max(1, companyLlmMaxPromptChars);
         CompanyLlmPhase companyLlmPhase = new CompanyLlmPhase(
                 Math.max(1, companyLlmTimeoutSeconds),
                 0L,
-                useCompanyLlm ? "UNAVAILABLE" : "NOT_REQUESTED"
+                useCompanyLlm ? "UNAVAILABLE" : "NOT_REQUESTED",
+                0,
+                normalizedLlmContextMode,
+                normalizedMaxPromptChars
         );
         ReplayCaseEntity replayCase = defaultCase(caseId);
         RepositoryContext repositoryContext =
@@ -461,12 +511,28 @@ public class SourceSuspectChangeAnalysisService {
             if (useCompanyLlm) {
                 timings.start("companyLlm");
                 try {
-                    SourceReasoningContext llmContext = context;
+                    CompanyLlmContextPacket llmPacket = companyLlmContextPacket(
+                            replayCase,
+                            repositoryContext,
+                            discovery,
+                            history,
+                            warnings,
+                            context,
+                            normalizedLlmContextMode,
+                            normalizedMaxPromptChars
+                    );
+                    if (llmPacket.truncated()) {
+                        warnings.add(COMPANY_LLM_CONTEXT_TRUNCATED);
+                    }
+                    companyLlmPhase = companyLlmPhase.withPromptChars(
+                            llmPacket.promptChars()
+                    );
+                    String llmContextJson = llmPacket.contextJson();
                     CompanySourceReasoningService.ReasoningResult reasoning =
                             runWithTimeout(
                                     () -> companyReasoningService.reason(
                                             caseId,
-                                            llmContext
+                                            llmContextJson
                                     ),
                                     Math.max(1, companyLlmTimeoutSeconds)
                             );
@@ -484,7 +550,10 @@ public class SourceSuspectChangeAnalysisService {
                             timings.currentElapsedMs(),
                             reasoning.llmUsed()
                                     ? "SUCCESS"
-                                    : companyLlmStatus(reasoning.warnings())
+                                    : companyLlmStatus(reasoning.warnings()),
+                            llmPacket.promptChars(),
+                            normalizedLlmContextMode,
+                            normalizedMaxPromptChars
                     );
                 } catch (TimeoutException exception) {
                     log.warn(
@@ -496,7 +565,10 @@ public class SourceSuspectChangeAnalysisService {
                     companyLlmPhase = new CompanyLlmPhase(
                             Math.max(1, companyLlmTimeoutSeconds),
                             timings.currentElapsedMs(),
-                            "TIMEOUT"
+                            "TIMEOUT",
+                            companyLlmPhase.promptChars(),
+                            normalizedLlmContextMode,
+                            normalizedMaxPromptChars
                     );
                 } catch (Exception exception) {
                     log.warn(
@@ -509,7 +581,10 @@ public class SourceSuspectChangeAnalysisService {
                     companyLlmPhase = new CompanyLlmPhase(
                             Math.max(1, companyLlmTimeoutSeconds),
                             timings.currentElapsedMs(),
-                            "ERROR"
+                            "ERROR",
+                            companyLlmPhase.promptChars(),
+                            normalizedLlmContextMode,
+                            normalizedMaxPromptChars
                     );
                 } finally {
                     timings.stop("companyLlm");
@@ -576,7 +651,7 @@ public class SourceSuspectChangeAnalysisService {
             List<SourceFlowAnchor> anchors,
             List<SourceCandidateFlowChainItem> chain,
             List<String> candidateFiles,
-            List<com.etiya.replayfix.model.SourceCandidateMethod> candidateMethods,
+            List<SourceCandidateMethod> candidateMethods,
             List<SourceRecentCommit> recentCommits,
             List<SourceLastCommitDiagnostic> lastCommitDiagnostics,
             SourceReasoningContext context,
@@ -631,8 +706,261 @@ public class SourceSuspectChangeAnalysisService {
                 lastCommitDiagnostics,
                 companyLlmPhase.timeoutSeconds(),
                 companyLlmPhase.elapsedMs(),
-                companyLlmPhase.status()
+                companyLlmPhase.status(),
+                companyLlmPhase.promptChars(),
+                companyLlmPhase.contextMode(),
+                companyLlmPhase.maxPromptChars()
         );
+    }
+
+    private CompanyLlmContextPacket companyLlmContextPacket(
+            ReplayCaseEntity replayCase,
+            RepositoryContext repositoryContext,
+            FlowAwareSourceDiscoveryService.DiscoveryResult discovery,
+            SourceCandidateGitHistoryService.HistoryResult history,
+            List<String> warnings,
+            SourceReasoningContext fullContext,
+            String llmContextMode,
+            int maxPromptChars
+    ) throws Exception {
+        if (LLM_CONTEXT_FULL.equals(llmContextMode)) {
+            String fullJson = objectMapper.writeValueAsString(fullContext);
+            if (fullJson.length() <= maxPromptChars) {
+                return new CompanyLlmContextPacket(
+                        fullJson,
+                        fullJson.length(),
+                        false
+                );
+            }
+            String compacted = objectMapper.writeValueAsString(Map.of(
+                    "contextMode", LLM_CONTEXT_FULL,
+                    "truncated", true,
+                    "sourceReasoningContextPreview",
+                    truncate(fullJson, Math.max(200, maxPromptChars - 160)),
+                    "instruction",
+                    "Output status must remain HYPOTHESIS."
+            ));
+            String fitted = fitJson(compacted, maxPromptChars);
+            return new CompanyLlmContextPacket(
+                    fitted,
+                    fitted.length(),
+                    true
+            );
+        }
+
+        String compactJson = compactPacketJson(
+                replayCase,
+                repositoryContext,
+                discovery,
+                history,
+                warnings,
+                900,
+                900,
+                500
+        );
+        if (compactJson.length() <= maxPromptChars) {
+            return new CompanyLlmContextPacket(
+                    compactJson,
+                    compactJson.length(),
+                    false
+            );
+        }
+
+        String truncatedJson = compactPacketJson(
+                replayCase,
+                repositoryContext,
+                discovery,
+                history,
+                warnings,
+                140,
+                160,
+                120
+        );
+        if (truncatedJson.length() <= maxPromptChars) {
+            return new CompanyLlmContextPacket(
+                    truncatedJson,
+                    truncatedJson.length(),
+                    true
+            );
+        }
+
+        String minimalJson = objectMapper.writeValueAsString(Map.of(
+                "contextMode", LLM_CONTEXT_COMPACT,
+                "truncated", true,
+                "caseId", replayCase.getId().toString(),
+                "jiraKey", safeString(replayCase.getJiraKey()),
+                "matchedEndpointAnchors",
+                discovery.matchedEndpointAnchors().stream().limit(3).toList(),
+                "candidateFlowChain",
+                discovery.candidateFlowChain().stream()
+                        .limit(3)
+                        .map(this::compactChainItem)
+                        .toList(),
+                "warnings",
+                warnings.stream().limit(5).toList(),
+                "instruction",
+                "Return JSON only. Status must remain HYPOTHESIS."
+        ));
+        String fitted = fitJson(minimalJson, maxPromptChars);
+        return new CompanyLlmContextPacket(fitted, fitted.length(), true);
+    }
+
+    private String compactPacketJson(
+            ReplayCaseEntity replayCase,
+            RepositoryContext repositoryContext,
+            FlowAwareSourceDiscoveryService.DiscoveryResult discovery,
+            SourceCandidateGitHistoryService.HistoryResult history,
+            List<String> warnings,
+            int summaryChars,
+            int snippetChars,
+            int commitMessageChars
+    ) throws Exception {
+        Map<String, Object> packet = new LinkedHashMap<>();
+        packet.put("contextMode", LLM_CONTEXT_COMPACT);
+        packet.put("caseId", replayCase.getId().toString());
+        packet.put("jiraKey", safeString(replayCase.getJiraKey()));
+        packet.put("repository", safeString(repositoryContext.repository()));
+        packet.put("branch", safeString(repositoryContext.branch()));
+        packet.put("matchedEndpointAnchors", discovery.matchedEndpointAnchors());
+        packet.put("candidateFlowChain", discovery.candidateFlowChain().stream()
+                .limit(3)
+                .map(this::compactChainItem)
+                .toList());
+        packet.put("candidateMethods", discovery.candidateMethods().stream()
+                .limit(3)
+                .map(method -> compactMethod(method, snippetChars))
+                .toList());
+        packet.put("lastCommitDiagnostics", history.lastCommitDiagnostics()
+                .stream()
+                .limit(10)
+                .map(diagnostic -> compactDiagnostic(
+                        diagnostic,
+                        commitMessageChars
+                ))
+                .toList());
+        packet.put("warnings", warnings.stream().limit(20).toList());
+        packet.put("summary", shortEvidenceSummary(
+                replayCase.getId(),
+                summaryChars
+        ));
+        packet.put("instruction", """
+                Use only this compact packet. Return valid JSON only. Keep status HYPOTHESIS.
+                Do not invent files, commits, logs, tests or confirmation.
+                """.strip());
+        return objectMapper.writeValueAsString(packet);
+    }
+
+    private Map<String, Object> compactChainItem(
+            SourceCandidateFlowChainItem item
+    ) {
+        Map<String, Object> value = new LinkedHashMap<>();
+        value.put("layer", item.layer());
+        value.put("file", item.file());
+        value.put("className", item.className());
+        value.put("methodName", item.methodName());
+        value.put("relatedSignals", item.relatedSignals());
+        value.put("reason", truncate(safeString(item.reason()), 300));
+        value.put("status", item.status());
+        return value;
+    }
+
+    private Map<String, Object> compactMethod(
+            SourceCandidateMethod method,
+            int snippetChars
+    ) {
+        Map<String, Object> value = new LinkedHashMap<>();
+        value.put("file", method.file());
+        value.put("className", method.className());
+        value.put("methodName", method.methodName());
+        value.put("startLine", method.startLine());
+        value.put("endLine", method.endLine());
+        value.put("relatedSignals", method.relatedSignals());
+        value.put("snippet", truncate(
+                sanitizeCompactText(method.snippet()),
+                snippetChars
+        ));
+        return value;
+    }
+
+    private Map<String, Object> compactDiagnostic(
+            SourceLastCommitDiagnostic diagnostic,
+            int messageChars
+    ) {
+        Map<String, Object> value = new LinkedHashMap<>();
+        value.put("file", diagnostic.file());
+        value.put("shortSha", diagnostic.shortSha());
+        value.put("author", diagnostic.author());
+        value.put("date", diagnostic.date());
+        value.put("message", truncate(
+                sanitizeCompactText(diagnostic.message()),
+                messageChars
+        ));
+        return value;
+    }
+
+    private Map<String, String> shortEvidenceSummary(
+            UUID caseId,
+            int maxChars
+    ) {
+        Map<String, String> summary = new LinkedHashMap<>();
+        latestEvidenceText(caseId, EvidenceType.ROVO_RCA)
+                .ifPresent(value -> summary.put(
+                        "rovo",
+                        truncate(sanitizeCompactText(value), maxChars)
+                ));
+        latestEvidenceText(caseId, EvidenceType.JIRA_ISSUE)
+                .ifPresent(value -> summary.put(
+                        "jira",
+                        truncate(sanitizeCompactText(value), maxChars)
+                ));
+        return summary;
+    }
+
+    private Optional<String> latestEvidenceText(UUID caseId, EvidenceType type) {
+        return latestEvidence(caseId, type)
+                .map(evidence -> firstNonBlank(
+                        evidence.getContentText(),
+                        evidence.getBody()
+                ))
+                .filter(value -> !value.isBlank());
+    }
+
+    private String normalizeLlmContextMode(String value) {
+        if (LLM_CONTEXT_FULL.equalsIgnoreCase(safeString(value))) {
+            return LLM_CONTEXT_FULL;
+        }
+        return LLM_CONTEXT_COMPACT;
+    }
+
+    private String sanitizeCompactText(String value) {
+        return safeString(value)
+                .replaceAll("(?i)\"reasoning_content\"\\s*:\\s*\"(?:\\\\.|[^\"\\\\])*\"", "\"reasoning_content\":\"[OMITTED]\"")
+                .replaceAll("(?i)reasoning_content\\s*[:=]\\s*[^\\s,;\"}]+", "reasoning_content=[OMITTED]")
+                .replaceAll("(?i)(authorization|token|cookie|password|secret)\\s*[:=]\\s*[^\\s,;\"}]+", "$1=[REDACTED]")
+                .replaceAll("[\\r\\n\\t]+", " ")
+                .trim();
+    }
+
+    private String truncate(String value, int maxChars) {
+        if (value == null || maxChars <= 0) {
+            return "";
+        }
+        if (value.length() <= maxChars) {
+            return value;
+        }
+        return value.substring(0, maxChars);
+    }
+
+    private String fitJson(String json, int maxChars) {
+        if (json.length() <= maxChars) {
+            return json;
+        }
+        String minimal = "{\"contextMode\":\"COMPACT\",\"truncated\":true,"
+                + "\"instruction\":\"Output status must remain HYPOTHESIS.\"}";
+        if (minimal.length() <= maxChars) {
+            return minimal;
+        }
+        return "{}";
     }
 
     private <T> T runWithTimeout(Callable<T> callable, int timeoutSeconds)
@@ -922,7 +1250,27 @@ public class SourceSuspectChangeAnalysisService {
     private record CompanyLlmPhase(
             int timeoutSeconds,
             long elapsedMs,
-            String status
+            String status,
+            int promptChars,
+            String contextMode,
+            int maxPromptChars
+    ) {
+        private CompanyLlmPhase withPromptChars(int promptChars) {
+            return new CompanyLlmPhase(
+                    timeoutSeconds,
+                    elapsedMs,
+                    status,
+                    promptChars,
+                    contextMode,
+                    maxPromptChars
+            );
+        }
+    }
+
+    private record CompanyLlmContextPacket(
+            String contextJson,
+            int promptChars,
+            boolean truncated
     ) {
     }
 

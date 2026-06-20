@@ -46,6 +46,17 @@ public class CompanySourceReasoningService {
             UUID caseId,
             SourceReasoningContext context
     ) {
+        try {
+            return reason(caseId, objectMapper.writeValueAsString(context));
+        } catch (Exception ignored) {
+            return unavailable();
+        }
+    }
+
+    public ReasoningResult reason(
+            UUID caseId,
+            String contextJson
+    ) {
         if (!properties.getAi().isEnabled()
                 || properties.getAi().getProvider() != AiProviderType.COMPANY_LLM) {
             return unavailable();
@@ -53,7 +64,6 @@ public class CompanySourceReasoningService {
 
         try {
             AiProviderClient provider = aiProviderClientFactory.getProvider();
-            String contextJson = objectMapper.writeValueAsString(context);
             AiGenerationResponse response = provider.generate(new AiGenerationRequest(
                     caseId,
                     "SOURCE_CHANGE_ANALYSIS",

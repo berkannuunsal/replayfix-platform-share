@@ -40,7 +40,10 @@ public record SourceSuspectChangeAnalysisResponse(
         List<SourceLastCommitDiagnostic> lastCommitDiagnostics,
         int companyLlmTimeoutSeconds,
         long companyLlmElapsedMs,
-        String companyLlmStatus
+        String companyLlmStatus,
+        int companyLlmPromptChars,
+        String companyLlmContextMode,
+        int companyLlmMaxPromptChars
 ) {
     public SourceSuspectChangeAnalysisResponse(
             UUID caseId,
@@ -99,7 +102,10 @@ public record SourceSuspectChangeAnalysisResponse(
                 List.of(),
                 0,
                 0L,
-                "NOT_REQUESTED"
+                "NOT_REQUESTED",
+                0,
+                "COMPACT",
+                12000
         );
     }
 
@@ -163,7 +169,10 @@ public record SourceSuspectChangeAnalysisResponse(
                 List.of(),
                 0,
                 0L,
-                "NOT_REQUESTED"
+                "NOT_REQUESTED",
+                0,
+                "COMPACT",
+                12000
         );
     }
 
@@ -209,5 +218,8 @@ public record SourceSuspectChangeAnalysisResponse(
         companyLlmStatus = companyLlmStatus == null
                 ? "NOT_REQUESTED"
                 : companyLlmStatus;
+        companyLlmContextMode = companyLlmContextMode == null
+                ? "COMPACT"
+                : companyLlmContextMode;
     }
 }
