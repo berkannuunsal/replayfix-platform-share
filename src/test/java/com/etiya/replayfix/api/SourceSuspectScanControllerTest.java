@@ -5,6 +5,7 @@ import com.etiya.replayfix.service.SourceSuspectScanService;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -31,7 +32,17 @@ class SourceSuspectScanControllerTest {
                         0,
                         0,
                         List.of(),
-                        List.of()
+                        List.of(),
+                        "work/case/repository",
+                        true,
+                        1,
+                        3,
+                        0,
+                        Map.of("java", 1),
+                        3,
+                        List.of("PREFERRED_PROVINCE"),
+                        "backend",
+                        "Backend Service"
                 );
 
         when(service.scan(caseId, 20, 5, false)).thenReturn(response);
@@ -45,5 +56,7 @@ class SourceSuspectScanControllerTest {
         assertEquals("test2", actual.branch());
         assertEquals(3, actual.signalCount());
         assertEquals(0, actual.candidateFileCount());
+        assertEquals("work/case/repository", actual.scannedRoot());
+        assertEquals(1, actual.scannedFileCount());
     }
 }

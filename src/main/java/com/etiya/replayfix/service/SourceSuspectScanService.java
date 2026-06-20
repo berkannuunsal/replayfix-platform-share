@@ -3,11 +3,11 @@ package com.etiya.replayfix.service;
 import com.etiya.replayfix.config.ReplayFixProperties;
 import com.etiya.replayfix.domain.EvidenceEntity;
 import com.etiya.replayfix.domain.EvidenceType;
-import com.etiya.replayfix.model.SourceCheckoutResult;
 import com.etiya.replayfix.model.SourceSuspectCandidateFile;
 import com.etiya.replayfix.model.SourceSuspectCandidateMethod;
 import com.etiya.replayfix.model.SourceSuspectScanResponse;
 import com.etiya.replayfix.model.SourceSuspectSnippet;
+import com.etiya.replayfix.model.SuspectSignalCategory;
 import com.etiya.replayfix.model.SuspectSignalExtractionResponse;
 import com.etiya.replayfix.model.SuspectSourceSignal;
 import com.etiya.replayfix.repository.EvidenceRepository;
@@ -38,9 +38,16 @@ public class SourceSuspectScanService {
 
     public static final String SOURCE_WORKSPACE_NOT_FOUND =
             "SOURCE_WORKSPACE_NOT_FOUND";
+    public static final String SOURCE_WORKSPACE_EMPTY_OR_NO_SUPPORTED_FILES =
+            "SOURCE_WORKSPACE_EMPTY_OR_NO_SUPPORTED_FILES";
+    public static final String NO_SOURCE_SIGNAL_MATCHES_FOUND =
+            "NO_SOURCE_SIGNAL_MATCHES_FOUND";
+    public static final String SOURCE_BRANCH_NOT_RESOLVED =
+            "SOURCE_BRANCH_NOT_RESOLVED";
 
     private static final int MAX_SCANNED_FILES = 20_000;
     private static final long MAX_FILE_SIZE = 1_000_000;
+    private static final int USED_SIGNAL_PREVIEW_LIMIT = 50;
 
     private static final Set<String> ALLOWED_EXTENSIONS = Set.of(
             ".java",
@@ -80,6 +87,15 @@ public class SourceSuspectScanService {
                     + "\\s*(?:throws\\s+[^{]+)?\\{?.*$"
     );
 
+    private static final Set<String> SECRET_PATH_MARKERS = Set.of(
+            "token",
+            "secret",
+            "password",
+            "credential",
+            "apikey",
+            "api-key"
+    );
+
     private final SuspectSignalExtractionService signalExtractionService;
     private final ReplayFixProperties properties;
     private final EvidenceRepository evidenceRepository;
@@ -108,38 +124,75 @@ public class SourceSuspectScanService {
                 signalExtractionService.extract(caseId, includeWeak);
 
         List<String> warnings = new ArrayList<>(signals.warnings());
-        List<String> searchSignals = signals.signals()
-                .stream()
-                .map(SuspectSourceSignal::value)
-                .filter(value -> value != null && !value.isBlank())
-                .distinct()
-                .toList();
+        List<SearchSignal> searchSignals = searchSignals(signals.signals());
+        ResolutionContext resolutionContext =
+                resolutionContext(caseId, signals.repository(), signals.branch());
 
-        Optional<Path> sourceRoot = locateWorkspace(caseId, signals.repository());
-        if (sourceRoot.isEmpty()) {
+        String branch = firstNonBlank(signals.branch(), resolutionContext.branch());
+        if (branch == null) {
+            warnings.add(SOURCE_BRANCH_NOT_RESOLVED);
+        }
+
+        WorkspaceResolution workspaceResolution =
+                locateWorkspace(caseId, resolutionContext);
+        if (workspaceResolution.path().isEmpty()) {
             warnings.add(SOURCE_WORKSPACE_NOT_FOUND);
-            return new SourceSuspectScanResponse(
+            return response(
                     caseId,
-                    signals.jiraKey(),
-                    signals.repository(),
-                    signals.branch(),
-                    searchSignals.size(),
-                    0,
-                    0,
+                    signals,
+                    branch,
+                    searchSignals,
+                    resolutionContext,
+                    null,
+                    false,
+                    ScanResult.empty(),
                     List.of(),
                     warnings
             );
         }
 
-        List<SourceSuspectCandidateFile> candidateFiles =
+        Path root = workspaceResolution.path().get();
+        ScanResult scanResult =
                 scanWorkspace(
-                        sourceRoot.get(),
+                        root,
                         searchSignals,
                         Math.max(1, maxFiles),
                         Math.max(1, maxSnippetsPerFile),
                         warnings
                 );
 
+        if (scanResult.scannedFileCount() == 0) {
+            warnings.add(SOURCE_WORKSPACE_EMPTY_OR_NO_SUPPORTED_FILES);
+        } else if (scanResult.candidateFiles().isEmpty()) {
+            warnings.add(NO_SOURCE_SIGNAL_MATCHES_FOUND);
+        }
+
+        return response(
+                caseId,
+                signals,
+                branch,
+                searchSignals,
+                resolutionContext,
+                root,
+                true,
+                scanResult,
+                scanResult.candidateFiles(),
+                warnings
+        );
+    }
+
+    private SourceSuspectScanResponse response(
+            UUID caseId,
+            SuspectSignalExtractionResponse signals,
+            String branch,
+            List<SearchSignal> searchSignals,
+            ResolutionContext resolutionContext,
+            Path scannedRoot,
+            boolean workspaceResolved,
+            ScanResult scanResult,
+            List<SourceSuspectCandidateFile> candidateFiles,
+            List<String> warnings
+    ) {
         int methodCount = candidateFiles.stream()
                 .mapToInt(file -> file.candidateMethods().size())
                 .sum();
@@ -148,56 +201,146 @@ public class SourceSuspectScanService {
                 caseId,
                 signals.jiraKey(),
                 signals.repository(),
-                signals.branch(),
+                blankToEmpty(branch),
                 searchSignals.size(),
                 candidateFiles.size(),
                 methodCount,
                 candidateFiles,
-                warnings
+                List.copyOf(new LinkedHashSet<>(warnings)),
+                scannedRoot == null ? "" : sanitizePath(scannedRoot),
+                workspaceResolved,
+                scanResult.scannedFileCount(),
+                scanResult.scannedDirectoryCount(),
+                scanResult.skippedDirectoryCount(),
+                scanResult.fileExtensionCounts(),
+                searchSignals.size(),
+                searchSignals.stream()
+                        .map(SearchSignal::value)
+                        .limit(USED_SIGNAL_PREVIEW_LIMIT)
+                        .toList(),
+                blankToEmpty(resolutionContext.repositorySlug()),
+                blankToEmpty(resolutionContext.repositoryName())
         );
     }
 
-    private List<SourceSuspectCandidateFile> scanWorkspace(
+    private List<SearchSignal> searchSignals(
+            List<SuspectSourceSignal> signals
+    ) {
+        Map<String, SearchSignal> values = new LinkedHashMap<>();
+
+        for (SuspectSourceSignal signal : signals) {
+            if (signal.value() == null || signal.value().isBlank()) {
+                continue;
+            }
+            String value = signal.value().trim();
+            values.putIfAbsent(
+                    value,
+                    new SearchSignal(
+                            value,
+                            isCaseSensitiveSignal(signal)
+                    )
+            );
+        }
+
+        return values.values().stream().toList();
+    }
+
+    private boolean isCaseSensitiveSignal(SuspectSourceSignal signal) {
+        return signal.category() == SuspectSignalCategory.CONSTANT
+                || signal.value().matches("[A-Z][A-Z0-9]+(?:_[A-Z0-9]+)+");
+    }
+
+    private ScanResult scanWorkspace(
             Path root,
-            List<String> searchSignals,
+            List<SearchSignal> searchSignals,
             int maxFiles,
             int maxSnippetsPerFile,
             List<String> warnings
     ) {
         if (searchSignals.isEmpty()) {
-            return List.of();
+            return ScanResult.empty();
         }
 
-        List<SourceSuspectCandidateFile> candidates = new ArrayList<>();
+        MutableScanResult result = new MutableScanResult();
 
-        try (Stream<Path> files = Files.walk(root)) {
-            files.filter(Files::isRegularFile)
-                    .filter(path -> !isExcluded(root, path))
-                    .filter(this::isAllowedFile)
-                    .limit(MAX_SCANNED_FILES)
-                    .forEach(path -> scanFile(
-                            root,
-                            path,
-                            searchSignals,
-                            maxSnippetsPerFile
-                    ).ifPresent(candidates::add));
+        try (Stream<Path> paths = Files.walk(root)) {
+            paths.forEach(path -> inspectPath(
+                    root,
+                    path,
+                    searchSignals,
+                    maxSnippetsPerFile,
+                    result
+            ));
         } catch (Exception exception) {
             warnings.add("SOURCE_SCAN_FAILED: " + rootCauseMessage(exception));
         }
 
-        return candidates.stream()
-                .sorted(Comparator
-                        .comparingInt(SourceSuspectCandidateFile::matchCount)
-                        .reversed()
-                        .thenComparing(SourceSuspectCandidateFile::relativePath))
-                .limit(maxFiles)
-                .toList();
+        List<SourceSuspectCandidateFile> limitedCandidates =
+                result.candidateFiles()
+                        .stream()
+                        .sorted(Comparator
+                                .comparingInt(SourceSuspectCandidateFile::matchCount)
+                                .reversed()
+                                .thenComparing(SourceSuspectCandidateFile::relativePath))
+                        .limit(maxFiles)
+                        .toList();
+
+        return new ScanResult(
+                result.scannedFileCount(),
+                result.scannedDirectoryCount(),
+                result.skippedDirectoryCount(),
+                Map.copyOf(result.fileExtensionCounts()),
+                limitedCandidates
+        );
+    }
+
+    private void inspectPath(
+            Path root,
+            Path path,
+            List<SearchSignal> searchSignals,
+            int maxSnippetsPerFile,
+            MutableScanResult result
+    ) {
+        if (path.equals(root)) {
+            return;
+        }
+
+        if (Files.isDirectory(path)) {
+            result.incrementScannedDirectoryCount();
+            if (isExcluded(root, path)) {
+                result.incrementSkippedDirectoryCount();
+            }
+            return;
+        }
+
+        if (!Files.isRegularFile(path) || isExcluded(root, path)) {
+            return;
+        }
+
+        String extension = fileType(path);
+        if (!isAllowedFile(path)) {
+            return;
+        }
+
+        if (result.scannedFileCount() >= MAX_SCANNED_FILES) {
+            return;
+        }
+
+        result.incrementScannedFileCount();
+        result.incrementExtension(extension);
+
+        scanFile(
+                root,
+                path,
+                searchSignals,
+                maxSnippetsPerFile
+        ).ifPresent(result::addCandidateFile);
     }
 
     private Optional<SourceSuspectCandidateFile> scanFile(
             Path root,
             Path path,
-            List<String> searchSignals,
+            List<SearchSignal> searchSignals,
             int maxSnippetsPerFile
     ) {
         try {
@@ -243,7 +386,7 @@ public class SourceSuspectScanService {
 
     private MatchResult matchSignals(
             String content,
-            List<String> searchSignals
+            List<SearchSignal> searchSignals
     ) {
         String lowerContent = content.toLowerCase(Locale.ROOT);
         String[] lines = content.split("\\R", -1);
@@ -251,24 +394,31 @@ public class SourceSuspectScanService {
         Map<Integer, LinkedHashSet<String>> lineSignals = new LinkedHashMap<>();
         int matchCount = 0;
 
-        for (String signal : searchSignals) {
-            String lowerSignal = signal.toLowerCase(Locale.ROOT);
-            int count = countOccurrences(lowerContent, lowerSignal);
+        for (SearchSignal signal : searchSignals) {
+            String haystack = signal.caseSensitive()
+                    ? content
+                    : lowerContent;
+            String needle = signal.caseSensitive()
+                    ? signal.value()
+                    : signal.value().toLowerCase(Locale.ROOT);
+            int count = countOccurrences(haystack, needle);
             if (count == 0) {
                 continue;
             }
 
-            matchedSignals.add(signal);
+            matchedSignals.add(signal.value());
             matchCount += count;
 
             for (int index = 0; index < lines.length; index++) {
-                if (lines[index].toLowerCase(Locale.ROOT)
-                        .contains(lowerSignal)) {
+                String line = signal.caseSensitive()
+                        ? lines[index]
+                        : lines[index].toLowerCase(Locale.ROOT);
+                if (line.contains(needle)) {
                     lineSignals.computeIfAbsent(
                                     index + 1,
                                     ignored -> new LinkedHashSet<>()
                             )
-                            .add(signal);
+                            .add(signal.value());
                 }
             }
         }
@@ -437,11 +587,155 @@ public class SourceSuspectScanService {
         return "UNSCORED";
     }
 
-    private Optional<Path> locateWorkspace(UUID caseId, String repository) {
-        List<Path> candidates = new ArrayList<>();
-        latestSourceCheckoutWorkspace(caseId).ifPresent(candidates::add);
+    private ResolutionContext resolutionContext(
+            UUID caseId,
+            String repository,
+            String branch
+    ) {
+        ResolutionContext sourceContext =
+                latestEvidence(caseId, EvidenceType.SOURCE_CONTEXT)
+                        .flatMap(this::resolutionFromSourceContext)
+                        .orElse(ResolutionContext.empty());
 
-        String slug = repositorySlug(repository);
+        ResolutionContext repositoryContext =
+                latestEvidence(caseId, EvidenceType.REPOSITORY_RESOLUTION)
+                        .flatMap(this::resolutionFromRepositoryResolution)
+                        .orElse(ResolutionContext.empty());
+
+        String repositorySlug = firstNonBlank(
+                repositoryContext.repositorySlug(),
+                sourceContext.repositorySlug(),
+                repositorySlug(repository)
+        );
+        String repositoryName = firstNonBlank(
+                repositoryContext.repositoryName(),
+                sourceContext.repositoryName()
+        );
+
+        List<Path> sourceWorkspacePaths = new ArrayList<>();
+        sourceWorkspacePaths.addAll(sourceContext.workspaceCandidates());
+        sourceWorkspacePaths.addAll(repositoryContext.workspaceCandidates());
+
+        return new ResolutionContext(
+                firstNonBlank(
+                        repositoryContext.projectKey(),
+                        sourceContext.projectKey()
+                ),
+                repositorySlug,
+                repositoryName,
+                firstNonBlank(
+                        branch,
+                        repositoryContext.branch(),
+                        sourceContext.branch()
+                ),
+                sourceWorkspacePaths
+        );
+    }
+
+    private Optional<ResolutionContext> resolutionFromSourceContext(
+            EvidenceEntity evidence
+    ) {
+        JsonNode node = readJson(evidence).orElse(null);
+        if (node == null) {
+            return Optional.empty();
+        }
+
+        List<Path> workspaceCandidates = new ArrayList<>();
+        findWorkspaceTexts(node).forEach(value ->
+                workspaceCandidates.add(Path.of(value)
+                        .toAbsolutePath()
+                        .normalize())
+        );
+
+        return Optional.of(new ResolutionContext(
+                findText(node, "projectKey").orElse(null),
+                findText(node, "repositorySlug", "repositoryName")
+                        .orElse(null),
+                findText(node, "repositoryName", "repository")
+                        .orElse(null),
+                findText(node, "sourceBranch", "branch", "targetBranch")
+                        .orElse(null),
+                workspaceCandidates
+        ));
+    }
+
+    private Optional<ResolutionContext> resolutionFromRepositoryResolution(
+            EvidenceEntity evidence
+    ) {
+        JsonNode node = readJson(evidence).orElse(null);
+        if (node == null) {
+            return Optional.empty();
+        }
+
+        String primarySlug = findText(
+                node,
+                "repositorySlug",
+                "primaryRepositorySlug",
+                "slug"
+        ).orElse(null);
+
+        JsonNode candidate = primarySlug == null
+                ? null
+                : matchingCandidate(node, primarySlug).orElse(null);
+
+        String repositoryName = firstNonBlank(
+                findText(node, "repositoryName", "name").orElse(null),
+                candidate == null
+                        ? null
+                        : findText(candidate, "repositoryName", "name")
+                        .orElse(null)
+        );
+
+        String branch = firstNonBlank(
+                findText(
+                        node,
+                        "sourceBranch",
+                        "branch",
+                        "targetBranch",
+                        "defaultBranch"
+                ).orElse(null),
+                candidate == null
+                        ? null
+                        : findText(candidate, "sourceBranch", "branch",
+                        "defaultBranch").orElse(null)
+        );
+
+        return Optional.of(new ResolutionContext(
+                findText(node, "projectKey").orElse(null),
+                primarySlug,
+                repositoryName,
+                branch,
+                List.of()
+        ));
+    }
+
+    private Optional<JsonNode> matchingCandidate(JsonNode node, String slug) {
+        JsonNode candidates = node.get("candidates");
+        if (candidates == null || !candidates.isArray()) {
+            return Optional.empty();
+        }
+
+        for (JsonNode candidate : candidates) {
+            String candidateSlug = findText(
+                    candidate,
+                    "repositorySlug",
+                    "primaryRepositorySlug",
+                    "slug"
+            ).orElse(null);
+            if (slug.equals(candidateSlug)) {
+                return Optional.of(candidate);
+            }
+        }
+
+        return Optional.empty();
+    }
+
+    private WorkspaceResolution locateWorkspace(
+            UUID caseId,
+            ResolutionContext context
+    ) {
+        List<Path> candidates = new ArrayList<>(context.workspaceCandidates());
+
         Path caseWorkspace = Path.of(
                         properties.getWorkspaceDir(),
                         caseId.toString()
@@ -449,58 +743,173 @@ public class SourceSuspectScanService {
                 .toAbsolutePath()
                 .normalize();
 
-        if (!slug.isBlank()) {
+        if (context.repositorySlug() != null
+                && !context.repositorySlug().isBlank()) {
             candidates.add(caseWorkspace.resolve("repositories")
-                    .resolve(slug)
+                    .resolve(context.repositorySlug())
                     .normalize());
         }
+
+        if (context.repositoryName() != null
+                && !context.repositoryName().isBlank()) {
+            candidates.add(caseWorkspace.resolve("repositories")
+                    .resolve(context.repositoryName())
+                    .normalize());
+        }
+
         candidates.add(caseWorkspace.resolve("repository").normalize());
 
-        return candidates.stream()
-                .filter(Files::isDirectory)
-                .findFirst();
+        properties.getTargets()
+                .values()
+                .stream()
+                .map(ReplayFixProperties.Target::getLocalSourcePath)
+                .filter(value -> value != null && !value.isBlank())
+                .map(value -> Path.of(value).toAbsolutePath().normalize())
+                .forEach(candidates::add);
+
+        Path replayPackages = Path.of("replay-packages")
+                .toAbsolutePath()
+                .normalize();
+
+        if (context.repositorySlug() != null
+                && !context.repositorySlug().isBlank()) {
+            candidates.add(replayPackages
+                    .resolve(context.repositorySlug())
+                    .normalize());
+        }
+
+        if (context.repositoryName() != null
+                && !context.repositoryName().isBlank()) {
+            candidates.add(replayPackages
+                    .resolve(context.repositoryName())
+                    .normalize());
+        }
+
+        return new WorkspaceResolution(
+                candidates.stream()
+                        .distinct()
+                        .filter(Files::isDirectory)
+                        .findFirst(),
+                candidates
+        );
     }
 
-    private Optional<Path> latestSourceCheckoutWorkspace(UUID caseId) {
+    private Optional<EvidenceEntity> latestEvidence(
+            UUID caseId,
+            EvidenceType evidenceType
+    ) {
         return evidenceRepository
-                .findByCaseIdAndEvidenceType(caseId, EvidenceType.SOURCE_CHECKOUT)
+                .findByCaseIdAndEvidenceType(caseId, evidenceType)
                 .stream()
                 .max(Comparator.comparing(
                         EvidenceEntity::getCreatedAt,
                         Comparator.nullsFirst(Comparator.naturalOrder())
-                ))
-                .flatMap(this::workspaceFromEvidence);
+                ));
     }
 
-    private Optional<Path> workspaceFromEvidence(EvidenceEntity evidence) {
+    private Optional<JsonNode> readJson(EvidenceEntity evidence) {
         String content = firstNonBlank(evidence.getContentText(), evidence.getBody());
         if (content == null) {
             return Optional.empty();
         }
 
         try {
-            SourceCheckoutResult result =
-                    objectMapper.readValue(content, SourceCheckoutResult.class);
-            if (result.workspace() != null && !result.workspace().isBlank()) {
-                return Optional.of(Path.of(result.workspace())
-                        .toAbsolutePath()
-                        .normalize());
-            }
+            return Optional.of(objectMapper.readTree(content));
         } catch (Exception ignored) {
-            try {
-                JsonNode node = objectMapper.readTree(content);
-                JsonNode workspace = node.get("workspace");
-                if (workspace != null && workspace.isTextual()) {
-                    return Optional.of(Path.of(workspace.asText())
-                            .toAbsolutePath()
-                            .normalize());
+            return Optional.empty();
+        }
+    }
+
+    private Optional<String> findText(JsonNode node, String... fieldNames) {
+        for (String fieldName : fieldNames) {
+            Optional<String> value = findTextField(node, fieldName);
+            if (value.isPresent()) {
+                return value;
+            }
+        }
+        return Optional.empty();
+    }
+
+    private Optional<String> findTextField(JsonNode node, String fieldName) {
+        if (node == null) {
+            return Optional.empty();
+        }
+
+        if (node.isObject()) {
+            JsonNode value = node.get(fieldName);
+            if (value != null && (value.isTextual()
+                    || value.isNumber()
+                    || value.isBoolean())) {
+                String text = value.asText();
+                if (!text.isBlank()) {
+                    return Optional.of(text);
                 }
-            } catch (Exception ignoredAgain) {
-                return Optional.empty();
+            }
+
+            var fields = node.fields();
+            while (fields.hasNext()) {
+                Optional<String> childValue =
+                        findTextField(fields.next().getValue(), fieldName);
+                if (childValue.isPresent()) {
+                    return childValue;
+                }
+            }
+        }
+
+        if (node.isArray()) {
+            for (JsonNode child : node) {
+                Optional<String> childValue =
+                        findTextField(child, fieldName);
+                if (childValue.isPresent()) {
+                    return childValue;
+                }
             }
         }
 
         return Optional.empty();
+    }
+
+    private List<String> findWorkspaceTexts(JsonNode node) {
+        List<String> values = new ArrayList<>();
+        collectWorkspaceTexts(node, values);
+        return values;
+    }
+
+    private void collectWorkspaceTexts(JsonNode node, List<String> values) {
+        if (node == null || node.isNull()) {
+            return;
+        }
+
+        if (node.isObject()) {
+            var fields = node.fields();
+            while (fields.hasNext()) {
+                Map.Entry<String, JsonNode> entry = fields.next();
+                String fieldName = entry.getKey();
+                JsonNode value = entry.getValue();
+                if (isWorkspaceField(fieldName)
+                        && value.isTextual()
+                        && !value.asText().isBlank()) {
+                    values.add(value.asText());
+                }
+                collectWorkspaceTexts(value, values);
+            }
+            return;
+        }
+
+        if (node.isArray()) {
+            for (JsonNode child : node) {
+                collectWorkspaceTexts(child, values);
+            }
+        }
+    }
+
+    private boolean isWorkspaceField(String fieldName) {
+        String lower = fieldName.toLowerCase(Locale.ROOT);
+        return lower.equals("workspace")
+                || lower.equals("sourceroot")
+                || lower.equals("scannedroot")
+                || lower.equals("repositorypath")
+                || lower.equals("localsourcepath");
     }
 
     private boolean isExcluded(Path root, Path path) {
@@ -540,6 +949,28 @@ public class SourceSuspectScanService {
         return slash >= 0 ? repository.substring(slash + 1) : repository;
     }
 
+    private String sanitizePath(Path path) {
+        String value = path.toAbsolutePath()
+                .normalize()
+                .toString()
+                .replace('\\', '/');
+        String[] parts = value.split("/");
+        for (int index = 0; index < parts.length; index++) {
+            String lower = parts[index].toLowerCase(Locale.ROOT);
+            for (String marker : SECRET_PATH_MARKERS) {
+                if (lower.contains(marker)) {
+                    parts[index] = "***";
+                    break;
+                }
+            }
+        }
+        return String.join("/", parts)
+                .replaceAll("(?i)(token|secret|password|credential)=([^/&\\s]+)",
+                        "$1=***")
+                .replaceAll("(?i)(https?://)[^/@\\s]+@",
+                        "$1***@");
+    }
+
     private String firstNonBlank(String... values) {
         for (String value : values) {
             if (value != null && !value.isBlank()) {
@@ -549,12 +980,22 @@ public class SourceSuspectScanService {
         return null;
     }
 
+    private String blankToEmpty(String value) {
+        return value == null ? "" : value;
+    }
+
     private String rootCauseMessage(Throwable throwable) {
         Throwable root = throwable;
         while (root.getCause() != null) {
             root = root.getCause();
         }
         return root.getClass().getSimpleName() + ": " + root.getMessage();
+    }
+
+    private record SearchSignal(
+            String value,
+            boolean caseSensitive
+    ) {
     }
 
     private record MatchResult(
@@ -571,5 +1012,97 @@ public class SourceSuspectScanService {
             int endLine,
             List<String> annotations
     ) {
+    }
+
+    private record ResolutionContext(
+            String projectKey,
+            String repositorySlug,
+            String repositoryName,
+            String branch,
+            List<Path> workspaceCandidates
+    ) {
+        private static ResolutionContext empty() {
+            return new ResolutionContext(
+                    null,
+                    null,
+                    null,
+                    null,
+                    List.of()
+            );
+        }
+    }
+
+    private record WorkspaceResolution(
+            Optional<Path> path,
+            List<Path> candidates
+    ) {
+    }
+
+    private record ScanResult(
+            int scannedFileCount,
+            int scannedDirectoryCount,
+            int skippedDirectoryCount,
+            Map<String, Integer> fileExtensionCounts,
+            List<SourceSuspectCandidateFile> candidateFiles
+    ) {
+        private static ScanResult empty() {
+            return new ScanResult(
+                    0,
+                    0,
+                    0,
+                    Map.of(),
+                    List.of()
+            );
+        }
+    }
+
+    private static final class MutableScanResult {
+        private int scannedFileCount;
+        private int scannedDirectoryCount;
+        private int skippedDirectoryCount;
+        private final Map<String, Integer> fileExtensionCounts =
+                new LinkedHashMap<>();
+        private final List<SourceSuspectCandidateFile> candidateFiles =
+                new ArrayList<>();
+
+        private int scannedFileCount() {
+            return scannedFileCount;
+        }
+
+        private void incrementScannedFileCount() {
+            scannedFileCount++;
+        }
+
+        private int scannedDirectoryCount() {
+            return scannedDirectoryCount;
+        }
+
+        private void incrementScannedDirectoryCount() {
+            scannedDirectoryCount++;
+        }
+
+        private int skippedDirectoryCount() {
+            return skippedDirectoryCount;
+        }
+
+        private void incrementSkippedDirectoryCount() {
+            skippedDirectoryCount++;
+        }
+
+        private Map<String, Integer> fileExtensionCounts() {
+            return fileExtensionCounts;
+        }
+
+        private void incrementExtension(String extension) {
+            fileExtensionCounts.merge(extension, 1, Integer::sum);
+        }
+
+        private List<SourceSuspectCandidateFile> candidateFiles() {
+            return candidateFiles;
+        }
+
+        private void addCandidateFile(SourceSuspectCandidateFile file) {
+            candidateFiles.add(file);
+        }
     }
 }
