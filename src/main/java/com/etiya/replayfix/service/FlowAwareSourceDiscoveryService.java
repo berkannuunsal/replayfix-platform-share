@@ -62,7 +62,10 @@ public class FlowAwareSourceDiscoveryService {
     );
 
     private static final Pattern CLASS_PATTERN = Pattern.compile(
-            "\\b(?:class|interface|enum|record)\\s+([A-Za-z_$][A-Za-z0-9_$]*)"
+            "\\b(class|interface|enum|record)\\s+([A-Za-z_$][A-Za-z0-9_$]*)"
+    );
+    private static final Pattern IMPLEMENTS_PATTERN = Pattern.compile(
+            "\\bimplements\\s+([^\\{]+)"
     );
     private static final Pattern IMPORT_PATTERN = Pattern.compile(
             "^\\s*import\\s+([A-Za-z0-9_.$*]+);",
@@ -88,6 +91,9 @@ public class FlowAwareSourceDiscoveryService {
     );
     private static final Pattern CALL_PATTERN = Pattern.compile(
             "\\b([a-zA-Z_$][A-Za-z0-9_$]*)\\.([a-zA-Z_$][A-Za-z0-9_$]*)\\s*\\("
+    );
+    private static final Pattern CALL_WITH_ARGS_PATTERN = Pattern.compile(
+            "\\b([a-zA-Z_$][A-Za-z0-9_$]*)\\.([a-zA-Z_$][A-Za-z0-9_$]*)\\s*\\(([^)]*)\\)"
     );
     private static final Pattern TYPE_PATTERN = Pattern.compile(
             "\\b([A-Z][A-Za-z0-9_$]*(?:Request|Response|Dto|DTO|Entity|Mapper|Validator|Repository)?)\\b"
@@ -131,9 +137,13 @@ public class FlowAwareSourceDiscoveryService {
         );
         Map<String, JavaFileInfo> byClass = new LinkedHashMap<>();
         javaFiles.values().forEach(file -> byClass.put(file.className(), file));
+        Map<String, List<JavaFileInfo>> implementationsByType =
+                implementationsByType(javaFiles);
 
         Map<String, SourceCandidateFlowChainItem> chain = new LinkedHashMap<>();
         Map<String, SourceCandidateMethod> methods = new LinkedHashMap<>();
+        ServiceResolutionDiagnostics serviceDiagnostics =
+                new ServiceResolutionDiagnostics();
         List<SourceFlowAnchor> primaryAnchors = anchors.stream()
                 .filter(SourceFlowAnchor::primary)
                 .toList();
@@ -165,7 +175,9 @@ public class FlowAwareSourceDiscoveryService {
                                 endpoint.file(),
                                 endpoint.method(),
                                 List.of(anchor.value()),
-                                byClass
+                                byClass,
+                                implementationsByType,
+                                serviceDiagnostics
                         );
                     }
                 }
@@ -179,7 +191,8 @@ public class FlowAwareSourceDiscoveryService {
                     discoveredEndpoints,
                     endpointAnchors,
                     matchedEndpointAnchors,
-                    endpointMatchAttempts
+                    endpointMatchAttempts,
+                    serviceDiagnostics
             );
         }
 
@@ -211,7 +224,8 @@ public class FlowAwareSourceDiscoveryService {
                 discoveredEndpoints,
                 endpointAnchors,
                 matchedEndpointAnchors,
-                endpointMatchAttempts
+                endpointMatchAttempts,
+                serviceDiagnostics
         );
     }
 
@@ -223,7 +237,8 @@ public class FlowAwareSourceDiscoveryService {
             List<ControllerEndpoint> discoveredEndpoints,
             List<SourceFlowAnchor> endpointAnchors,
             Set<String> matchedEndpointAnchors,
-            int endpointMatchAttempts
+            int endpointMatchAttempts,
+            ServiceResolutionDiagnostics serviceDiagnostics
     ) {
         List<SourceCandidateFlowChainItem> limitedChain = chain.values()
                 .stream()
@@ -253,7 +268,11 @@ public class FlowAwareSourceDiscoveryService {
                 discoveredEndpoints.stream()
                         .map(ControllerEndpoint::view)
                         .limit(10)
-                        .toList()
+                        .toList(),
+                serviceDiagnostics.attempts(),
+                serviceDiagnostics.resolvedServiceTypes(),
+                serviceDiagnostics.resolvedImplementationFiles(),
+                serviceDiagnostics.unresolvedServiceCalls()
         );
     }
 
@@ -263,36 +282,82 @@ public class FlowAwareSourceDiscoveryService {
             JavaFileInfo controller,
             JavaMethodInfo method,
             List<String> relatedSignals,
-            Map<String, JavaFileInfo> byClass
+            Map<String, JavaFileInfo> byClass,
+            Map<String, List<JavaFileInfo>> implementationsByType,
+            ServiceResolutionDiagnostics serviceDiagnostics
     ) {
-        for (Map.Entry<String, String> dependency : controller.fields().entrySet()) {
-            if (!method.body().contains(dependency.getKey() + ".")) {
+        for (DirectCall call : directCalls(method.body())) {
+            String dependencyType = controller.fields().get(call.variableName());
+            if (dependencyType == null) {
+                continue;
+            }
+            serviceDiagnostics.recordAttempt();
+            List<String> argumentTypes = argumentTypes(call, method);
+            List<JavaFileInfo> targetFiles = serviceTargets(
+                    dependencyType,
+                    byClass,
+                    implementationsByType
+            );
+            if (targetFiles.isEmpty()) {
+                serviceDiagnostics.recordUnresolved(
+                        controller.className() + "." + method.name()
+                                + " -> " + call.variableName() + "."
+                                + call.methodName()
+                );
                 continue;
             }
 
-            JavaFileInfo dependencyFile = byClass.get(dependency.getValue());
-            if (dependencyFile != null) {
-                addChain(chain, dependencyFile, null, relatedSignals,
-                        "Injected dependency called by controller method.");
-                addCalledDependencyMethods(
-                        chain,
-                        methods,
-                        dependencyFile,
-                        dependency.getKey(),
-                        method,
-                        relatedSignals
+            JavaFileInfo interfaceFile = byClass.get(dependencyType);
+            if (interfaceFile != null && interfaceFile.interfaceType()) {
+                addChain(chain, interfaceFile, null, relatedSignals,
+                        "Service interface resolved from controller dependency.");
+                serviceDiagnostics.recordResolvedType(dependencyType);
+            }
+
+            boolean resolvedMethod = false;
+            for (JavaFileInfo targetFile : targetFiles) {
+                serviceDiagnostics.recordResolvedType(targetFile.className());
+                if (!targetFile.interfaceType()) {
+                    serviceDiagnostics.recordImplementation(targetFile.relativePath());
+                }
+                List<JavaMethodInfo> matchedMethods = matchingMethods(
+                        targetFile,
+                        call.methodName(),
+                        argumentTypes
+                );
+                if (matchedMethods.isEmpty()) {
+                    addChain(chain, targetFile, null, relatedSignals,
+                            targetFile.interfaceType()
+                                    ? "Service interface resolved from controller dependency."
+                                    : "Service implementation resolved from controller dependency.");
+                    continue;
+                }
+                resolvedMethod = true;
+                for (JavaMethodInfo targetMethod : matchedMethods) {
+                    addChain(chain, targetFile, targetMethod, relatedSignals,
+                            targetFile.interfaceType()
+                                    ? "Service interface method matched controller call."
+                                    : "Service implementation method matched controller call.");
+                    addMethod(methods, targetFile, targetMethod, relatedSignals);
+                    addReferencedTypes(chain, targetMethod, relatedSignals, byClass,
+                            "DTO/validator/mapper/repository type referenced by service method.");
+                    addDirectDependencyFiles(
+                            chain,
+                            targetFile,
+                            targetMethod,
+                            relatedSignals,
+                            byClass
+                    );
+                }
+            }
+            if (!resolvedMethod) {
+                serviceDiagnostics.recordUnresolved(
+                        dependencyType + "." + call.methodName()
                 );
             }
         }
-
-        Set<String> typeNames = methodSignatureTypes(method);
-        for (String typeName : typeNames) {
-            JavaFileInfo relatedFile = byClass.get(typeName);
-            if (relatedFile != null) {
-                addChain(chain, relatedFile, null, relatedSignals,
-                        "DTO/entity/mapper/repository type referenced by method signature.");
-            }
-        }
+        addReferencedTypes(chain, method, relatedSignals, byClass,
+                "DTO/entity/mapper/repository type referenced by method signature.");
     }
 
     private void addCalledDependencyMethods(
@@ -317,7 +382,134 @@ public class FlowAwareSourceDiscoveryService {
                         addChain(chain, dependencyFile, method, relatedSignals,
                                 "Direct service method call from controller flow.");
                         addMethod(methods, dependencyFile, method, relatedSignals);
-                    });
+                });
+        }
+    }
+
+    private Map<String, List<JavaFileInfo>> implementationsByType(
+            Map<String, JavaFileInfo> javaFiles
+    ) {
+        Map<String, List<JavaFileInfo>> values = new LinkedHashMap<>();
+        for (JavaFileInfo file : javaFiles.values()) {
+            for (String implementedType : file.implementedTypes()) {
+                values.computeIfAbsent(implementedType, ignored -> new ArrayList<>())
+                        .add(file);
+            }
+            if (file.className().endsWith("Impl")) {
+                String conventionalInterface = file.className()
+                        .substring(0, file.className().length() - "Impl".length());
+                values.computeIfAbsent(
+                        conventionalInterface,
+                        ignored -> new ArrayList<>()
+                ).add(file);
+            }
+        }
+        return values;
+    }
+
+    private List<JavaFileInfo> serviceTargets(
+            String dependencyType,
+            Map<String, JavaFileInfo> byClass,
+            Map<String, List<JavaFileInfo>> implementationsByType
+    ) {
+        List<JavaFileInfo> values = new ArrayList<>();
+        JavaFileInfo declaredType = byClass.get(dependencyType);
+        if (declaredType != null) {
+            values.add(declaredType);
+        }
+        values.addAll(implementationsByType.getOrDefault(dependencyType, List.of()));
+        return values.stream()
+                .distinct()
+                .toList();
+    }
+
+    private List<JavaMethodInfo> matchingMethods(
+            JavaFileInfo file,
+            String methodName,
+            List<String> argumentTypes
+    ) {
+        return file.methods()
+                .stream()
+                .filter(method -> methodName.equals(method.name()))
+                .filter(method -> argumentTypes.isEmpty()
+                        || methodParameterTypes(method).isEmpty()
+                        || methodParameterTypes(method).stream()
+                        .anyMatch(argumentTypes::contains))
+                .toList();
+    }
+
+    private List<DirectCall> directCalls(String body) {
+        List<DirectCall> calls = new ArrayList<>();
+        Matcher matcher = CALL_WITH_ARGS_PATTERN.matcher(body);
+        while (matcher.find()) {
+            calls.add(new DirectCall(
+                    matcher.group(1),
+                    matcher.group(2),
+                    arguments(matcher.group(3))
+            ));
+        }
+        return calls;
+    }
+
+    private List<String> arguments(String rawArguments) {
+        if (rawArguments == null || rawArguments.isBlank()) {
+            return List.of();
+        }
+        List<String> values = new ArrayList<>();
+        for (String value : rawArguments.split(",")) {
+            String trimmed = value.trim();
+            if (!trimmed.isBlank()) {
+                values.add(trimmed);
+            }
+        }
+        return values;
+    }
+
+    private List<String> argumentTypes(DirectCall call, JavaMethodInfo caller) {
+        Map<String, String> parameterTypes = methodParameters(caller);
+        List<String> values = new ArrayList<>();
+        for (String argument : call.arguments()) {
+            String type = parameterTypes.get(argument);
+            if (type != null) {
+                values.add(type);
+            }
+        }
+        return values;
+    }
+
+    private void addReferencedTypes(
+            Map<String, SourceCandidateFlowChainItem> chain,
+            JavaMethodInfo method,
+            List<String> relatedSignals,
+            Map<String, JavaFileInfo> byClass,
+            String reason
+    ) {
+        Set<String> typeNames = methodSignatureTypes(method);
+        typeNames.addAll(methodParameterTypes(method));
+        for (String typeName : typeNames) {
+            JavaFileInfo relatedFile = byClass.get(typeName);
+            if (relatedFile != null) {
+                addChain(chain, relatedFile, null, relatedSignals, reason);
+            }
+        }
+    }
+
+    private void addDirectDependencyFiles(
+            Map<String, SourceCandidateFlowChainItem> chain,
+            JavaFileInfo file,
+            JavaMethodInfo method,
+            List<String> relatedSignals,
+            Map<String, JavaFileInfo> byClass
+    ) {
+        for (Map.Entry<String, String> dependency : file.fields().entrySet()) {
+            if (!method.body().contains(dependency.getKey() + ".")) {
+                continue;
+            }
+            JavaFileInfo dependencyFile = byClass.get(dependency.getValue());
+            if (dependencyFile != null) {
+                addChain(chain, dependencyFile, null, relatedSignals,
+                        "Direct dependency referenced by resolved service method.");
+            }
         }
     }
 
@@ -610,6 +802,50 @@ public class FlowAwareSourceDiscoveryService {
         return values;
     }
 
+    private Map<String, String> methodParameters(JavaMethodInfo method) {
+        Map<String, String> values = new LinkedHashMap<>();
+        int open = method.signature().indexOf('(');
+        int close = method.signature().indexOf(')', open + 1);
+        if (open < 0 || close < open) {
+            return values;
+        }
+        String parameters = method.signature().substring(open + 1, close);
+        for (String rawParameter : parameters.split(",")) {
+            String parameter = rawParameter.trim()
+                    .replace("final ", "")
+                    .replaceAll("@[A-Za-z0-9_$.]+(?:\\([^)]*\\))?\\s*", "");
+            if (parameter.isBlank()) {
+                continue;
+            }
+            String[] parts = parameter.split("\\s+");
+            if (parts.length < 2) {
+                continue;
+            }
+            String name = parts[parts.length - 1].replace("...", "");
+            String type = simpleType(parts[parts.length - 2]);
+            values.put(name, type);
+        }
+        return values;
+    }
+
+    private Set<String> methodParameterTypes(JavaMethodInfo method) {
+        return new LinkedHashSet<>(methodParameters(method).values());
+    }
+
+    private String simpleType(String value) {
+        String clean = value.replace("[]", "")
+                .replace("...", "");
+        int genericIndex = clean.indexOf('<');
+        if (genericIndex >= 0) {
+            clean = clean.substring(0, genericIndex);
+        }
+        int packageIndex = clean.lastIndexOf('.');
+        if (packageIndex >= 0) {
+            clean = clean.substring(packageIndex + 1);
+        }
+        return clean;
+    }
+
     private String layer(JavaFileInfo file) {
         String className = file.className();
         if (file.mappingAnnotations().isEmpty()
@@ -619,7 +855,13 @@ public class FlowAwareSourceDiscoveryService {
         if (!file.mappingAnnotations().isEmpty()) {
             return "CONTROLLER";
         }
-        if (className.endsWith("Service") || className.endsWith("ServiceImpl")) {
+        if (file.interfaceType() && className.endsWith("Service")) {
+            return "SERVICE_INTERFACE";
+        }
+        if (className.endsWith("ServiceImpl")) {
+            return "SERVICE_IMPL";
+        }
+        if (className.endsWith("Service")) {
             return "SERVICE";
         }
         if (className.endsWith("Repository")) {
@@ -737,15 +979,18 @@ public class FlowAwareSourceDiscoveryService {
             if (!classMatcher.find()) {
                 return Optional.empty();
             }
+            String typeKind = classMatcher.group(1);
             String relativePath = root.relativize(path)
                     .toString()
                     .replace('\\', '/');
-            String className = classMatcher.group(1);
+            String className = classMatcher.group(2);
             return Optional.of(new JavaFileInfo(
                     relativePath,
                     className,
+                    "interface".equals(typeKind),
+                    implementedTypes(content, className),
                     imports(content),
-                    fields(content),
+                    fields(content, className),
                     constants(content),
                     classMappingAnnotations(content),
                     methods(content)
@@ -782,13 +1027,79 @@ public class FlowAwareSourceDiscoveryService {
         return imports;
     }
 
-    private Map<String, String> fields(String content) {
+    private List<String> implementedTypes(String content, String className) {
+        Pattern declarationPattern = Pattern.compile(
+                "\\b(?:class|record)\\s+" + Pattern.quote(className)
+                        + "\\b([^\\{]*)\\{",
+                Pattern.DOTALL
+        );
+        Matcher declarationMatcher = declarationPattern.matcher(content);
+        if (!declarationMatcher.find()) {
+            return List.of();
+        }
+        Matcher implementsMatcher = IMPLEMENTS_PATTERN.matcher(
+                declarationMatcher.group(1)
+        );
+        if (!implementsMatcher.find()) {
+            return List.of();
+        }
+        List<String> values = new ArrayList<>();
+        for (String value : implementsMatcher.group(1).split(",")) {
+            String type = simpleType(value.trim());
+            if (!type.isBlank()) {
+                values.add(type);
+            }
+        }
+        return values;
+    }
+
+    private Map<String, String> fields(String content, String className) {
         Map<String, String> fields = new LinkedHashMap<>();
         Matcher matcher = FIELD_PATTERN.matcher(content);
         while (matcher.find()) {
             fields.put(matcher.group(2), matcher.group(1));
         }
+        fields.putAll(constructorAssignedFields(content, className));
         return fields;
+    }
+
+    private Map<String, String> constructorAssignedFields(
+            String content,
+            String className
+    ) {
+        Map<String, String> values = new LinkedHashMap<>();
+        Pattern constructorPattern = Pattern.compile(
+                "\\b" + Pattern.quote(className) + "\\s*\\(([^)]*)\\)",
+                Pattern.MULTILINE
+        );
+        Matcher constructorMatcher = constructorPattern.matcher(content);
+        while (constructorMatcher.find()) {
+            Map<String, String> parameters = parameters(constructorMatcher.group(1));
+            for (Map.Entry<String, String> parameter : parameters.entrySet()) {
+                if (content.contains("this." + parameter.getKey()
+                        + " = " + parameter.getKey())) {
+                    values.putIfAbsent(parameter.getKey(), parameter.getValue());
+                }
+            }
+        }
+        return values;
+    }
+
+    private Map<String, String> parameters(String rawParameters) {
+        Map<String, String> values = new LinkedHashMap<>();
+        if (rawParameters == null || rawParameters.isBlank()) {
+            return values;
+        }
+        for (String rawParameter : rawParameters.split(",")) {
+            String parameter = rawParameter.trim()
+                    .replace("final ", "")
+                    .replaceAll("@[A-Za-z0-9_$.]+(?:\\([^)]*\\))?\\s*", "");
+            String[] parts = parameter.split("\\s+");
+            if (parts.length >= 2) {
+                values.put(parts[parts.length - 1], simpleType(parts[parts.length - 2]));
+            }
+        }
+        return values;
     }
 
     private Map<String, String> constants(String content) {
@@ -922,7 +1233,11 @@ public class FlowAwareSourceDiscoveryService {
             int endpointMatchAttempts,
             List<String> matchedEndpointAnchors,
             List<String> unmatchedEndpointAnchors,
-            List<SourceDiscoveredControllerEndpoint> discoveredControllerEndpoints
+            List<SourceDiscoveredControllerEndpoint> discoveredControllerEndpoints,
+            int serviceResolutionAttempts,
+            List<String> resolvedServiceTypes,
+            List<String> resolvedImplementationFiles,
+            List<String> unresolvedServiceCalls
     ) {
         public DiscoveryResult(
                 List<SourceCandidateFlowChainItem> candidateFlowChain,
@@ -940,6 +1255,10 @@ public class FlowAwareSourceDiscoveryService {
                     0,
                     List.of(),
                     List.of(),
+                    List.of(),
+                    0,
+                    List.of(),
+                    List.of(),
                     List.of()
             );
         }
@@ -948,6 +1267,8 @@ public class FlowAwareSourceDiscoveryService {
     public record JavaFileInfo(
             String relativePath,
             String className,
+            boolean interfaceType,
+            List<String> implementedTypes,
             List<String> imports,
             Map<String, String> fields,
             Map<String, String> constants,
@@ -965,12 +1286,18 @@ public class FlowAwareSourceDiscoveryService {
             this(
                     relativePath,
                     className,
+                    false,
+                    List.of(),
                     imports,
                     fields,
                     Map.of(),
                     mappingAnnotations,
                     methods
             );
+        }
+
+        public JavaFileInfo {
+            implementedTypes = implementedTypes == null ? List.of() : implementedTypes;
         }
     }
 
@@ -1009,6 +1336,58 @@ public class FlowAwareSourceDiscoveryService {
                     methodPath,
                     fullPath
             );
+        }
+    }
+
+    private record DirectCall(
+            String variableName,
+            String methodName,
+            List<String> arguments
+    ) {
+    }
+
+    private static final class ServiceResolutionDiagnostics {
+        private int attempts;
+        private final Set<String> resolvedServiceTypes = new LinkedHashSet<>();
+        private final Set<String> resolvedImplementationFiles = new LinkedHashSet<>();
+        private final Set<String> unresolvedServiceCalls = new LinkedHashSet<>();
+
+        private void recordAttempt() {
+            attempts++;
+        }
+
+        private void recordResolvedType(String value) {
+            if (value != null && !value.isBlank()) {
+                resolvedServiceTypes.add(value);
+            }
+        }
+
+        private void recordImplementation(String value) {
+            if (value != null && !value.isBlank()) {
+                resolvedImplementationFiles.add(value);
+            }
+        }
+
+        private void recordUnresolved(String value) {
+            if (value != null && !value.isBlank()) {
+                unresolvedServiceCalls.add(value);
+            }
+        }
+
+        private int attempts() {
+            return attempts;
+        }
+
+        private List<String> resolvedServiceTypes() {
+            return resolvedServiceTypes.stream().toList();
+        }
+
+        private List<String> resolvedImplementationFiles() {
+            return resolvedImplementationFiles.stream().toList();
+        }
+
+        private List<String> unresolvedServiceCalls() {
+            return unresolvedServiceCalls.stream().toList();
         }
     }
 }

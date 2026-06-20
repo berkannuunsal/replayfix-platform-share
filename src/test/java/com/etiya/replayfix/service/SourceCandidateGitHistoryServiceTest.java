@@ -178,7 +178,41 @@ class SourceCandidateGitHistoryServiceTest {
         assertThat(result.diffSnippets())
                 .anySatisfy(snippet -> assertThat(snippet.warnings())
                         .contains(SourceCandidateGitHistoryService
-                                .METHOD_NOT_RESOLVED));
+                        .METHOD_NOT_RESOLVED));
+    }
+
+    @Test
+    void lastCommitAnyTimeIsPopulatedWhenNoRecentCommitsExist()
+            throws Exception {
+        initRepository();
+        writeJava("src/main/java/com/example/UserServiceImpl.java",
+                "package com.example; public class UserServiceImpl { public void updateUser() {} }\n");
+        run("git", "add", ".");
+        runWithDates(
+                "2020-01-01T00:00:00+00:00",
+                "git",
+                "commit",
+                "-m",
+                "FIZZMS-1 old service change"
+        );
+
+        var result = service.collect(
+                repository,
+                List.of("src/main/java/com/example/UserServiceImpl.java"),
+                java.util.Map.of(),
+                1,
+                10,
+                false
+        );
+
+        assertThat(result.recentCommits()).isEmpty();
+        assertThat(result.lastCommitDiagnostics())
+                .anySatisfy(diagnostic -> {
+                    assertThat(diagnostic.file())
+                            .isEqualTo("src/main/java/com/example/UserServiceImpl.java");
+                    assertThat(diagnostic.message())
+                            .contains("old service change");
+                });
     }
 
     private boolean gitAvailable() {
@@ -209,6 +243,21 @@ class SourceCandidateGitHistoryServiceTest {
                 .directory(repository.toFile())
                 .redirectErrorStream(true)
                 .start();
+        int exit = process.waitFor();
+        if (exit != 0) {
+            throw new IllegalStateException(
+                    new String(process.getInputStream().readAllBytes())
+            );
+        }
+    }
+
+    private void runWithDates(String date, String... command) throws Exception {
+        ProcessBuilder builder = new ProcessBuilder(command)
+                .directory(repository.toFile())
+                .redirectErrorStream(true);
+        builder.environment().put("GIT_AUTHOR_DATE", date);
+        builder.environment().put("GIT_COMMITTER_DATE", date);
+        Process process = builder.start();
         int exit = process.waitFor();
         if (exit != 0) {
             throw new IllegalStateException(

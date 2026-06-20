@@ -394,6 +394,104 @@ class FlowAwareSourceDiscoveryServiceTest {
     }
 
     @Test
+    void resolvesFieldInjectedServiceFromControllerMethodCall()
+            throws Exception {
+        writeUserRegionFlow("private UserService userService;", "");
+
+        var result = discoverUserRegionFlow();
+
+        assertThat(result.serviceResolutionAttempts()).isEqualTo(1);
+        assertThat(result.resolvedServiceTypes())
+                .contains("UserService", "UserServiceImpl");
+        assertThat(result.candidateFlowChain())
+                .extracting("layer")
+                .containsSubsequence(
+                        "CONTROLLER",
+                        "SERVICE_INTERFACE",
+                        "SERVICE_IMPL",
+                        "DTO"
+                );
+    }
+
+    @Test
+    void resolvesConstructorInjectedServiceFromControllerMethodCall()
+            throws Exception {
+        writeUserRegionFlow(
+                "",
+                """
+                            public UserController(UserService userService) {
+                                this.userService = userService;
+                            }
+                        """
+        );
+
+        var result = discoverUserRegionFlow();
+
+        assertThat(result.resolvedServiceTypes())
+                .contains("UserService", "UserServiceImpl");
+        assertThat(result.unresolvedServiceCalls()).isEmpty();
+    }
+
+    @Test
+    void resolvesInterfaceImplementationAndMatchingDtoMethod()
+            throws Exception {
+        writeUserRegionFlow("private final UserService userService;", "");
+
+        var result = discoverUserRegionFlow();
+
+        assertThat(result.resolvedImplementationFiles())
+                .contains("src/main/java/com/example/UserServiceImpl.java");
+        assertThat(result.candidateMethods())
+                .anySatisfy(method -> {
+                    assertThat(method.className()).isEqualTo("UserServiceImpl");
+                    assertThat(method.methodName()).isEqualTo("updateUser");
+                    assertThat(method.snippet())
+                            .contains("UpdateAplUserPrefPrvncRequest request");
+                });
+    }
+
+    @Test
+    void dtoRemainsInCandidateChainAfterServiceResolution()
+            throws Exception {
+        writeUserRegionFlow("private final UserService userService;", "");
+
+        var result = discoverUserRegionFlow();
+
+        assertThat(result.candidateFlowChain())
+                .anySatisfy(item -> {
+                    assertThat(item.layer()).isEqualTo("DTO");
+                    assertThat(item.className())
+                            .isEqualTo("UpdateAplUserPrefPrvncRequest");
+                });
+    }
+
+    @Test
+    void repositoryCandidatesRequireServiceChainReference()
+            throws Exception {
+        writeUserRegionFlow("private final UserService userService;", "");
+        writeJava(
+                "src/main/java/com/example/BillingAccountRepository.java",
+                """
+                        package com.example;
+                        public class BillingAccountRepository {
+                            public void weakFallbackOnly() {}
+                        }
+                        """
+        );
+
+        var result = discoverUserRegionFlow();
+
+        assertThat(result.candidateFlowChain())
+                .anySatisfy(item -> {
+                    assertThat(item.layer()).isEqualTo("REPOSITORY");
+                    assertThat(item.className()).isEqualTo("UserRepository");
+                });
+        assertThat(result.candidateFlowChain())
+                .noneMatch(item -> "BillingAccountRepository"
+                        .equals(item.className()));
+    }
+
+    @Test
     void detectsDtoAndEntityFromMethodSignature() throws Exception {
         writeJava(
                 "src/main/java/com/example/RegionController.java",
@@ -425,6 +523,69 @@ class FlowAwareSourceDiscoveryServiceTest {
         assertThat(result.candidateFlowChain())
                 .extracting("className")
                 .contains("RegionRequest", "RegionResponse");
+    }
+
+    private FlowAwareSourceDiscoveryService.DiscoveryResult discoverUserRegionFlow() {
+        return discoveryService.discover(
+                temporaryDirectory,
+                List.of(anchor("/user/region/update", "ENDPOINT")),
+                20
+        );
+    }
+
+    private void writeUserRegionFlow(
+            String fieldDeclaration,
+            String constructor
+    ) throws Exception {
+        writeJava(
+                "src/main/java/com/example/UserController.java",
+                """
+                        package com.example;
+                        public class UserController {
+                        %s
+                        %s
+                            @PutMapping("/user/region/update")
+                            public void updateUserParty(UpdateAplUserPrefPrvncRequest request) {
+                                userService.updateUser(request);
+                            }
+                        }
+                        """.formatted(fieldDeclaration, constructor)
+        );
+        writeJava(
+                "src/main/java/com/example/UserService.java",
+                """
+                        package com.example;
+                        public interface UserService {
+                            void updateUser(UpdateAplUserPrefPrvncRequest request);
+                        }
+                        """
+        );
+        writeJava(
+                "src/main/java/com/example/UserServiceImpl.java",
+                """
+                        package com.example;
+                        public class UserServiceImpl implements UserService {
+                            private final UserMapper userMapper;
+                            private final UserRepository userRepository;
+                            public void updateUser(UpdateAplUserPrefPrvncRequest request) {
+                                userMapper.map(request);
+                                userRepository.save(request);
+                            }
+                        }
+                        """
+        );
+        writeJava(
+                "src/main/java/com/example/UpdateAplUserPrefPrvncRequest.java",
+                "package com.example; public class UpdateAplUserPrefPrvncRequest {}\n"
+        );
+        writeJava(
+                "src/main/java/com/example/UserMapper.java",
+                "package com.example; public class UserMapper { public void map(Object value) {} }\n"
+        );
+        writeJava(
+                "src/main/java/com/example/UserRepository.java",
+                "package com.example; public class UserRepository { public void save(Object value) {} }\n"
+        );
     }
 
     @Test

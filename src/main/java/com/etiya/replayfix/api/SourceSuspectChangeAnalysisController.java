@@ -117,7 +117,12 @@ public class SourceSuspectChangeAnalysisController {
                 response.endpointMatchAttempts(),
                 response.matchedEndpointAnchors(),
                 response.unmatchedEndpointAnchors(),
-                response.discoveredControllerEndpoints()
+                response.discoveredControllerEndpoints(),
+                response.serviceResolutionAttempts(),
+                response.resolvedServiceTypes(),
+                response.resolvedImplementationFiles(),
+                response.unresolvedServiceCalls(),
+                response.lastCommitDiagnostics()
         );
     }
 
@@ -167,6 +172,11 @@ public class SourceSuspectChangeAnalysisController {
                 0,
                 0,
                 0,
+                List.of(),
+                List.of(),
+                List.of(),
+                0,
+                List.of(),
                 List.of(),
                 List.of(),
                 List.of()

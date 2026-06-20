@@ -6,6 +6,7 @@ import com.etiya.replayfix.domain.EvidenceType;
 import com.etiya.replayfix.domain.ReplayCaseEntity;
 import com.etiya.replayfix.model.SourceCandidateFlowChainItem;
 import com.etiya.replayfix.model.SourceFlowAnchor;
+import com.etiya.replayfix.model.SourceLastCommitDiagnostic;
 import com.etiya.replayfix.model.SourceRecentCommit;
 import com.etiya.replayfix.model.SourceReasoningContext;
 import com.etiya.replayfix.model.SourceSuspectChange;
@@ -264,6 +265,7 @@ public class SourceSuspectChangeAnalysisService {
                         discovery.candidateFiles(),
                         discovery.candidateMethods(),
                         history.recentCommits(),
+                        history.lastCommitDiagnostics(),
                         context,
                         false,
                         List.of(),
@@ -453,6 +455,7 @@ public class SourceSuspectChangeAnalysisService {
                     discovery.candidateFiles(),
                     discovery.candidateMethods(),
                     history.recentCommits(),
+                    history.lastCommitDiagnostics(),
                     context,
                     llmUsed,
                     suspectChanges,
@@ -479,6 +482,7 @@ public class SourceSuspectChangeAnalysisService {
                     discovery.candidateFiles(),
                     discovery.candidateMethods(),
                     history.recentCommits(),
+                    history.lastCommitDiagnostics(),
                     context,
                     false,
                     List.of(),
@@ -501,6 +505,7 @@ public class SourceSuspectChangeAnalysisService {
             List<String> candidateFiles,
             List<com.etiya.replayfix.model.SourceCandidateMethod> candidateMethods,
             List<SourceRecentCommit> recentCommits,
+            List<SourceLastCommitDiagnostic> lastCommitDiagnostics,
             SourceReasoningContext context,
             boolean llmUsed,
             List<SourceSuspectChange> suspectChanges,
@@ -544,7 +549,12 @@ public class SourceSuspectChangeAnalysisService {
                 discovery.endpointMatchAttempts(),
                 discovery.matchedEndpointAnchors(),
                 discovery.unmatchedEndpointAnchors(),
-                discovery.discoveredControllerEndpoints()
+                discovery.discoveredControllerEndpoints(),
+                discovery.serviceResolutionAttempts(),
+                discovery.resolvedServiceTypes(),
+                discovery.resolvedImplementationFiles(),
+                discovery.unresolvedServiceCalls(),
+                lastCommitDiagnostics
         );
     }
 

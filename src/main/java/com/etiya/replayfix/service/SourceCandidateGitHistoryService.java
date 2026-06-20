@@ -2,6 +2,7 @@ package com.etiya.replayfix.service;
 
 import com.etiya.replayfix.config.ReplayFixProperties;
 import com.etiya.replayfix.model.SourceDiffSnippet;
+import com.etiya.replayfix.model.SourceLastCommitDiagnostic;
 import com.etiya.replayfix.model.SourceRecentCommit;
 import org.springframework.stereotype.Service;
 
@@ -56,6 +57,7 @@ public class SourceCandidateGitHistoryService {
         Map<String, SourceRecentCommit> commits = new LinkedHashMap<>();
         List<SourceDiffSnippet> snippets = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
+        List<SourceLastCommitDiagnostic> lastCommitDiagnostics = new ArrayList<>();
 
         for (String file : candidateFiles) {
             List<SourceRecentCommit> fileCommits =
@@ -63,6 +65,7 @@ public class SourceCandidateGitHistoryService {
             fileCommits.forEach(commit ->
                     commits.putIfAbsent(commit.commitSha() + "#" + file, commit)
             );
+            lastCommit(workspace, file).ifPresent(lastCommitDiagnostics::add);
 
             if (includeDiffSnippets) {
                 for (SourceRecentCommit commit : fileCommits) {
@@ -77,7 +80,8 @@ public class SourceCandidateGitHistoryService {
         return new HistoryResult(
                 commits.values().stream().toList(),
                 snippets,
-                List.copyOf(new LinkedHashSet<>(warnings))
+                List.copyOf(new LinkedHashSet<>(warnings)),
+                List.copyOf(lastCommitDiagnostics)
         );
     }
 
@@ -151,6 +155,37 @@ public class SourceCandidateGitHistoryService {
         }
 
         return commits;
+    }
+
+    private Optional<SourceLastCommitDiagnostic> lastCommit(
+            Path workspace,
+            String file
+    ) {
+        String output = run(
+                workspace,
+                List.of(
+                        gitExecutable(),
+                        "log",
+                        "-1",
+                        "--date=iso-strict",
+                        "--pretty=format:%H|%an|%ad|%s",
+                        "--",
+                        file
+                )
+        ).trim();
+        if (output.isBlank()) {
+            return Optional.empty();
+        }
+        String[] parts = output.split("\\|", 4);
+        String sha = parts.length > 0 ? parts[0] : "";
+        return Optional.of(new SourceLastCommitDiagnostic(
+                file,
+                sha,
+                sha.length() <= 7 ? sha : sha.substring(0, 7),
+                evidenceSanitizer.sanitize(parts.length > 1 ? parts[1] : ""),
+                evidenceSanitizer.sanitize(parts.length > 2 ? parts[2] : ""),
+                evidenceSanitizer.sanitize(parts.length > 3 ? parts[3] : "")
+        ));
     }
 
     private SourceRecentCommit commit(
@@ -288,7 +323,15 @@ public class SourceCandidateGitHistoryService {
     public record HistoryResult(
             List<SourceRecentCommit> recentCommits,
             List<SourceDiffSnippet> diffSnippets,
-            List<String> warnings
+            List<String> warnings,
+            List<SourceLastCommitDiagnostic> lastCommitDiagnostics
     ) {
+        public HistoryResult(
+                List<SourceRecentCommit> recentCommits,
+                List<SourceDiffSnippet> diffSnippets,
+                List<String> warnings
+        ) {
+            this(recentCommits, diffSnippets, warnings, List.of());
+        }
     }
 }

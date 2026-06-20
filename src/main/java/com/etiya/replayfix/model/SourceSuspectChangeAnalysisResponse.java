@@ -32,7 +32,12 @@ public record SourceSuspectChangeAnalysisResponse(
         int endpointMatchAttempts,
         List<String> matchedEndpointAnchors,
         List<String> unmatchedEndpointAnchors,
-        List<SourceDiscoveredControllerEndpoint> discoveredControllerEndpoints
+        List<SourceDiscoveredControllerEndpoint> discoveredControllerEndpoints,
+        int serviceResolutionAttempts,
+        List<String> resolvedServiceTypes,
+        List<String> resolvedImplementationFiles,
+        List<String> unresolvedServiceCalls,
+        List<SourceLastCommitDiagnostic> lastCommitDiagnostics
 ) {
     public SourceSuspectChangeAnalysisResponse(
             UUID caseId,
@@ -81,6 +86,11 @@ public record SourceSuspectChangeAnalysisResponse(
                 0,
                 0,
                 0,
+                List.of(),
+                List.of(),
+                List.of(),
+                0,
+                List.of(),
                 List.of(),
                 List.of(),
                 List.of()
@@ -139,6 +149,11 @@ public record SourceSuspectChangeAnalysisResponse(
                 0,
                 List.of(),
                 List.of(),
+                List.of(),
+                0,
+                List.of(),
+                List.of(),
+                List.of(),
                 List.of()
         );
     }
@@ -177,5 +192,10 @@ public record SourceSuspectChangeAnalysisResponse(
         unmatchedEndpointAnchors = JsonSafeValueSanitizer.safeList(unmatchedEndpointAnchors);
         discoveredControllerEndpoints =
                 JsonSafeValueSanitizer.safeList(discoveredControllerEndpoints);
+        resolvedServiceTypes = JsonSafeValueSanitizer.safeList(resolvedServiceTypes);
+        resolvedImplementationFiles =
+                JsonSafeValueSanitizer.safeList(resolvedImplementationFiles);
+        unresolvedServiceCalls = JsonSafeValueSanitizer.safeList(unresolvedServiceCalls);
+        lastCommitDiagnostics = JsonSafeValueSanitizer.safeList(lastCommitDiagnostics);
     }
 }

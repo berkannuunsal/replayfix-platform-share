@@ -6,6 +6,7 @@ import com.etiya.replayfix.domain.EvidenceType;
 import com.etiya.replayfix.domain.ReplayCaseEntity;
 import com.etiya.replayfix.domain.ReplayCaseStatus;
 import com.etiya.replayfix.model.SourceCandidateFlowChainItem;
+import com.etiya.replayfix.model.SourceLastCommitDiagnostic;
 import com.etiya.replayfix.model.SuspectSignalCategory;
 import com.etiya.replayfix.model.SuspectSignalExtractionResponse;
 import com.etiya.replayfix.model.SuspectSignalStrength;
@@ -315,6 +316,61 @@ class SourceSuspectChangeAnalysisServiceTest {
                 .contains(SourceSuspectChangeAnalysisService
                         .SOURCE_GIT_HISTORY_TIMEOUT);
         assertThat(response.currentPhaseOnTimeout()).isEqualTo("gitHistory");
+    }
+
+    @Test
+    void noRecentCommitsWarningRemainsWithLastCommitDiagnostics()
+            throws Exception {
+        writeWorkspaceFile();
+        FlowAwareSourceDiscoveryService discovery =
+                mock(FlowAwareSourceDiscoveryService.class);
+        SourceCandidateGitHistoryService gitHistory =
+                mock(SourceCandidateGitHistoryService.class);
+        when(discovery.discover(
+                any(),
+                any(),
+                anyInt(),
+                anyInt(),
+                anyInt(),
+                anyBoolean()
+        )).thenReturn(discoveryResult());
+        when(gitHistory.collect(
+                any(),
+                any(),
+                any(),
+                anyInt(),
+                anyInt(),
+                anyBoolean()
+        )).thenReturn(new SourceCandidateGitHistoryService.HistoryResult(
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(new SourceLastCommitDiagnostic(
+                        "src/main/java/com/example/BusinessFlowController.java",
+                        "abcdef123456",
+                        "abcdef1",
+                        "Test User",
+                        "2020-01-01T00:00:00Z",
+                        "old controller change"
+                ))
+        ));
+        service = service(discovery, gitHistory, contextBuilder);
+
+        var response = service.analyze(
+                caseId,
+                1,
+                20,
+                10,
+                false,
+                false
+        );
+
+        assertThat(response.warnings())
+                .contains(SourceSuspectChangeAnalysisService
+                        .NO_RECENT_COMMITS_FOUND);
+        assertThat(response.lastCommitDiagnostics())
+                .anySatisfy(diagnostic -> assertThat(diagnostic.message())
+                        .contains("old controller change"));
     }
 
     @Test
