@@ -141,6 +141,26 @@ public class CompanyLlmProviderClient implements AiProviderClient {
     public AiGenerationResponse generate(AiGenerationRequest request) {
         long startedAt = System.currentTimeMillis();
         try {
+            if ("SOURCE_CHANGE_ANALYSIS".equalsIgnoreCase(request.requestType())) {
+                JsonNode payload = buildSourceReasoningPayload(request);
+                JsonNode response = post(payload);
+                JsonNode content = parseContent(response);
+                return new AiGenerationResponse(
+                        true,
+                        PROVIDER,
+                        model(),
+                        requestId(response),
+                        finishReason(response),
+                        System.currentTimeMillis() - startedAt,
+                        payload.toString().length(),
+                        content.toString().length(),
+                        content,
+                        toStrings(content.path("warnings")),
+                        null,
+                        null
+                );
+            }
+
             String evidenceBundle = latestAiInputBundle(request.caseId())
                     .orElseThrow(() -> new IllegalStateException(
                             "AI_INPUT_BUNDLE evidence is required for COMPANY_LLM"
@@ -199,6 +219,15 @@ public class CompanyLlmProviderClient implements AiProviderClient {
         String sanitizedBundle = evidenceSanitizer.sanitize(evidenceBundle);
         sanitizedBundle = truncate(sanitizedBundle, company().getMaxInputChars());
         String prompt = companyPrompt(request, sanitizedBundle);
+        return buildChatPayload(prompt, company().getMaxOutputChars());
+    }
+
+    JsonNode buildSourceReasoningPayload(AiGenerationRequest request) {
+        String prompt = evidenceSanitizer.sanitize(firstNonBlank(
+                request.userPrompt(),
+                ""
+        ));
+        prompt = truncate(prompt, company().getMaxInputChars());
         return buildChatPayload(prompt, company().getMaxOutputChars());
     }
 
