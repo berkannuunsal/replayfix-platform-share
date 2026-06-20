@@ -26,7 +26,13 @@ public record SourceSuspectChangeAnalysisResponse(
         boolean partial,
         Map<String, Long> phaseTimingsMs,
         String lastCompletedPhase,
-        String currentPhaseOnTimeout
+        String currentPhaseOnTimeout,
+        int endpointSearchFileCount,
+        int controllerCandidateCount,
+        int endpointMatchAttempts,
+        List<String> matchedEndpointAnchors,
+        List<String> unmatchedEndpointAnchors,
+        List<SourceDiscoveredControllerEndpoint> discoveredControllerEndpoints
 ) {
     public SourceSuspectChangeAnalysisResponse(
             UUID caseId,
@@ -71,7 +77,69 @@ public record SourceSuspectChangeAnalysisResponse(
                 partial,
                 Map.of(),
                 "",
-                null
+                null,
+                0,
+                0,
+                0,
+                List.of(),
+                List.of(),
+                List.of()
+        );
+    }
+
+    public SourceSuspectChangeAnalysisResponse(
+            UUID caseId,
+            String jiraKey,
+            String repository,
+            String branch,
+            String incidentCommitSha,
+            int lookbackDays,
+            List<SourceFlowAnchor> flowAnchors,
+            List<SourceCandidateFlowChainItem> candidateFlowChain,
+            List<String> candidateFiles,
+            List<SourceCandidateMethod> candidateMethods,
+            List<SourceRecentCommit> recentCommits,
+            SourceReasoningContext sourceReasoningContext,
+            boolean llmUsed,
+            List<SourceSuspectChange> suspectChanges,
+            String status,
+            double confidence,
+            List<String> warnings,
+            String analysisMode,
+            boolean partial,
+            Map<String, Long> phaseTimingsMs,
+            String lastCompletedPhase,
+            String currentPhaseOnTimeout
+    ) {
+        this(
+                caseId,
+                jiraKey,
+                repository,
+                branch,
+                incidentCommitSha,
+                lookbackDays,
+                flowAnchors,
+                candidateFlowChain,
+                candidateFiles,
+                candidateMethods,
+                recentCommits,
+                sourceReasoningContext,
+                llmUsed,
+                suspectChanges,
+                status,
+                confidence,
+                warnings,
+                analysisMode,
+                partial,
+                phaseTimingsMs,
+                lastCompletedPhase,
+                currentPhaseOnTimeout,
+                0,
+                0,
+                0,
+                List.of(),
+                List.of(),
+                List.of()
         );
     }
 
@@ -105,5 +173,9 @@ public record SourceSuspectChangeAnalysisResponse(
         analysisMode = analysisMode == null ? "DETERMINISTIC_ONLY" : analysisMode;
         phaseTimingsMs = phaseTimingsMs == null ? Map.of() : Map.copyOf(phaseTimingsMs);
         lastCompletedPhase = lastCompletedPhase == null ? "" : lastCompletedPhase;
+        matchedEndpointAnchors = JsonSafeValueSanitizer.safeList(matchedEndpointAnchors);
+        unmatchedEndpointAnchors = JsonSafeValueSanitizer.safeList(unmatchedEndpointAnchors);
+        discoveredControllerEndpoints =
+                JsonSafeValueSanitizer.safeList(discoveredControllerEndpoints);
     }
 }

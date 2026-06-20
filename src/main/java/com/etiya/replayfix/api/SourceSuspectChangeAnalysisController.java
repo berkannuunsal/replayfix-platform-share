@@ -111,7 +111,13 @@ public class SourceSuspectChangeAnalysisController {
                 response.partial(),
                 response.phaseTimingsMs(),
                 response.lastCompletedPhase(),
-                response.currentPhaseOnTimeout()
+                response.currentPhaseOnTimeout(),
+                response.endpointSearchFileCount(),
+                response.controllerCandidateCount(),
+                response.endpointMatchAttempts(),
+                response.matchedEndpointAnchors(),
+                response.unmatchedEndpointAnchors(),
+                response.discoveredControllerEndpoints()
         );
     }
 
@@ -157,7 +163,13 @@ public class SourceSuspectChangeAnalysisController {
                 true,
                 fallbackTimings(),
                 "",
-                currentPhaseOnTimeout
+                currentPhaseOnTimeout,
+                0,
+                0,
+                0,
+                List.of(),
+                List.of(),
+                List.of()
         );
     }
 

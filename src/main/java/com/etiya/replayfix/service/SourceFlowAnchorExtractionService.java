@@ -2,7 +2,6 @@ package com.etiya.replayfix.service;
 
 import com.etiya.replayfix.model.SourceFlowAnchor;
 import com.etiya.replayfix.model.SuspectSignalCategory;
-import com.etiya.replayfix.model.SuspectSignalStrength;
 import com.etiya.replayfix.model.SuspectSourceSignal;
 import org.springframework.stereotype.Service;
 
@@ -16,12 +15,39 @@ import java.util.Set;
 public class SourceFlowAnchorExtractionService {
 
     private static final Set<String> GENERIC_STANDALONE = Set.of(
+            "initialize",
+            "businessflow",
+            "business_flow",
+            "business-flow",
+            "/initialize",
+            "/businessflow",
             "user",
             "account",
             "billing",
+            "billingaccount",
             "region",
             "update",
-            "tax"
+            "tax",
+            "flow",
+            "gl",
+            "i2i",
+            "executivesummaryi2ifatura",
+            "glraporu"
+    );
+
+    private static final Set<String> PRIMARY_ANCHORS = Set.of(
+            "/businessflow/initialize",
+            "/user/region/update",
+            "/region",
+            "preferred_province",
+            "preferredprovince",
+            "taxinfo",
+            "timezone",
+            "billing account creation / update flow",
+            "preferred province",
+            "region mismatch",
+            "timezone mismatch",
+            "tax info mismatch"
     );
 
     public List<SourceFlowAnchor> extract(List<SuspectSourceSignal> signals) {
@@ -33,7 +59,8 @@ public class SourceFlowAnchorExtractionService {
             }
 
             String value = signal.value().trim();
-            if (!isStrongAnchor(signal, value)) {
+            AnchorClassification classification = classify(signal, value);
+            if (classification == null) {
                 continue;
             }
 
@@ -43,6 +70,8 @@ public class SourceFlowAnchorExtractionService {
                     new SourceFlowAnchor(
                             value,
                             anchorType(signal, value),
+                            classification.strength(),
+                            classification.primary(),
                             anchorReason(signal, value)
                     )
             );
@@ -51,44 +80,19 @@ public class SourceFlowAnchorExtractionService {
         return anchors.values().stream().toList();
     }
 
-    private boolean isStrongAnchor(SuspectSourceSignal signal, String value) {
+    private AnchorClassification classify(SuspectSourceSignal signal, String value) {
         String normalized = value.toLowerCase(Locale.ROOT);
+        if ("BillingAccount".equals(value)) {
+            return new AnchorClassification("STRONG", true);
+        }
+        if (PRIMARY_ANCHORS.contains(normalized)) {
+            return new AnchorClassification("STRONG", true);
+        }
         if (GENERIC_STANDALONE.contains(normalized)) {
-            return false;
+            return new AnchorClassification("WEAK", false);
         }
 
-        if (value.startsWith("/") && value.length() > 1) {
-            return true;
-        }
-
-        if (signal.category() == SuspectSignalCategory.CONSTANT) {
-            return true;
-        }
-
-        if (value.matches("[A-Z][A-Z0-9]+(?:_[A-Z0-9]+)+")) {
-            return true;
-        }
-
-        if (value.matches("[A-Z][A-Za-z0-9]+(?:[A-Z][A-Za-z0-9]+)+")) {
-            return true;
-        }
-
-        if (value.matches("[a-z]+(?:[A-Z][a-z0-9]+)+")) {
-            return true;
-        }
-
-        if (value.contains(" ")
-                && (normalized.contains("flow")
-                || normalized.contains("mismatch")
-                || normalized.contains("province")
-                || normalized.contains("timezone")
-                || normalized.contains("tax info"))) {
-            return true;
-        }
-
-        return signal.strength() == SuspectSignalStrength.STRONG
-                && value.length() >= 8
-                && !GENERIC_STANDALONE.contains(normalized);
+        return null;
     }
 
     private String anchorType(SuspectSourceSignal signal, String value) {
@@ -116,5 +120,11 @@ public class SourceFlowAnchorExtractionService {
             return "Exact business flow or mismatch phrase anchor.";
         }
         return "Domain object or operation-domain anchor.";
+    }
+
+    private record AnchorClassification(
+            String strength,
+            boolean primary
+    ) {
     }
 }

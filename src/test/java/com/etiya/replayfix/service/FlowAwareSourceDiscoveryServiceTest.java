@@ -45,7 +45,7 @@ class FlowAwareSourceDiscoveryServiceTest {
 
         var result = discoveryService.discover(temporaryDirectory, anchors, 20);
 
-        assertThat(anchors).isEmpty();
+        assertThat(anchors).allMatch(anchor -> !anchor.primary());
         assertThat(result.candidateFiles()).isEmpty();
     }
 
@@ -77,6 +77,278 @@ class FlowAwareSourceDiscoveryServiceTest {
                     assertThat(item.relatedSignals())
                             .contains("/businessFlow/initialize");
                 });
+        assertThat(result.matchedEndpointAnchors())
+                .contains("/businessFlow/initialize");
+    }
+
+    @Test
+    void classLevelAndMethodLevelMappingMatchesBusinessFlowInitialize()
+            throws Exception {
+        writeJava(
+                "src/main/java/com/example/BusinessFlowController.java",
+                """
+                        package com.example;
+                        @RequestMapping("/businessFlow")
+                        public class BusinessFlowController {
+                            @PostMapping("/initialize")
+                            public void initialize() {}
+                        }
+                        """
+        );
+
+        var result = discoveryService.discover(
+                temporaryDirectory,
+                List.of(anchor("/businessFlow/initialize", "ENDPOINT")),
+                20
+        );
+
+        assertControllerMatch(result, "/businessFlow/initialize");
+    }
+
+    @Test
+    void requestMappingPathAttributeAndPostMappingPathAttributeMatch()
+            throws Exception {
+        writeJava(
+                "src/main/java/com/example/BusinessFlowController.java",
+                """
+                        package com.example;
+                        @RequestMapping(path="/businessFlow")
+                        public class BusinessFlowController {
+                            @PostMapping(path="/initialize")
+                            public void initialize() {}
+                        }
+                        """
+        );
+
+        var result = discoveryService.discover(
+                temporaryDirectory,
+                List.of(anchor("/businessFlow/initialize", "ENDPOINT")),
+                20
+        );
+
+        assertControllerMatch(result, "/businessFlow/initialize");
+    }
+
+    @Test
+    void requestMappingValueAttributeAndPostMappingValueAttributeMatch()
+            throws Exception {
+        writeJava(
+                "src/main/java/com/example/BusinessFlowController.java",
+                """
+                        package com.example;
+                        @RequestMapping(value="/businessFlow")
+                        public class BusinessFlowController {
+                            @PostMapping(value="/initialize")
+                            public void initialize() {}
+                        }
+                        """
+        );
+
+        var result = discoveryService.discover(
+                temporaryDirectory,
+                List.of(anchor("/businessFlow/initialize", "ENDPOINT")),
+                20
+        );
+
+        assertControllerMatch(result, "/businessFlow/initialize");
+    }
+
+    @Test
+    void arrayPathMappingIsSupported() throws Exception {
+        writeJava(
+                "src/main/java/com/example/BusinessFlowController.java",
+                """
+                        package com.example;
+                        @RequestMapping({"/legacy", "/businessFlow"})
+                        public class BusinessFlowController {
+                            @PostMapping({"/start", "/initialize"})
+                            public void initialize() {}
+                        }
+                        """
+        );
+
+        var result = discoveryService.discover(
+                temporaryDirectory,
+                List.of(anchor("/businessFlow/initialize", "ENDPOINT")),
+                20
+        );
+
+        assertControllerMatch(result, "/businessFlow/initialize");
+    }
+
+    @Test
+    void pathNormalizationWorks() throws Exception {
+        writeJava(
+                "src/main/java/com/example/BusinessFlowController.java",
+                """
+                        package com.example;
+                        @RequestMapping("/businessFlow/")
+                        public class BusinessFlowController {
+                            @PostMapping("//initialize/")
+                            public void initialize() {}
+                        }
+                        """
+        );
+
+        var result = discoveryService.discover(
+                temporaryDirectory,
+                List.of(anchor("businessFlow/initialize/", "ENDPOINT")),
+                20
+        );
+
+        assertControllerMatch(result, "businessFlow/initialize/");
+    }
+
+    @Test
+    void simpleStringConstantMappingIsSupported() throws Exception {
+        writeJava(
+                "src/main/java/com/example/BusinessFlowController.java",
+                """
+                        package com.example;
+                        @RequestMapping(BUSINESS_FLOW)
+                        public class BusinessFlowController {
+                            private static final String BUSINESS_FLOW = "/businessFlow";
+                            private static final String INITIALIZE = "/initialize";
+                            @PostMapping(INITIALIZE)
+                            public void initialize() {}
+                        }
+                        """
+        );
+
+        var result = discoveryService.discover(
+                temporaryDirectory,
+                List.of(anchor("/businessFlow/initialize", "ENDPOINT")),
+                20
+        );
+
+        assertControllerMatch(result, "/businessFlow/initialize");
+    }
+
+    @Test
+    void genericInitializeAloneDoesNotCreateEndpointCandidate()
+            throws Exception {
+        writeJava(
+                "src/main/java/com/example/BusinessFlowController.java",
+                """
+                        package com.example;
+                        @RequestMapping("/businessFlow")
+                        public class BusinessFlowController {
+                            @PostMapping("/initialize")
+                            public void initialize() {}
+                        }
+                        """
+        );
+
+        var result = discoveryService.discover(
+                temporaryDirectory,
+                List.of(new SourceFlowAnchor(
+                        "/initialize",
+                        "ENDPOINT",
+                        "WEAK",
+                        false,
+                        "weak fragment"
+                )),
+                20
+        );
+
+        assertThat(result.candidateFlowChain()).isEmpty();
+    }
+
+    @Test
+    void billingAccountAloneDoesNotCreateRepositoryCandidateWhenEndpointAnchorExists()
+            throws Exception {
+        writeJava(
+                "src/main/java/com/example/BillingAccountRepository.java",
+                """
+                        package com.example;
+                        public class BillingAccountRepository {
+                            public void saveBillingAccount(String billingAccount) {}
+                        }
+                        """
+        );
+
+        var result = discoveryService.discover(
+                temporaryDirectory,
+                List.of(
+                        anchor("/businessFlow/initialize", "ENDPOINT"),
+                        new SourceFlowAnchor(
+                                "billingAccount",
+                                "DOMAIN_OBJECT",
+                                "WEAK",
+                                false,
+                                "weak fallback"
+                        )
+                ),
+                20
+        );
+
+        assertThat(result.candidateFlowChain()).isEmpty();
+        assertThat(result.unmatchedEndpointAnchors())
+                .contains("/businessFlow/initialize");
+    }
+
+    @Test
+    void controllerCandidatesOutrankRepositoryCandidates() throws Exception {
+        writeJava(
+                "src/main/java/com/example/BusinessFlowController.java",
+                """
+                        package com.example;
+                        public class BusinessFlowController {
+                            @PostMapping("/businessFlow/initialize")
+                            public void initialize() {}
+                        }
+                        """
+        );
+        writeJava(
+                "src/main/java/com/example/BillingAccountRepository.java",
+                """
+                        package com.example;
+                        public class BillingAccountRepository {
+                            public void billingAccount() {}
+                        }
+                        """
+        );
+
+        var result = discoveryService.discover(
+                temporaryDirectory,
+                List.of(
+                        anchor("/businessFlow/initialize", "ENDPOINT"),
+                        anchor("BillingAccount", "DOMAIN_OBJECT")
+                ),
+                20
+        );
+
+        assertThat(result.candidateFlowChain()).isNotEmpty();
+        assertThat(result.candidateFlowChain().get(0).layer())
+                .isEqualTo("CONTROLLER");
+        assertThat(result.candidateFlowChain())
+                .noneMatch(item -> "REPOSITORY".equals(item.layer()));
+    }
+
+    @Test
+    void unmatchedEndpointAnchorsAndDiscoveredEndpointsArePopulatedWhenNoMatch()
+            throws Exception {
+        writeJava(
+                "src/main/java/com/example/BusinessFlowController.java",
+                """
+                        package com.example;
+                        public class BusinessFlowController {
+                            @PostMapping("/businessFlow/other")
+                            public void other() {}
+                        }
+                        """
+        );
+
+        var result = discoveryService.discover(
+                temporaryDirectory,
+                List.of(anchor("/businessFlow/initialize", "ENDPOINT")),
+                20
+        );
+
+        assertThat(result.matchedEndpointAnchors()).isEmpty();
+        assertThat(result.unmatchedEndpointAnchors())
+                .contains("/businessFlow/initialize");
+        assertThat(result.discoveredControllerEndpoints()).isNotEmpty();
     }
 
     @Test
@@ -216,6 +488,17 @@ class FlowAwareSourceDiscoveryServiceTest {
 
     private SourceFlowAnchor anchor(String value, String type) {
         return new SourceFlowAnchor(value, type, "test");
+    }
+
+    private void assertControllerMatch(
+            FlowAwareSourceDiscoveryService.DiscoveryResult result,
+            String anchor
+    ) {
+        assertThat(result.candidateFlowChain())
+                .anySatisfy(item -> assertThat(item.layer())
+                        .isEqualTo("CONTROLLER"));
+        assertThat(result.matchedEndpointAnchors()).contains(anchor);
+        assertThat(result.unmatchedEndpointAnchors()).doesNotContain(anchor);
     }
 
     private SuspectSourceSignal signal(String value) {

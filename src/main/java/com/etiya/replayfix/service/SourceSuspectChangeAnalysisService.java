@@ -61,6 +61,8 @@ public class SourceSuspectChangeAnalysisService {
             "NO_FLOW_ANCHOR_FOUND";
     public static final String NO_ENDPOINT_MATCH_FOUND =
             "NO_ENDPOINT_MATCH_FOUND";
+    public static final String ENDPOINT_ANCHOR_UNMATCHED =
+            "ENDPOINT_ANCHOR_UNMATCHED";
     public static final String NO_RECENT_COMMITS_FOUND =
             "NO_RECENT_COMMITS_FOUND";
     public static final String ONLY_GENERIC_MATCHES_FOUND =
@@ -267,6 +269,7 @@ public class SourceSuspectChangeAnalysisService {
                         List.of(),
                         warnings,
                         "DETERMINISTIC_ONLY",
+                        discovery,
                         timings,
                         lastCompletedPhase,
                         currentPhaseOnTimeout
@@ -292,6 +295,10 @@ public class SourceSuspectChangeAnalysisService {
                         .stream()
                         .noneMatch(item -> "CONTROLLER".equals(item.layer()))) {
                     warnings.add(NO_ENDPOINT_MATCH_FOUND);
+                }
+                if (!discovery.unmatchedEndpointAnchors().isEmpty()
+                        && discovery.matchedEndpointAnchors().isEmpty()) {
+                    warnings.add(ENDPOINT_ANCHOR_UNMATCHED);
                 }
                 lastCompletedPhase = "sourceDiscovery";
             } catch (TimeoutException exception) {
@@ -451,6 +458,7 @@ public class SourceSuspectChangeAnalysisService {
                     suspectChanges,
                     warnings,
                     analysisMode,
+                    discovery,
                     timings,
                     lastCompletedPhase,
                     currentPhaseOnTimeout
@@ -476,6 +484,7 @@ public class SourceSuspectChangeAnalysisService {
                     List.of(),
                     warnings,
                     "DETERMINISTIC_ONLY",
+                    discovery,
                     timings,
                     lastCompletedPhase,
                     currentPhaseOnTimeout
@@ -497,6 +506,7 @@ public class SourceSuspectChangeAnalysisService {
             List<SourceSuspectChange> suspectChanges,
             List<String> warnings,
             String analysisMode,
+            FlowAwareSourceDiscoveryService.DiscoveryResult discovery,
             PhaseTimings timings,
             String lastCompletedPhase,
             String currentPhaseOnTimeout
@@ -528,7 +538,13 @@ public class SourceSuspectChangeAnalysisService {
                 !uniqueWarnings.isEmpty(),
                 timings.values(),
                 lastCompletedPhase,
-                currentPhaseOnTimeout
+                currentPhaseOnTimeout,
+                discovery.endpointSearchFileCount(),
+                discovery.controllerCandidateCount(),
+                discovery.endpointMatchAttempts(),
+                discovery.matchedEndpointAnchors(),
+                discovery.unmatchedEndpointAnchors(),
+                discovery.discoveredControllerEndpoints()
         );
     }
 

@@ -2,6 +2,7 @@ package com.etiya.replayfix.service;
 
 import com.etiya.replayfix.model.SourceCandidateFlowChainItem;
 import com.etiya.replayfix.model.SourceCandidateMethod;
+import com.etiya.replayfix.model.SourceDiscoveredControllerEndpoint;
 import com.etiya.replayfix.model.SourceFlowAnchor;
 import org.springframework.stereotype.Service;
 
@@ -91,6 +92,13 @@ public class FlowAwareSourceDiscoveryService {
     private static final Pattern TYPE_PATTERN = Pattern.compile(
             "\\b([A-Z][A-Za-z0-9_$]*(?:Request|Response|Dto|DTO|Entity|Mapper|Validator|Repository)?)\\b"
     );
+    private static final Pattern STRING_CONSTANT_PATTERN = Pattern.compile(
+            "\\b(?:public|private|protected)?\\s*(?:static\\s+)?(?:final\\s+)?String\\s+"
+                    + "([A-Za-z_$][A-Za-z0-9_$]*)\\s*=\\s*\"([^\"]*)\"\\s*;"
+    );
+    private static final Pattern STRING_LITERAL_PATTERN = Pattern.compile(
+            "\"([^\"]*)\""
+    );
 
     public DiscoveryResult discover(
             Path root,
@@ -126,29 +134,66 @@ public class FlowAwareSourceDiscoveryService {
 
         Map<String, SourceCandidateFlowChainItem> chain = new LinkedHashMap<>();
         Map<String, SourceCandidateMethod> methods = new LinkedHashMap<>();
+        List<SourceFlowAnchor> primaryAnchors = anchors.stream()
+                .filter(SourceFlowAnchor::primary)
+                .toList();
+        List<SourceFlowAnchor> endpointAnchors = primaryAnchors.stream()
+                .filter(anchor -> "ENDPOINT".equals(anchor.type()))
+                .toList();
+        List<ControllerEndpoint> discoveredEndpoints = javaFiles.values()
+                .stream()
+                .filter(this::isLikelyController)
+                .flatMap(file -> controllerEndpoints(file).stream())
+                .toList();
+        Set<String> matchedEndpointAnchors = new LinkedHashSet<>();
+        int endpointMatchAttempts = 0;
+
+        if (!endpointAnchors.isEmpty()) {
+            for (ControllerEndpoint endpoint : discoveredEndpoints) {
+                for (SourceFlowAnchor anchor : endpointAnchors) {
+                    endpointMatchAttempts++;
+                    if (pathMatches(endpoint.fullPath(), anchor.value())) {
+                        matchedEndpointAnchors.add(anchor.value());
+                        addChain(chain, endpoint.file(), endpoint.method(),
+                                List.of(anchor.value()),
+                                "Controller endpoint mapping matched primary endpoint anchor.");
+                        addMethod(methods, endpoint.file(), endpoint.method(),
+                                List.of(anchor.value()));
+                        expandFromMethod(
+                                chain,
+                                methods,
+                                endpoint.file(),
+                                endpoint.method(),
+                                List.of(anchor.value()),
+                                byClass
+                        );
+                    }
+                }
+            }
+
+            return discoveryResult(
+                    chain,
+                    methods,
+                    maxCandidates,
+                    javaFiles,
+                    discoveredEndpoints,
+                    endpointAnchors,
+                    matchedEndpointAnchors,
+                    endpointMatchAttempts
+            );
+        }
 
         for (JavaFileInfo file : javaFiles.values()) {
-            List<String> classSignals = relatedClassSignals(file, anchors);
+            List<String> classSignals = relatedClassSignals(file, primaryAnchors);
             if (!classSignals.isEmpty()) {
                 addChain(chain, file, null, classSignals,
                         "Class name or structural type matched flow anchor.");
             }
 
             for (JavaMethodInfo method : file.methods()) {
-                List<String> endpointSignals =
-                        relatedEndpointSignals(method.annotations(), anchors);
-                if (!endpointSignals.isEmpty()) {
-                    addChain(chain, file, method, endpointSignals,
-                            "Controller mapping annotation matched endpoint anchor.");
-                    addMethod(methods, file, method, endpointSignals);
-                    expandFromMethod(chain, methods, file, method,
-                            endpointSignals, byClass);
-                    continue;
-                }
-
                 List<String> methodSignals = relatedMethodSignals(
                         method,
-                        anchors
+                        primaryAnchors
                 );
                 if (!methodSignals.isEmpty()) {
                     addChain(chain, file, method, methodSignals,
@@ -158,6 +203,28 @@ public class FlowAwareSourceDiscoveryService {
             }
         }
 
+        return discoveryResult(
+                chain,
+                methods,
+                maxCandidates,
+                javaFiles,
+                discoveredEndpoints,
+                endpointAnchors,
+                matchedEndpointAnchors,
+                endpointMatchAttempts
+        );
+    }
+
+    private DiscoveryResult discoveryResult(
+            Map<String, SourceCandidateFlowChainItem> chain,
+            Map<String, SourceCandidateMethod> methods,
+            int maxCandidates,
+            Map<String, JavaFileInfo> javaFiles,
+            List<ControllerEndpoint> discoveredEndpoints,
+            List<SourceFlowAnchor> endpointAnchors,
+            Set<String> matchedEndpointAnchors,
+            int endpointMatchAttempts
+    ) {
         List<SourceCandidateFlowChainItem> limitedChain = chain.values()
                 .stream()
                 .limit(maxCandidates)
@@ -172,7 +239,21 @@ public class FlowAwareSourceDiscoveryService {
                         .filter(method -> candidateFiles.contains(method.file()))
                         .limit(maxCandidates * 3L)
                         .toList(),
-                javaFiles
+                javaFiles,
+                (int) javaFiles.values().stream()
+                        .filter(this::isLikelyController)
+                        .count(),
+                discoveredEndpoints.size(),
+                endpointMatchAttempts,
+                matchedEndpointAnchors.stream().toList(),
+                endpointAnchors.stream()
+                        .map(SourceFlowAnchor::value)
+                        .filter(value -> !matchedEndpointAnchors.contains(value))
+                        .toList(),
+                discoveredEndpoints.stream()
+                        .map(ControllerEndpoint::view)
+                        .limit(10)
+                        .toList()
         );
     }
 
@@ -301,6 +382,170 @@ public class FlowAwareSourceDiscoveryService {
                 .contains(endpoint);
     }
 
+    private List<ControllerEndpoint> controllerEndpoints(JavaFileInfo file) {
+        List<PathMapping> classMappings = mappings(file.mappingAnnotations(),
+                file.constants());
+        if (classMappings.isEmpty()) {
+            classMappings = List.of(new PathMapping("", "", ""));
+        }
+
+        List<ControllerEndpoint> endpoints = new ArrayList<>();
+        for (JavaMethodInfo method : file.methods()) {
+            List<PathMapping> methodMappings = mappings(
+                    method.annotations(),
+                    file.constants()
+            );
+            if (methodMappings.isEmpty()) {
+                continue;
+            }
+            for (PathMapping classMapping : classMappings) {
+                for (PathMapping methodMapping : methodMappings) {
+                    String fullPath = combinePaths(
+                            classMapping.path(),
+                            methodMapping.path()
+                    );
+                    endpoints.add(new ControllerEndpoint(
+                            file,
+                            method,
+                            methodMapping.httpMethod(),
+                            classMapping.path(),
+                            methodMapping.path(),
+                            fullPath
+                    ));
+                }
+            }
+        }
+        return endpoints;
+    }
+
+    private List<PathMapping> mappings(
+            List<String> annotations,
+            Map<String, String> constants
+    ) {
+        List<PathMapping> values = new ArrayList<>();
+        for (String annotation : annotations) {
+            String httpMethod = httpMethod(annotation);
+            if (httpMethod == null) {
+                continue;
+            }
+            List<String> paths = paths(annotation, constants);
+            for (String path : paths) {
+                values.add(new PathMapping(httpMethod, path, normalizePath(path)));
+            }
+        }
+        return values;
+    }
+
+    private List<String> paths(String annotation, Map<String, String> constants) {
+        List<String> values = new ArrayList<>();
+        Matcher literalMatcher = STRING_LITERAL_PATTERN.matcher(annotation);
+        while (literalMatcher.find()) {
+            values.add(literalMatcher.group(1));
+        }
+        for (Map.Entry<String, String> constant : constants.entrySet()) {
+            if (annotation.matches(".*\\b" + Pattern.quote(constant.getKey())
+                    + "\\b.*")) {
+                values.add(constant.getValue());
+            }
+        }
+        if (values.isEmpty()) {
+            values.add("");
+        }
+        return values.stream()
+                .map(this::normalizePath)
+                .distinct()
+                .toList();
+    }
+
+    private String httpMethod(String annotation) {
+        if (annotation.startsWith("@GetMapping")) {
+            return "GET";
+        }
+        if (annotation.startsWith("@PostMapping")) {
+            return "POST";
+        }
+        if (annotation.startsWith("@PutMapping")) {
+            return "PUT";
+        }
+        if (annotation.startsWith("@PatchMapping")) {
+            return "PATCH";
+        }
+        if (annotation.startsWith("@DeleteMapping")) {
+            return "DELETE";
+        }
+        if (annotation.startsWith("@RequestMapping")) {
+            String upper = annotation.toUpperCase(Locale.ROOT);
+            if (upper.contains("REQUESTMETHOD.GET")) {
+                return "GET";
+            }
+            if (upper.contains("REQUESTMETHOD.POST")) {
+                return "POST";
+            }
+            if (upper.contains("REQUESTMETHOD.PUT")) {
+                return "PUT";
+            }
+            if (upper.contains("REQUESTMETHOD.PATCH")) {
+                return "PATCH";
+            }
+            if (upper.contains("REQUESTMETHOD.DELETE")) {
+                return "DELETE";
+            }
+            return "REQUEST";
+        }
+        return null;
+    }
+
+    private String combinePaths(String classPath, String methodPath) {
+        return normalizePath(normalizePath(classPath) + "/" + normalizePath(methodPath));
+    }
+
+    private String normalizePath(String path) {
+        if (path == null || path.isBlank() || "/".equals(path)) {
+            return "";
+        }
+        String normalized = path.trim().replace('\\', '/')
+                .replaceAll("/+", "/");
+        if (!normalized.startsWith("/")) {
+            normalized = "/" + normalized;
+        }
+        while (normalized.length() > 1 && normalized.endsWith("/")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        return normalized;
+    }
+
+    private boolean pathMatches(String discoveredPath, String anchorPath) {
+        String left = normalizePath(discoveredPath);
+        String right = normalizePath(anchorPath);
+        if (left.equals(right)) {
+            return true;
+        }
+        String[] leftParts = left.substring(1).split("/");
+        String[] rightParts = right.substring(1).split("/");
+        if (leftParts.length != rightParts.length) {
+            return false;
+        }
+        for (int index = 0; index < leftParts.length; index++) {
+            if (leftParts[index].startsWith("{") && leftParts[index].endsWith("}")) {
+                continue;
+            }
+            if (!leftParts[index].equals(rightParts[index])) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean isLikelyController(JavaFileInfo file) {
+        String path = file.relativePath().toLowerCase(Locale.ROOT);
+        return path.contains("/api/")
+                || path.contains("/controller/")
+                || file.relativePath().endsWith("Controller.java")
+                || file.relativePath().endsWith("Resource.java")
+                || file.relativePath().endsWith("Endpoint.java")
+                || !file.mappingAnnotations().isEmpty();
+    }
+
     private boolean containsIgnoreCase(String text, String value) {
         return text.toLowerCase(Locale.ROOT)
                 .contains(value.toLowerCase(Locale.ROOT));
@@ -408,27 +653,41 @@ public class FlowAwareSourceDiscoveryService {
     ) {
         Map<String, JavaFileInfo> files = new LinkedHashMap<>();
         List<Path> roots = scanRoots(root);
-        List<Path> paths = new ArrayList<>();
+        List<Path> controllerPaths = new ArrayList<>();
+        List<Path> fallbackPaths = new ArrayList<>();
         for (Path scanRoot : roots) {
             try (Stream<Path> stream = Files.walk(scanRoot)) {
-                List<Path> discovered = stream.filter(Files::isRegularFile)
+                stream.filter(Files::isRegularFile)
                         .filter(path -> !isExcluded(root, path, includeTests))
                         .filter(path -> isSupported(path)
                                 && path.toString().endsWith(".java"))
-                        .sorted(Comparator.comparing(Path::toString))
-                        .toList();
-                for (Path path : discovered) {
-                    if (paths.size() >= maxScannedFiles) {
-                        break;
-                    }
-                    paths.add(path);
-                }
+                        .sorted(sourcePathComparator())
+                        .forEach(path -> {
+                            if (controllerPriority(path.toString()) == 0) {
+                                controllerPaths.add(path);
+                            } else if (fallbackPaths.size() < maxScannedFiles) {
+                                fallbackPaths.add(path);
+                            }
+                        });
             } catch (Exception ignored) {
                 continue;
             }
+            if (controllerPaths.size() >= maxScannedFiles) {
+                break;
+            }
+        }
+        List<Path> paths = new ArrayList<>();
+        for (Path path : controllerPaths) {
             if (paths.size() >= maxScannedFiles) {
                 break;
             }
+            paths.add(path);
+        }
+        for (Path path : fallbackPaths) {
+            if (paths.size() >= maxScannedFiles) {
+                break;
+            }
+            paths.add(path);
         }
         for (Path path : paths) {
             parseJava(root, path, maxFileSizeBytes)
@@ -438,17 +697,30 @@ public class FlowAwareSourceDiscoveryService {
     }
 
     private List<Path> scanRoots(Path root) {
-        List<Path> roots = new ArrayList<>();
+        Set<Path> roots = new LinkedHashSet<>();
         for (String directory : PREFERRED_SOURCE_DIRECTORIES) {
             Path candidate = root.resolve(directory);
             if (Files.isDirectory(candidate)) {
                 roots.add(candidate);
             }
         }
+        try (Stream<Path> stream = Files.list(root)) {
+            stream.filter(Files::isDirectory)
+                    .filter(path -> !isExcludedDirectoryName(path))
+                    .sorted(Comparator.comparing(path -> path.getFileName().toString()))
+                    .forEach(roots::add);
+        } catch (Exception ignored) {
+            // Fall through to the repository root when child directory listing fails.
+        }
         if (roots.isEmpty()) {
             roots.add(root);
         }
-        return roots;
+        return roots.stream().toList();
+    }
+
+    private boolean isExcludedDirectoryName(Path path) {
+        String value = path.getFileName().toString().toLowerCase(Locale.ROOT);
+        return EXCLUDED_DIRECTORIES.contains(value) || value.startsWith(".");
     }
 
     private Optional<JavaFileInfo> parseJava(
@@ -474,12 +746,31 @@ public class FlowAwareSourceDiscoveryService {
                     className,
                     imports(content),
                     fields(content),
+                    constants(content),
                     classMappingAnnotations(content),
                     methods(content)
             ));
         } catch (Exception ignored) {
             return Optional.empty();
         }
+    }
+
+    private Comparator<Path> sourcePathComparator() {
+        return Comparator
+                .comparing((Path path) -> controllerPriority(path.toString()))
+                .thenComparing(Path::toString);
+    }
+
+    private int controllerPriority(String path) {
+        String normalized = path.replace('\\', '/').toLowerCase(Locale.ROOT);
+        if (normalized.contains("/api/")
+                || normalized.contains("/controller/")
+                || normalized.endsWith("controller.java")
+                || normalized.endsWith("resource.java")
+                || normalized.endsWith("endpoint.java")) {
+            return 0;
+        }
+        return 1;
     }
 
     private List<String> imports(String content) {
@@ -498,6 +789,15 @@ public class FlowAwareSourceDiscoveryService {
             fields.put(matcher.group(2), matcher.group(1));
         }
         return fields;
+    }
+
+    private Map<String, String> constants(String content) {
+        Map<String, String> constants = new LinkedHashMap<>();
+        Matcher matcher = STRING_CONSTANT_PATTERN.matcher(content);
+        while (matcher.find()) {
+            constants.put(matcher.group(1), matcher.group(2));
+        }
+        return constants;
     }
 
     private List<String> classMappingAnnotations(String content) {
@@ -616,8 +916,33 @@ public class FlowAwareSourceDiscoveryService {
             List<SourceCandidateFlowChainItem> candidateFlowChain,
             List<String> candidateFiles,
             List<SourceCandidateMethod> candidateMethods,
-            Map<String, JavaFileInfo> javaFiles
+            Map<String, JavaFileInfo> javaFiles,
+            int endpointSearchFileCount,
+            int controllerCandidateCount,
+            int endpointMatchAttempts,
+            List<String> matchedEndpointAnchors,
+            List<String> unmatchedEndpointAnchors,
+            List<SourceDiscoveredControllerEndpoint> discoveredControllerEndpoints
     ) {
+        public DiscoveryResult(
+                List<SourceCandidateFlowChainItem> candidateFlowChain,
+                List<String> candidateFiles,
+                List<SourceCandidateMethod> candidateMethods,
+                Map<String, JavaFileInfo> javaFiles
+        ) {
+            this(
+                    candidateFlowChain,
+                    candidateFiles,
+                    candidateMethods,
+                    javaFiles,
+                    0,
+                    0,
+                    0,
+                    List.of(),
+                    List.of(),
+                    List.of()
+            );
+        }
     }
 
     public record JavaFileInfo(
@@ -625,9 +950,28 @@ public class FlowAwareSourceDiscoveryService {
             String className,
             List<String> imports,
             Map<String, String> fields,
+            Map<String, String> constants,
             List<String> mappingAnnotations,
             List<JavaMethodInfo> methods
     ) {
+        public JavaFileInfo(
+                String relativePath,
+                String className,
+                List<String> imports,
+                Map<String, String> fields,
+                List<String> mappingAnnotations,
+                List<JavaMethodInfo> methods
+        ) {
+            this(
+                    relativePath,
+                    className,
+                    imports,
+                    fields,
+                    Map.of(),
+                    mappingAnnotations,
+                    methods
+            );
+        }
     }
 
     public record JavaMethodInfo(
@@ -638,5 +982,33 @@ public class FlowAwareSourceDiscoveryService {
             List<String> annotations,
             String body
     ) {
+    }
+
+    private record PathMapping(
+            String httpMethod,
+            String rawPath,
+            String path
+    ) {
+    }
+
+    private record ControllerEndpoint(
+            JavaFileInfo file,
+            JavaMethodInfo method,
+            String httpMethod,
+            String classPath,
+            String methodPath,
+            String fullPath
+    ) {
+        private SourceDiscoveredControllerEndpoint view() {
+            return new SourceDiscoveredControllerEndpoint(
+                    file.relativePath(),
+                    file.className(),
+                    method.name(),
+                    httpMethod,
+                    classPath,
+                    methodPath,
+                    fullPath
+            );
+        }
     }
 }
