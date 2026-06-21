@@ -293,7 +293,58 @@ class CompanyLlmProviderClientTest {
 
         assertThat(response.success()).isFalse();
         assertThat(response.errorCategory()).isEqualTo("INVALID_JSON");
+        assertThat(response.parseErrorCategory())
+                .isEqualTo("NON_JSON_RESPONSE");
+        assertThat(response.outputPreview()).contains("not json");
         assertThat(response.errorMessage()).doesNotContain(SECRET);
+    }
+
+    @Test
+    void invalidJsonPreviewIsSanitizedAndCapped() {
+        UUID caseId = UUID.randomUUID();
+        when(evidenceRepository.findByCaseIdAndEvidenceType(caseId, EvidenceType.AI_INPUT_BUNDLE))
+                .thenReturn(List.of(aiInputBundle("{}")));
+        String invalidOutput = "not json password=abc "
+                + "x".repeat(700)
+                + "\n at com.example.Secret.line(Secret.java:42)";
+
+        CompanyLlmProviderClient client = client(chatResponse(
+                "stop",
+                invalidOutput,
+                null,
+                null
+        ));
+
+        AiGenerationResponse response = client.generate(request(caseId));
+
+        assertThat(response.success()).isFalse();
+        assertThat(response.parseErrorCategory())
+                .isEqualTo("NON_JSON_RESPONSE");
+        assertThat(response.outputPreview()).hasSizeLessThanOrEqualTo(500);
+        assertThat(response.outputPreview()).doesNotContain("password=abc");
+        assertThat(response.outputPreview()).doesNotContain("Secret.java");
+    }
+
+    @Test
+    void invalidReasoningContentDoesNotExposeRawReasoningPreview() {
+        UUID caseId = UUID.randomUUID();
+        when(evidenceRepository.findByCaseIdAndEvidenceType(caseId, EvidenceType.AI_INPUT_BUNDLE))
+                .thenReturn(List.of(aiInputBundle("{}")));
+
+        CompanyLlmProviderClient client = client(chatResponse(
+                "stop",
+                "   ",
+                "private reasoning_content secret {not-valid-json}",
+                "   "
+        ));
+
+        AiGenerationResponse response = client.generate(request(caseId));
+
+        assertThat(response.success()).isFalse();
+        assertThat(response.parseErrorCategory())
+                .isEqualTo("JSON_EXTRACTION_FAILED");
+        assertThat(response.outputPreview()).doesNotContain("private reasoning");
+        assertThat(response.outputPreview()).doesNotContain("reasoning_content");
     }
 
     @Test

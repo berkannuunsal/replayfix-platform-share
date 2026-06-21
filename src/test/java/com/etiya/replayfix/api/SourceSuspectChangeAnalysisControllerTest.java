@@ -1,6 +1,7 @@
 package com.etiya.replayfix.api;
 
 import com.etiya.replayfix.model.SourceReasoningContext;
+import com.etiya.replayfix.model.SourceCandidateFlowChainItem;
 import com.etiya.replayfix.model.SourceSuspectChangeAnalysisResponse;
 import com.etiya.replayfix.service.SourceSuspectChangeAnalysisService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -356,6 +357,60 @@ class SourceSuspectChangeAnalysisControllerTest {
     }
 
     @Test
+    void controllerResponseIncludesCompanyLlmParseDiagnostics()
+            throws Exception {
+        UUID caseId = UUID.randomUUID();
+        SourceSuspectChangeAnalysisService service =
+                mock(SourceSuspectChangeAnalysisService.class);
+        SourceSuspectChangeAnalysisResponse response =
+                responseWithLlmParseDiagnostics(caseId);
+        when(service.analyze(
+                caseId,
+                45,
+                20,
+                10,
+                false,
+                true,
+                2_000,
+                256,
+                false,
+                10,
+                8,
+                8,
+                "MINIMAL",
+                12_000,
+                500
+        ))
+                .thenReturn(response);
+
+        MockMvc mockMvc = MockMvcBuilders
+                .standaloneSetup(new SourceSuspectChangeAnalysisController(service))
+                .build();
+
+        MvcResult result = mockMvc.perform(get(
+                        "/api/v1/cases/{caseId}/source/suspect-change-analysis",
+                        caseId
+                )
+                        .param("useCompanyLlm", "true")
+                        .param("llmContextMode", "MINIMAL")
+                        .param("companyLlmMaxOutputTokens", "500"))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        mockMvc.perform(asyncDispatch(result))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.companyLlmStatus").value("ERROR"))
+                .andExpect(jsonPath("$.companyLlmParseErrorCategory")
+                        .value("NON_JSON_RESPONSE"))
+                .andExpect(jsonPath("$.companyLlmOutputPreview")
+                        .value("not json"))
+                .andExpect(jsonPath("$.companyLlmEffectiveOutputTokenLimit")
+                        .value(500))
+                .andExpect(jsonPath("$.candidateFlowChain[0].className")
+                        .value("UserController"));
+    }
+
+    @Test
     void controllerReturnsHttp200WhenReasoningContextContainsRiskyValue()
             throws Exception {
         UUID caseId = UUID.randomUUID();
@@ -471,6 +526,76 @@ class SourceSuspectChangeAnalysisControllerTest {
                 phaseTimings(),
                 "contextBuild",
                 null
+        );
+    }
+
+    private SourceSuspectChangeAnalysisResponse responseWithLlmParseDiagnostics(
+            UUID caseId
+    ) {
+        return new SourceSuspectChangeAnalysisResponse(
+                caseId,
+                "FIZZMS-10228",
+                "DCE/backend",
+                "test2",
+                "abc123",
+                45,
+                List.of(),
+                List.of(new SourceCandidateFlowChainItem(
+                        "CONTROLLER",
+                        "ControllerBackend/src/main/java/UserController.java",
+                        "UserController",
+                        "updateUserParty",
+                        List.of("/user/region/update"),
+                        "Controller endpoint mapping matched.",
+                        "HYPOTHESIS"
+                )),
+                List.of(),
+                List.of(),
+                List.of(),
+                new SourceReasoningContext(
+                        Map.of(),
+                        Map.of(),
+                        "",
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        List.of()
+                ),
+                false,
+                List.of(),
+                "HYPOTHESIS",
+                0.0,
+                List.of("COMPANY_LLM_INVALID_RESPONSE"),
+                "DETERMINISTIC_ONLY",
+                true,
+                phaseTimings(),
+                "companyLlm",
+                null,
+                0,
+                0,
+                0,
+                List.of(),
+                List.of(),
+                List.of(),
+                0,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                8,
+                42L,
+                "ERROR",
+                1000,
+                "MINIMAL",
+                12000,
+                500,
+                "prompt-hash",
+                "NON_JSON_RESPONSE",
+                "not json",
+                500
         );
     }
 

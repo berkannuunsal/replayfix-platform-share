@@ -280,7 +280,10 @@ public class SourceSuspectChangeAnalysisService {
                 normalizedLlmContextMode,
                 normalizedMaxPromptChars,
                 normalizedMaxOutputTokens,
-                ""
+                "",
+                null,
+                "",
+                normalizedMaxOutputTokens
         );
         ReplayCaseEntity replayCase = defaultCase(caseId);
         RepositoryContext repositoryContext =
@@ -605,7 +608,13 @@ public class SourceSuspectChangeAnalysisService {
                             normalizedLlmContextMode,
                             normalizedMaxPromptChars,
                             normalizedMaxOutputTokens,
-                            sha256(llmContextJson)
+                            sha256(llmContextJson),
+                            reasoning.parseErrorCategory(),
+                            reasoning.outputPreview(),
+                            firstPositive(
+                                    reasoning.effectiveOutputTokenLimit(),
+                                    normalizedMaxOutputTokens
+                            )
                     );
                 } catch (TimeoutException exception) {
                     log.warn(
@@ -622,7 +631,10 @@ public class SourceSuspectChangeAnalysisService {
                             normalizedLlmContextMode,
                             normalizedMaxPromptChars,
                             normalizedMaxOutputTokens,
-                            companyLlmPhase.promptHash()
+                            companyLlmPhase.promptHash(),
+                            null,
+                            "",
+                            normalizedMaxOutputTokens
                     );
                 } catch (Exception exception) {
                     log.warn(
@@ -640,7 +652,10 @@ public class SourceSuspectChangeAnalysisService {
                             normalizedLlmContextMode,
                             normalizedMaxPromptChars,
                             normalizedMaxOutputTokens,
-                            companyLlmPhase.promptHash()
+                            companyLlmPhase.promptHash(),
+                            "UNKNOWN",
+                            "",
+                            normalizedMaxOutputTokens
                     );
                 } finally {
                     timings.stop("companyLlm");
@@ -767,7 +782,10 @@ public class SourceSuspectChangeAnalysisService {
                 companyLlmPhase.contextMode(),
                 companyLlmPhase.maxPromptChars(),
                 companyLlmPhase.outputTokenLimit(),
-                companyLlmPhase.promptHash()
+                companyLlmPhase.promptHash(),
+                companyLlmPhase.parseErrorCategory(),
+                companyLlmPhase.outputPreview(),
+                companyLlmPhase.effectiveOutputTokenLimit()
         );
     }
 
@@ -1179,6 +1197,10 @@ public class SourceSuspectChangeAnalysisService {
         return "UNAVAILABLE";
     }
 
+    private int firstPositive(int first, int second) {
+        return first > 0 ? first : Math.max(0, second);
+    }
+
     private ReplayCaseEntity defaultCase(UUID caseId) {
         ReplayCaseEntity replayCase = new ReplayCaseEntity();
         replayCase.setId(caseId);
@@ -1437,7 +1459,10 @@ public class SourceSuspectChangeAnalysisService {
             String contextMode,
             int maxPromptChars,
             int outputTokenLimit,
-            String promptHash
+            String promptHash,
+            String parseErrorCategory,
+            String outputPreview,
+            int effectiveOutputTokenLimit
     ) {
         private CompanyLlmPhase withPrompt(
                 int promptChars,
@@ -1451,7 +1476,10 @@ public class SourceSuspectChangeAnalysisService {
                     contextMode,
                     maxPromptChars,
                     outputTokenLimit,
-                    promptHash
+                    promptHash,
+                    parseErrorCategory,
+                    outputPreview,
+                    effectiveOutputTokenLimit
             );
         }
     }

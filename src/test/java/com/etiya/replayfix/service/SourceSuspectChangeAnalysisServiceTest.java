@@ -390,7 +390,7 @@ class SourceSuspectChangeAnalysisServiceTest {
     void minimalInvalidCompanyLlmResponseKeepsDeterministicCandidates()
             throws Exception {
         writeWorkspaceFile();
-        useMockDeterministicPipeline();
+        useExpandedDeterministicPipeline();
         when(companyReasoningService.reason(
                 eq(caseId),
                 anyString(),
@@ -411,7 +411,10 @@ class SourceSuspectChangeAnalysisServiceTest {
                                 .COMPANY_LLM_EMPTY_RESPONSE,
                         CompanySourceReasoningService
                                 .COMPANY_LLM_INVALID_RESPONSE
-                )
+                ),
+                "EMPTY_RESPONSE",
+                "",
+                500
         ));
 
         var response = service.analyze(
@@ -437,8 +440,14 @@ class SourceSuspectChangeAnalysisServiceTest {
         assertThat(response.analysisMode()).isEqualTo("DETERMINISTIC_ONLY");
         assertThat(response.companyLlmStatus()).isEqualTo("ERROR");
         assertThat(response.companyLlmContextMode()).isEqualTo("MINIMAL");
-        assertThat(response.candidateFlowChain()).isNotEmpty();
+        assertThat(response.candidateFlowChain())
+                .extracting("className")
+                .contains("UserController", "UserServiceImpl");
         assertThat(response.suspectChanges()).isNotEmpty();
+        assertThat(response.companyLlmParseErrorCategory())
+                .isEqualTo("EMPTY_RESPONSE");
+        assertThat(response.companyLlmEffectiveOutputTokenLimit())
+                .isEqualTo(500);
         assertThat(response.warnings())
                 .contains(
                         CompanySourceReasoningService
@@ -446,6 +455,76 @@ class SourceSuspectChangeAnalysisServiceTest {
                         CompanySourceReasoningService
                                 .COMPANY_LLM_INVALID_RESPONSE
                 )
+                .doesNotContain(SourceSuspectChangeAnalysisService
+                        .SOURCE_CHANGE_ANALYSIS_FAILED);
+    }
+
+    @Test
+    void invalidMinimalLlmResponseExposesSafeParseDiagnostics()
+            throws Exception {
+        writeWorkspaceFile();
+        useExpandedDeterministicPipeline();
+        String rawPreview = "not json token=secret reasoning_content=private "
+                + "x".repeat(700)
+                + "\n at com.example.Secret.method(Secret.java:42)";
+        when(companyReasoningService.reason(
+                eq(caseId),
+                anyString(),
+                anyInt(),
+                eq("MINIMAL")
+        )).thenReturn(new CompanySourceReasoningService.ReasoningResult(
+                false,
+                List.of(),
+                "HYPOTHESIS",
+                0.0,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                "",
+                List.of(CompanySourceReasoningService
+                        .COMPANY_LLM_INVALID_RESPONSE),
+                "NON_JSON_RESPONSE",
+                rawPreview,
+                1000
+        ));
+
+        var response = service.analyze(
+                caseId,
+                45,
+                20,
+                10,
+                false,
+                true,
+                2_000,
+                256,
+                false,
+                10,
+                8,
+                8,
+                "MINIMAL",
+                12_000,
+                1000
+        );
+
+        assertThat(response.companyLlmStatus()).isEqualTo("ERROR");
+        assertThat(response.companyLlmParseErrorCategory())
+                .isEqualTo("NON_JSON_RESPONSE");
+        assertThat(response.companyLlmOutputPreview()).isNotBlank();
+        assertThat(response.companyLlmOutputPreview())
+                .hasSizeLessThanOrEqualTo(500);
+        assertThat(response.companyLlmOutputPreview())
+                .doesNotContain("reasoning_content")
+                .doesNotContain("secret")
+                .doesNotContain("Secret.java");
+        assertThat(response.companyLlmEffectiveOutputTokenLimit())
+                .isEqualTo(1000);
+        assertThat(response.candidateFlowChain())
+                .extracting("className")
+                .contains("UserController", "UserServiceImpl");
+        assertThat(response.warnings())
+                .contains(CompanySourceReasoningService
+                        .COMPANY_LLM_INVALID_RESPONSE)
                 .doesNotContain(SourceSuspectChangeAnalysisService
                         .SOURCE_CHANGE_ANALYSIS_FAILED);
     }

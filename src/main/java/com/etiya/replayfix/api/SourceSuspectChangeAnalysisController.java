@@ -138,7 +138,10 @@ public class SourceSuspectChangeAnalysisController {
                 response.companyLlmContextMode(),
                 response.companyLlmMaxPromptChars(),
                 response.companyLlmOutputTokenLimit(),
-                response.companyLlmPromptHash()
+                response.companyLlmPromptHash(),
+                response.companyLlmParseErrorCategory(),
+                response.companyLlmOutputPreview(),
+                response.companyLlmEffectiveOutputTokenLimit()
         );
     }
 
@@ -203,7 +206,10 @@ public class SourceSuspectChangeAnalysisController {
                 "COMPACT",
                 12000,
                 500,
-                ""
+                "",
+                null,
+                "",
+                500
         );
     }
 

@@ -31,6 +31,9 @@ public class CompanySourceReasoningService {
             "COMPANY_LLM_TIMEOUT";
     public static final String COMPANY_LLM_EMPTY_RESPONSE =
             "COMPANY_LLM_EMPTY_RESPONSE";
+    public static final String PARSE_EMPTY_RESPONSE = "EMPTY_RESPONSE";
+    public static final String PARSE_NON_JSON_RESPONSE = "NON_JSON_RESPONSE";
+    public static final String PARSE_UNKNOWN = "UNKNOWN";
 
     private final ReplayFixProperties properties;
     private final AiProviderClientFactory aiProviderClientFactory;
@@ -70,9 +73,10 @@ public class CompanySourceReasoningService {
             int maxOutputTokens,
             String contextMode
     ) {
+        int effectiveOutputTokenLimit = Math.max(1, maxOutputTokens);
         if (!properties.getAi().isEnabled()
                 || properties.getAi().getProvider() != AiProviderType.COMPANY_LLM) {
-            return unavailable();
+            return unavailable(effectiveOutputTokenLimit);
         }
 
         try {
@@ -84,7 +88,7 @@ public class CompanySourceReasoningService {
                     userPrompt(contextJson, contextMode),
                     properties.getAi().getCompany().getModel(),
                     properties.getAi().getTemperature(),
-                    Math.max(1, maxOutputTokens),
+                    effectiveOutputTokenLimit,
                     true,
                     Map.of(
                             "requestType", "SOURCE_CHANGE_ANALYSIS",
@@ -95,19 +99,44 @@ public class CompanySourceReasoningService {
             ));
 
             if (!response.success()) {
-                return failed(response.errorCategory(), response.warnings());
+                return failed(
+                        response.errorCategory(),
+                        response.warnings(),
+                        response.parseErrorCategory(),
+                        response.outputPreview(),
+                        firstPositive(
+                                response.effectiveOutputTokenLimit(),
+                                effectiveOutputTokenLimit
+                        )
+                );
             }
             if (response.structuredResponse() == null) {
-                return invalidResponse(response.warnings());
+                return invalidResponse(
+                        response.warnings(),
+                        PARSE_UNKNOWN,
+                        "",
+                        effectiveOutputTokenLimit
+                );
             }
 
-            return parse(response.structuredResponse(), response.warnings());
+            return parse(
+                    response.structuredResponse(),
+                    response.warnings(),
+                    firstPositive(
+                            response.effectiveOutputTokenLimit(),
+                            effectiveOutputTokenLimit
+                    )
+            );
         } catch (Exception ignored) {
-            return unavailable();
+            return unavailable(effectiveOutputTokenLimit);
         }
     }
 
-    private ReasoningResult parse(JsonNode node, List<String> providerWarnings) {
+    private ReasoningResult parse(
+            JsonNode node,
+            List<String> providerWarnings,
+            int effectiveOutputTokenLimit
+    ) {
         List<String> warnings = new ArrayList<>(providerWarnings);
         String status = "HYPOTHESIS";
         double confidence = clamp(node.path("confidence").asDouble(0.0));
@@ -143,15 +172,25 @@ public class CompanySourceReasoningService {
                 strings(node.path("unknowns")),
                 strings(node.path("missingEvidence")),
                 node.path("recommendedNextAction").asText(""),
-                warnings
+                warnings,
+                null,
+                "",
+                effectiveOutputTokenLimit
         );
     }
 
     private ReasoningResult unavailable() {
-        return unavailable(List.of());
+        return unavailable(0);
     }
 
-    private ReasoningResult unavailable(List<String> providerWarnings) {
+    private ReasoningResult unavailable(int effectiveOutputTokenLimit) {
+        return unavailable(List.of(), effectiveOutputTokenLimit);
+    }
+
+    private ReasoningResult unavailable(
+            List<String> providerWarnings,
+            int effectiveOutputTokenLimit
+    ) {
         return new ReasoningResult(
                 false,
                 List.of(),
@@ -162,15 +201,23 @@ public class CompanySourceReasoningService {
                 List.of(),
                 List.of(),
                 "",
-                warningsWith(providerWarnings, COMPANY_LLM_UNAVAILABLE)
+                warningsWith(providerWarnings, COMPANY_LLM_UNAVAILABLE),
+                null,
+                "",
+                effectiveOutputTokenLimit
         );
     }
 
     private ReasoningResult invalidResponse() {
-        return invalidResponse(List.of());
+        return invalidResponse(List.of(), PARSE_UNKNOWN, "", 0);
     }
 
-    private ReasoningResult invalidResponse(List<String> providerWarnings) {
+    private ReasoningResult invalidResponse(
+            List<String> providerWarnings,
+            String parseErrorCategory,
+            String outputPreview,
+            int effectiveOutputTokenLimit
+    ) {
         return new ReasoningResult(
                 false,
                 List.of(),
@@ -181,15 +228,21 @@ public class CompanySourceReasoningService {
                 List.of(),
                 List.of(),
                 "",
-                warningsWith(providerWarnings, COMPANY_LLM_INVALID_RESPONSE)
+                warningsWith(providerWarnings, COMPANY_LLM_INVALID_RESPONSE),
+                normalizedParseErrorCategory(parseErrorCategory),
+                safeOutputPreview(outputPreview),
+                effectiveOutputTokenLimit
         );
     }
 
     private ReasoningResult timeout() {
-        return timeout(List.of());
+        return timeout(List.of(), 0);
     }
 
-    private ReasoningResult timeout(List<String> providerWarnings) {
+    private ReasoningResult timeout(
+            List<String> providerWarnings,
+            int effectiveOutputTokenLimit
+    ) {
         return new ReasoningResult(
                 false,
                 List.of(),
@@ -200,36 +253,47 @@ public class CompanySourceReasoningService {
                 List.of(),
                 List.of(),
                 "",
-                warningsWith(providerWarnings, COMPANY_LLM_TIMEOUT)
+                warningsWith(providerWarnings, COMPANY_LLM_TIMEOUT),
+                null,
+                "",
+                effectiveOutputTokenLimit
         );
     }
 
     private ReasoningResult failed(String errorCategory) {
-        return failed(errorCategory, List.of());
+        return failed(errorCategory, List.of(), null, "", 0);
     }
 
     private ReasoningResult failed(
             String errorCategory,
-            List<String> providerWarnings
+            List<String> providerWarnings,
+            String parseErrorCategory,
+            String outputPreview,
+            int effectiveOutputTokenLimit
     ) {
         if ("INVALID_JSON".equalsIgnoreCase(errorCategory)) {
-            return invalidResponse(providerWarnings);
+            return invalidResponse(
+                    providerWarnings,
+                    firstNonBlank(parseErrorCategory, PARSE_NON_JSON_RESPONSE),
+                    outputPreview,
+                    effectiveOutputTokenLimit
+            );
         }
         if ("EMPTY_RESPONSE".equalsIgnoreCase(errorCategory)) {
             return invalidResponse(warningsWith(
                     providerWarnings,
                     COMPANY_LLM_EMPTY_RESPONSE
-            ));
+            ), PARSE_EMPTY_RESPONSE, outputPreview, effectiveOutputTokenLimit);
         }
         if ("TIMEOUT".equalsIgnoreCase(errorCategory)) {
-            return timeout(providerWarnings);
+            return timeout(providerWarnings, effectiveOutputTokenLimit);
         }
         if (errorCategory != null
                 && errorCategory.toUpperCase(java.util.Locale.ROOT)
                 .startsWith("HTTP_503")) {
-            return unavailable(providerWarnings);
+            return unavailable(providerWarnings, effectiveOutputTokenLimit);
         }
-        return unavailable(providerWarnings);
+        return unavailable(providerWarnings, effectiveOutputTokenLimit);
     }
 
     private List<String> warningsWith(
@@ -248,6 +312,43 @@ public class CompanySourceReasoningService {
             }
         }
         return List.copyOf(warnings);
+    }
+
+    private String normalizedParseErrorCategory(String value) {
+        if (value == null || value.isBlank()) {
+            return PARSE_UNKNOWN;
+        }
+        return switch (value) {
+            case "EMPTY_RESPONSE",
+                    "NON_JSON_RESPONSE",
+                    "SCHEMA_MISMATCH",
+                    "JSON_EXTRACTION_FAILED",
+                    "UNKNOWN" -> value;
+            default -> PARSE_UNKNOWN;
+        };
+    }
+
+    private String safeOutputPreview(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        String sanitized = value
+                .replaceAll("(?i)(\"(?:authorization|cookie|token|password)\"\\s*:\\s*\")([^\"]+)(\")", "$1[REDACTED]$3")
+                .replaceAll("(?i)(authorization|cookie|token|password)\\s*[:=]\\s*(bearer\\s+)?[^\\s,;]+", "[REDACTED]")
+                .replaceAll("(?im)^\\s*at\\s+[\\w.$]+\\([^\\r\\n]*\\)\\s*$", "")
+                .replaceAll("(?is)reasoning_content\\s*[:=].*", "[REDACTED_REASONING_CONTENT]")
+                .trim();
+        return sanitized.length() <= 500
+                ? sanitized
+                : sanitized.substring(0, 500);
+    }
+
+    private int firstPositive(int first, int second) {
+        return first > 0 ? first : Math.max(0, second);
+    }
+
+    private String firstNonBlank(String first, String second) {
+        return first == null || first.isBlank() ? second : first;
     }
 
     private String systemPrompt(String contextMode) {
@@ -356,7 +457,38 @@ public class CompanySourceReasoningService {
             List<String> unknowns,
             List<String> missingEvidence,
             String recommendedNextAction,
-            List<String> warnings
+            List<String> warnings,
+            String parseErrorCategory,
+            String outputPreview,
+            int effectiveOutputTokenLimit
     ) {
+        public ReasoningResult(
+                boolean llmUsed,
+                List<SourceSuspectChange> suspectChanges,
+                String status,
+                double confidence,
+                List<String> facts,
+                List<String> inferences,
+                List<String> unknowns,
+                List<String> missingEvidence,
+                String recommendedNextAction,
+                List<String> warnings
+        ) {
+            this(
+                    llmUsed,
+                    suspectChanges,
+                    status,
+                    confidence,
+                    facts,
+                    inferences,
+                    unknowns,
+                    missingEvidence,
+                    recommendedNextAction,
+                    warnings,
+                    null,
+                    "",
+                    0
+            );
+        }
     }
 }

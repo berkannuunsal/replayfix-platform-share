@@ -45,7 +45,10 @@ public record SourceSuspectChangeAnalysisResponse(
         String companyLlmContextMode,
         int companyLlmMaxPromptChars,
         int companyLlmOutputTokenLimit,
-        String companyLlmPromptHash
+        String companyLlmPromptHash,
+        String companyLlmParseErrorCategory,
+        String companyLlmOutputPreview,
+        int companyLlmEffectiveOutputTokenLimit
 ) {
     public SourceSuspectChangeAnalysisResponse(
             UUID caseId,
@@ -109,7 +112,10 @@ public record SourceSuspectChangeAnalysisResponse(
                 "COMPACT",
                 12000,
                 500,
-                ""
+                "",
+                null,
+                "",
+                500
         );
     }
 
@@ -178,7 +184,10 @@ public record SourceSuspectChangeAnalysisResponse(
                 "COMPACT",
                 12000,
                 500,
-                ""
+                "",
+                null,
+                "",
+                500
         );
     }
 
@@ -230,5 +239,47 @@ public record SourceSuspectChangeAnalysisResponse(
         companyLlmPromptHash = companyLlmPromptHash == null
                 ? ""
                 : companyLlmPromptHash;
+        companyLlmParseErrorCategory = normalizedParseErrorCategory(
+                companyLlmParseErrorCategory
+        );
+        if ("ERROR".equals(companyLlmStatus)
+                && companyLlmParseErrorCategory == null) {
+            companyLlmParseErrorCategory = "UNKNOWN";
+        }
+        companyLlmOutputPreview = safeCompanyLlmOutputPreview(
+                companyLlmOutputPreview
+        );
+        if (companyLlmEffectiveOutputTokenLimit <= 0) {
+            companyLlmEffectiveOutputTokenLimit = companyLlmOutputTokenLimit;
+        }
+    }
+
+    private static String normalizedParseErrorCategory(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return switch (value) {
+            case "EMPTY_RESPONSE",
+                    "NON_JSON_RESPONSE",
+                    "SCHEMA_MISMATCH",
+                    "JSON_EXTRACTION_FAILED",
+                    "UNKNOWN" -> value;
+            default -> "UNKNOWN";
+        };
+    }
+
+    private static String safeCompanyLlmOutputPreview(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        String sanitized = value
+                .replaceAll("(?i)(\"(?:authorization|cookie|token|password)\"\\s*:\\s*\")([^\"]+)(\")", "$1[REDACTED]$3")
+                .replaceAll("(?i)(authorization|cookie|token|password)\\s*[:=]\\s*(bearer\\s+)?[^\\s,;]+", "[REDACTED]")
+                .replaceAll("(?im)^\\s*at\\s+[\\w.$]+\\([^\\r\\n]*\\)\\s*$", "")
+                .replaceAll("(?is)reasoning_content\\s*[:=].*", "[REDACTED_REASONING_CONTENT]")
+                .trim();
+        return sanitized.length() <= 500
+                ? sanitized
+                : sanitized.substring(0, 500);
     }
 }

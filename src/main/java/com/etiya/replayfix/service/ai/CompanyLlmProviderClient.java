@@ -34,6 +34,11 @@ public class CompanyLlmProviderClient implements AiProviderClient {
             "COMPANY_LLM_OUTPUT_TRUNCATED";
     static final String COMPANY_LLM_EMPTY_RESPONSE =
             "COMPANY_LLM_EMPTY_RESPONSE";
+    static final String PARSE_EMPTY_RESPONSE = "EMPTY_RESPONSE";
+    static final String PARSE_NON_JSON_RESPONSE = "NON_JSON_RESPONSE";
+    static final String PARSE_JSON_EXTRACTION_FAILED =
+            "JSON_EXTRACTION_FAILED";
+    static final String PARSE_UNKNOWN = "UNKNOWN";
 
     private final ReplayFixProperties properties;
     private final EvidenceRepository evidenceRepository;
@@ -204,7 +209,20 @@ public class CompanyLlmProviderClient implements AiProviderClient {
                     startedAt,
                     "EMPTY_RESPONSE",
                     "Company LLM response content is empty",
-                    exception.warnings()
+                    exception.warnings(),
+                    PARSE_EMPTY_RESPONSE,
+                    "",
+                    request.maxOutputChars()
+            );
+        } catch (CompanyLlmParseException exception) {
+            return failedResponse(
+                    startedAt,
+                    "INVALID_JSON",
+                    sanitizeError(exception.getMessage()),
+                    List.of(),
+                    exception.parseErrorCategory(),
+                    exception.outputPreview(),
+                    request.maxOutputChars()
             );
         } catch (Exception exception) {
             return failedResponse(
@@ -311,8 +329,12 @@ public class CompanyLlmProviderClient implements AiProviderClient {
         }
 
         String content = contentNode.asText("").trim();
+        String contentSource = content.isBlank() ? "" : "content";
         if (content.isBlank()) {
             content = choice.path("text").asText("").trim();
+            if (!content.isBlank()) {
+                contentSource = "text";
+            }
         }
         if (content.isBlank()) {
             content = extractJsonLike(
@@ -321,6 +343,9 @@ public class CompanyLlmProviderClient implements AiProviderClient {
                             .path("reasoning_content")
                             .asText("")
             );
+            if (!content.isBlank()) {
+                contentSource = "reasoning_content";
+            }
         }
         if (content.isBlank()) {
             JsonNode error = response.path("error");
@@ -350,8 +375,14 @@ public class CompanyLlmProviderClient implements AiProviderClient {
             }
             return parsed;
         } catch (Exception exception) {
-            throw new IllegalStateException(
+            throw new CompanyLlmParseException(
                     "Company LLM response is not valid JSON",
+                    "reasoning_content".equals(contentSource)
+                            ? PARSE_JSON_EXTRACTION_FAILED
+                            : PARSE_NON_JSON_RESPONSE,
+                    "reasoning_content".equals(contentSource)
+                            ? ""
+                            : safeOutputPreview(content),
                     exception
             );
         }
@@ -499,6 +530,26 @@ public class CompanyLlmProviderClient implements AiProviderClient {
             String errorMessage,
             List<String> warnings
     ) {
+        return failedResponse(
+                startedAt,
+                errorCategory,
+                errorMessage,
+                warnings,
+                parseErrorCategoryFrom(errorCategory),
+                "",
+                0
+        );
+    }
+
+    private AiGenerationResponse failedResponse(
+            long startedAt,
+            String errorCategory,
+            String errorMessage,
+            List<String> warnings,
+            String parseErrorCategory,
+            String outputPreview,
+            int effectiveOutputTokenLimit
+    ) {
         return new AiGenerationResponse(
                 false,
                 PROVIDER,
@@ -511,8 +562,21 @@ public class CompanyLlmProviderClient implements AiProviderClient {
                 null,
                 warnings,
                 errorCategory,
-                errorMessage
+                errorMessage,
+                parseErrorCategory,
+                safeOutputPreview(outputPreview),
+                Math.max(0, effectiveOutputTokenLimit)
         );
+    }
+
+    private String parseErrorCategoryFrom(String errorCategory) {
+        if ("EMPTY_RESPONSE".equalsIgnoreCase(errorCategory)) {
+            return PARSE_EMPTY_RESPONSE;
+        }
+        if ("INVALID_JSON".equalsIgnoreCase(errorCategory)) {
+            return PARSE_NON_JSON_RESPONSE;
+        }
+        return null;
     }
 
     private AiConnectivityResult connectivityResult(
@@ -600,6 +664,13 @@ public class CompanyLlmProviderClient implements AiProviderClient {
     private String sanitizeError(String message) {
         String sanitized = evidenceSanitizer.sanitize(firstNonBlank(message, ""));
         return truncate(sanitized, 500);
+    }
+
+    private String safeOutputPreview(String output) {
+        String sanitized = evidenceSanitizer.sanitize(firstNonBlank(output, ""));
+        sanitized = sanitized.replaceAll("(?im)^\\s*at\\s+[\\w.$]+\\([^\\r\\n]*\\)\\s*$", "");
+        sanitized = sanitized.replaceAll("(?is)reasoning_content\\s*[:=].*", "[REDACTED_REASONING_CONTENT]");
+        return truncate(sanitized.trim(), 500);
     }
 
     private List<String> mergeStrings(JsonNode first, JsonNode second) {
@@ -740,6 +811,32 @@ public class CompanyLlmProviderClient implements AiProviderClient {
                 warnings.add(COMPANY_LLM_OUTPUT_TRUNCATED);
             }
             return warnings;
+        }
+    }
+
+    private static class CompanyLlmParseException extends RuntimeException {
+        private final String parseErrorCategory;
+        private final String outputPreview;
+
+        private CompanyLlmParseException(
+                String message,
+                String parseErrorCategory,
+                String outputPreview,
+                Throwable cause
+        ) {
+            super(message, cause);
+            this.parseErrorCategory = parseErrorCategory == null
+                    ? PARSE_UNKNOWN
+                    : parseErrorCategory;
+            this.outputPreview = outputPreview == null ? "" : outputPreview;
+        }
+
+        private String parseErrorCategory() {
+            return parseErrorCategory;
+        }
+
+        private String outputPreview() {
+            return outputPreview;
         }
     }
 }

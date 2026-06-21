@@ -106,6 +106,8 @@ class CompanySourceReasoningServiceTest {
         assertThat(result.warnings())
                 .contains(CompanySourceReasoningService
                         .COMPANY_LLM_INVALID_RESPONSE);
+        assertThat(result.parseErrorCategory())
+                .isEqualTo("NON_JSON_RESPONSE");
     }
 
     @Test
@@ -146,6 +148,44 @@ class CompanySourceReasoningServiceTest {
                 )
                 .doesNotContain(CompanySourceReasoningService
                         .COMPANY_LLM_UNAVAILABLE);
+        assertThat(result.parseErrorCategory()).isEqualTo("EMPTY_RESPONSE");
+        assertThat(result.effectiveOutputTokenLimit()).isEqualTo(500);
+    }
+
+    @Test
+    void invalidResponseCarriesSanitizedOutputPreviewAndEffectiveLimit() {
+        when(provider.generate(any())).thenReturn(new AiGenerationResponse(
+                false,
+                "COMPANY_LLM",
+                "AI-Coder-PR-Review",
+                null,
+                "error",
+                10,
+                0,
+                0,
+                null,
+                List.of(),
+                "INVALID_JSON",
+                "not valid JSON",
+                "NON_JSON_RESPONSE",
+                "not json token=secret-value " + "x".repeat(700),
+                1000
+        ));
+
+        var result = service.reason(
+                UUID.randomUUID(),
+                "{\"contextMode\":\"MINIMAL\"}",
+                1000,
+                "MINIMAL"
+        );
+
+        assertThat(result.llmUsed()).isFalse();
+        assertThat(result.parseErrorCategory())
+                .isEqualTo("NON_JSON_RESPONSE");
+        assertThat(result.outputPreview()).contains("not json");
+        assertThat(result.outputPreview()).doesNotContain("secret-value");
+        assertThat(result.outputPreview()).hasSizeLessThanOrEqualTo(500);
+        assertThat(result.effectiveOutputTokenLimit()).isEqualTo(1000);
     }
 
     @Test
