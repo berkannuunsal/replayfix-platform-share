@@ -109,6 +109,46 @@ class CompanySourceReasoningServiceTest {
     }
 
     @Test
+    void emptyMinimalResponseReturnsInvalidAndEmptyResponseWarnings() {
+        when(provider.generate(any())).thenReturn(new AiGenerationResponse(
+                false,
+                "COMPANY_LLM",
+                "AI-Coder-PR-Review",
+                null,
+                "length",
+                10,
+                0,
+                0,
+                null,
+                List.of(
+                        CompanySourceReasoningService.COMPANY_LLM_EMPTY_RESPONSE,
+                        "COMPANY_LLM_OUTPUT_TRUNCATED"
+                ),
+                "EMPTY_RESPONSE",
+                "empty response"
+        ));
+
+        var result = service.reason(
+                UUID.randomUUID(),
+                "{\"contextMode\":\"MINIMAL\"}",
+                500,
+                "MINIMAL"
+        );
+
+        assertThat(result.llmUsed()).isFalse();
+        assertThat(result.warnings())
+                .contains(
+                        CompanySourceReasoningService
+                                .COMPANY_LLM_EMPTY_RESPONSE,
+                        CompanySourceReasoningService
+                                .COMPANY_LLM_INVALID_RESPONSE,
+                        "COMPANY_LLM_OUTPUT_TRUNCATED"
+                )
+                .doesNotContain(CompanySourceReasoningService
+                        .COMPANY_LLM_UNAVAILABLE);
+    }
+
+    @Test
     void http503CategoryReturnsUnavailableWarning() {
         when(provider.generate(any())).thenReturn(new AiGenerationResponse(
                 false,

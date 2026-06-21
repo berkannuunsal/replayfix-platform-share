@@ -14,8 +14,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -27,6 +29,8 @@ public class CompanySourceReasoningService {
             "COMPANY_LLM_INVALID_RESPONSE";
     public static final String COMPANY_LLM_TIMEOUT =
             "COMPANY_LLM_TIMEOUT";
+    public static final String COMPANY_LLM_EMPTY_RESPONSE =
+            "COMPANY_LLM_EMPTY_RESPONSE";
 
     private final ReplayFixProperties properties;
     private final AiProviderClientFactory aiProviderClientFactory;
@@ -91,10 +95,10 @@ public class CompanySourceReasoningService {
             ));
 
             if (!response.success()) {
-                return failed(response.errorCategory());
+                return failed(response.errorCategory(), response.warnings());
             }
             if (response.structuredResponse() == null) {
-                return invalidResponse();
+                return invalidResponse(response.warnings());
             }
 
             return parse(response.structuredResponse(), response.warnings());
@@ -144,6 +148,10 @@ public class CompanySourceReasoningService {
     }
 
     private ReasoningResult unavailable() {
+        return unavailable(List.of());
+    }
+
+    private ReasoningResult unavailable(List<String> providerWarnings) {
         return new ReasoningResult(
                 false,
                 List.of(),
@@ -154,11 +162,15 @@ public class CompanySourceReasoningService {
                 List.of(),
                 List.of(),
                 "",
-                List.of(COMPANY_LLM_UNAVAILABLE)
+                warningsWith(providerWarnings, COMPANY_LLM_UNAVAILABLE)
         );
     }
 
     private ReasoningResult invalidResponse() {
+        return invalidResponse(List.of());
+    }
+
+    private ReasoningResult invalidResponse(List<String> providerWarnings) {
         return new ReasoningResult(
                 false,
                 List.of(),
@@ -169,11 +181,15 @@ public class CompanySourceReasoningService {
                 List.of(),
                 List.of(),
                 "",
-                List.of(COMPANY_LLM_INVALID_RESPONSE)
+                warningsWith(providerWarnings, COMPANY_LLM_INVALID_RESPONSE)
         );
     }
 
     private ReasoningResult timeout() {
+        return timeout(List.of());
+    }
+
+    private ReasoningResult timeout(List<String> providerWarnings) {
         return new ReasoningResult(
                 false,
                 List.of(),
@@ -184,23 +200,54 @@ public class CompanySourceReasoningService {
                 List.of(),
                 List.of(),
                 "",
-                List.of(COMPANY_LLM_TIMEOUT)
+                warningsWith(providerWarnings, COMPANY_LLM_TIMEOUT)
         );
     }
 
     private ReasoningResult failed(String errorCategory) {
+        return failed(errorCategory, List.of());
+    }
+
+    private ReasoningResult failed(
+            String errorCategory,
+            List<String> providerWarnings
+    ) {
         if ("INVALID_JSON".equalsIgnoreCase(errorCategory)) {
-            return invalidResponse();
+            return invalidResponse(providerWarnings);
+        }
+        if ("EMPTY_RESPONSE".equalsIgnoreCase(errorCategory)) {
+            return invalidResponse(warningsWith(
+                    providerWarnings,
+                    COMPANY_LLM_EMPTY_RESPONSE
+            ));
         }
         if ("TIMEOUT".equalsIgnoreCase(errorCategory)) {
-            return timeout();
+            return timeout(providerWarnings);
         }
         if (errorCategory != null
                 && errorCategory.toUpperCase(java.util.Locale.ROOT)
                 .startsWith("HTTP_503")) {
-            return unavailable();
+            return unavailable(providerWarnings);
         }
-        return unavailable();
+        return unavailable(providerWarnings);
+    }
+
+    private List<String> warningsWith(
+            List<String> providerWarnings,
+            String... additionalWarnings
+    ) {
+        Set<String> warnings = new LinkedHashSet<>();
+        if (providerWarnings != null) {
+            providerWarnings.stream()
+                    .filter(warning -> warning != null && !warning.isBlank())
+                    .forEach(warnings::add);
+        }
+        for (String warning : additionalWarnings) {
+            if (warning != null && !warning.isBlank()) {
+                warnings.add(warning);
+            }
+        }
+        return List.copyOf(warnings);
     }
 
     private String systemPrompt(String contextMode) {

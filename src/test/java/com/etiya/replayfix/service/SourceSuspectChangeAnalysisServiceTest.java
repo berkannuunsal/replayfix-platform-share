@@ -380,8 +380,74 @@ class SourceSuspectChangeAnalysisServiceTest {
         assertThat(response.companyLlmStatus()).isEqualTo("ERROR");
         assertThat(response.warnings())
                 .contains(CompanySourceReasoningService
-                        .COMPANY_LLM_INVALID_RESPONSE);
+                        .COMPANY_LLM_INVALID_RESPONSE)
+                .doesNotContain(SourceSuspectChangeAnalysisService
+                        .SOURCE_CHANGE_ANALYSIS_FAILED);
         assertThat(response.candidateFlowChain()).isNotEmpty();
+    }
+
+    @Test
+    void minimalInvalidCompanyLlmResponseKeepsDeterministicCandidates()
+            throws Exception {
+        writeWorkspaceFile();
+        useMockDeterministicPipeline();
+        when(companyReasoningService.reason(
+                eq(caseId),
+                anyString(),
+                anyInt(),
+                eq("MINIMAL")
+        )).thenReturn(new CompanySourceReasoningService.ReasoningResult(
+                false,
+                List.of(),
+                "HYPOTHESIS",
+                0.0,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                "",
+                List.of(
+                        CompanySourceReasoningService
+                                .COMPANY_LLM_EMPTY_RESPONSE,
+                        CompanySourceReasoningService
+                                .COMPANY_LLM_INVALID_RESPONSE
+                )
+        ));
+
+        var response = service.analyze(
+                caseId,
+                45,
+                20,
+                10,
+                false,
+                true,
+                2_000,
+                256,
+                false,
+                10,
+                8,
+                8,
+                "MINIMAL",
+                12_000,
+                500
+        );
+
+        assertThat(response.status()).isEqualTo("HYPOTHESIS");
+        assertThat(response.llmUsed()).isFalse();
+        assertThat(response.analysisMode()).isEqualTo("DETERMINISTIC_ONLY");
+        assertThat(response.companyLlmStatus()).isEqualTo("ERROR");
+        assertThat(response.companyLlmContextMode()).isEqualTo("MINIMAL");
+        assertThat(response.candidateFlowChain()).isNotEmpty();
+        assertThat(response.suspectChanges()).isNotEmpty();
+        assertThat(response.warnings())
+                .contains(
+                        CompanySourceReasoningService
+                                .COMPANY_LLM_EMPTY_RESPONSE,
+                        CompanySourceReasoningService
+                                .COMPANY_LLM_INVALID_RESPONSE
+                )
+                .doesNotContain(SourceSuspectChangeAnalysisService
+                        .SOURCE_CHANGE_ANALYSIS_FAILED);
     }
 
     @Test
