@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.context.request.async.DeferredResult;
 
 import java.nio.file.Path;
 import java.time.Duration;
@@ -62,7 +63,7 @@ class SourceSuspectChangeAnalysisControllerTest {
     }
 
     @Test
-    void endpointWorksWithCompanyLlmDisabled() {
+    void endpointWorksWithCompanyLlmDisabled() throws Exception {
         UUID caseId = UUID.randomUUID();
         SourceSuspectChangeAnalysisService service =
                 mock(SourceSuspectChangeAnalysisService.class);
@@ -121,7 +122,7 @@ class SourceSuspectChangeAnalysisControllerTest {
                 .thenReturn(response);
 
         SourceSuspectChangeAnalysisResponse actual =
-                controller.analyze(
+                await(controller.analyze(
                         caseId,
                         45,
                         20,
@@ -137,14 +138,14 @@ class SourceSuspectChangeAnalysisControllerTest {
                         "COMPACT",
                         12_000,
                         500
-                ).block();
+                ));
 
         assertThat(actual.status()).isEqualTo("HYPOTHESIS");
         assertThat(actual.llmUsed()).isFalse();
     }
 
     @Test
-    void endpointReturnsCompanyLlmUnavailableWarning() {
+    void endpointReturnsCompanyLlmUnavailableWarning() throws Exception {
         UUID caseId = UUID.randomUUID();
         SourceSuspectChangeAnalysisService service =
                 mock(SourceSuspectChangeAnalysisService.class);
@@ -203,7 +204,7 @@ class SourceSuspectChangeAnalysisControllerTest {
                 .thenReturn(response);
 
         SourceSuspectChangeAnalysisResponse actual =
-                controller.analyze(
+                await(controller.analyze(
                         caseId,
                         45,
                         20,
@@ -219,11 +220,118 @@ class SourceSuspectChangeAnalysisControllerTest {
                         "COMPACT",
                         12_000,
                         500
-                ).block();
+                ));
 
         assertThat(actual.llmUsed()).isFalse();
         assertThat(actual.status()).isEqualTo("HYPOTHESIS");
         assertThat(actual.warnings()).contains("COMPANY_LLM_UNAVAILABLE");
+    }
+
+    @Test
+    void controllerUsesServletAsyncTimeoutForLongCompanyLlmRequest()
+            throws Exception {
+        UUID caseId = UUID.randomUUID();
+        SourceSuspectChangeAnalysisService service =
+                mock(SourceSuspectChangeAnalysisService.class);
+        when(service.analyze(
+                eq(caseId),
+                anyInt(),
+                anyInt(),
+                anyInt(),
+                anyBoolean(),
+                anyBoolean(),
+                anyInt(),
+                anyInt(),
+                anyBoolean(),
+                anyInt(),
+                anyInt(),
+                anyInt(),
+                anyString(),
+                anyInt(),
+                anyInt()
+        )).thenAnswer(invocation -> {
+            Thread.sleep(200);
+            return emptyResponse(caseId);
+        });
+
+        MockMvc mockMvc = MockMvcBuilders
+                .standaloneSetup(new SourceSuspectChangeAnalysisController(service))
+                .build();
+
+        MvcResult result = mockMvc.perform(get(
+                        "/api/v1/cases/{caseId}/source/suspect-change-analysis",
+                        caseId
+                )
+                        .param("sourceDiscoveryTimeoutSeconds", "10")
+                        .param("gitHistoryTimeoutSeconds", "8")
+                        .param("companyLlmTimeoutSeconds", "45")
+                        .param("useCompanyLlm", "true")
+                        .param("llmContextMode", "MINIMAL")
+                        .param("companyLlmMaxOutputTokens", "3000"))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        assertThat(result.getRequest().getAsyncContext().getTimeout())
+                .isEqualTo(78_000L);
+
+        mockMvc.perform(asyncDispatch(result))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("HYPOTHESIS"));
+    }
+
+    @Test
+    void asyncRequestTimeoutExceptionDoesNotReachGlobalHandler()
+            throws Exception {
+        UUID caseId = UUID.randomUUID();
+        SourceSuspectChangeAnalysisService service =
+                mock(SourceSuspectChangeAnalysisService.class);
+        when(service.analyze(
+                eq(caseId),
+                anyInt(),
+                anyInt(),
+                anyInt(),
+                anyBoolean(),
+                anyBoolean(),
+                anyInt(),
+                anyInt(),
+                anyBoolean(),
+                anyInt(),
+                anyInt(),
+                anyInt(),
+                anyString(),
+                anyInt(),
+                anyInt()
+        )).thenThrow(new org.springframework.web.context.request.async
+                .AsyncRequestTimeoutException());
+
+        MockMvc mockMvc = MockMvcBuilders
+                .standaloneSetup(new SourceSuspectChangeAnalysisController(service))
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .build();
+
+        MvcResult result = mockMvc.perform(get(
+                        "/api/v1/cases/{caseId}/source/suspect-change-analysis",
+                        caseId
+                )
+                        .param("sourceDiscoveryTimeoutSeconds", "10")
+                        .param("gitHistoryTimeoutSeconds", "8")
+                        .param("companyLlmTimeoutSeconds", "45"))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        mockMvc.perform(asyncDispatch(result))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("HYPOTHESIS"))
+                .andExpect(jsonPath("$.warnings[0]").value(
+                        SourceSuspectChangeAnalysisService
+                                .SOURCE_CHANGE_ANALYSIS_TIMEOUT
+                ))
+                .andExpect(content().string(not(containsString(
+                        "ReplayFix operation failed"
+                ))))
+                .andExpect(content().string(not(containsString(
+                        "AsyncRequestTimeoutException"
+                ))));
     }
 
     @Test
@@ -304,7 +412,7 @@ class SourceSuspectChangeAnalysisControllerTest {
                 new SourceSuspectChangeAnalysisController(service);
 
         SourceSuspectChangeAnalysisResponse response =
-                controller.analyze(
+                await(controller.analyze(
                         caseId,
                         45,
                         20,
@@ -320,7 +428,7 @@ class SourceSuspectChangeAnalysisControllerTest {
                         "COMPACT",
                         12_000,
                         500
-                ).block();
+                ));
         String json = objectMapper.writeValueAsString(response);
 
         assertThat(json).contains("\"status\":\"HYPOTHESIS\"");
@@ -643,5 +751,17 @@ class SourceSuspectChangeAnalysisControllerTest {
         timings.put("companyLlm", 0L);
         timings.put("total", 6L);
         return timings;
+    }
+
+    private SourceSuspectChangeAnalysisResponse await(
+            DeferredResult<SourceSuspectChangeAnalysisResponse> result
+    ) throws Exception {
+        for (int i = 0; i < 100; i++) {
+            if (result.hasResult()) {
+                return (SourceSuspectChangeAnalysisResponse) result.getResult();
+            }
+            Thread.sleep(20);
+        }
+        throw new AssertionError("DeferredResult did not complete");
     }
 }

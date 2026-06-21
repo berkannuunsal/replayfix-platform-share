@@ -49,6 +49,8 @@ public class SourceSuspectChangeAnalysisService {
 
     public static final String SOURCE_CHANGE_ANALYSIS_FAILED =
             "SOURCE_CHANGE_ANALYSIS_FAILED";
+    public static final String SOURCE_CHANGE_ANALYSIS_TIMEOUT =
+            "SOURCE_CHANGE_ANALYSIS_TIMEOUT";
     public static final String SOURCE_DISCOVERY_FAILED =
             "SOURCE_DISCOVERY_FAILED";
     public static final String SOURCE_DISCOVERY_TIMEOUT =

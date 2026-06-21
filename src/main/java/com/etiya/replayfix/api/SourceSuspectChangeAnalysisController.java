@@ -10,6 +10,8 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.context.request.async.AsyncRequestTimeoutException;
+import org.springframework.web.context.request.async.DeferredResult;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
@@ -18,6 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeoutException;
 
 @RestController
 @RequestMapping("/api/v1/cases")
@@ -39,7 +42,7 @@ public class SourceSuspectChangeAnalysisController {
     }
 
     @GetMapping("/{caseId}/source/suspect-change-analysis")
-    public Mono<SourceSuspectChangeAnalysisResponse> analyze(
+    public DeferredResult<SourceSuspectChangeAnalysisResponse> analyze(
             @PathVariable UUID caseId,
             @RequestParam(defaultValue = "45") int lookbackDays,
             @RequestParam(defaultValue = "20") int maxCandidates,
@@ -61,7 +64,33 @@ public class SourceSuspectChangeAnalysisController {
                 gitHistoryTimeoutSeconds,
                 companyLlmTimeoutSeconds
         );
-        return Mono.fromCallable(() -> service.analyze(
+        DeferredResult<SourceSuspectChangeAnalysisResponse> result =
+                new DeferredResult<>(endpointTimeout.toMillis());
+        result.onTimeout(() -> {
+            String endpointPath = "/api/v1/cases/"
+                    + caseId
+                    + "/source/suspect-change-analysis";
+            log.warn(
+                    "Source suspect change analysis servlet async timeout endpointPath={} caseId={} timeoutMs={}",
+                    endpointPath,
+                    caseId,
+                    endpointTimeout.toMillis()
+            );
+            result.setResult(fallbackResponse(
+                    caseId,
+                    lookbackDays,
+                    "endpoint",
+                    endpointTimeout,
+                    List.of(SourceSuspectChangeAnalysisService
+                            .SOURCE_CHANGE_ANALYSIS_TIMEOUT),
+                    Math.max(1, companyLlmTimeoutSeconds),
+                    useCompanyLlm ? "TIMEOUT" : "NOT_REQUESTED",
+                    llmContextMode,
+                    Math.max(1, companyLlmMaxPromptChars),
+                    normalizedOutputTokenLimit(companyLlmMaxOutputTokens)
+            ));
+        });
+        Mono.fromCallable(() -> service.analyze(
                         caseId,
                         lookbackDays,
                         maxCandidates,
@@ -81,7 +110,9 @@ public class SourceSuspectChangeAnalysisController {
                 .subscribeOn(Schedulers.boundedElastic())
                 .map(this::jsonSafeResponse)
                 .timeout(endpointTimeout)
-                .onErrorResume(exception -> {
+                .subscribe(result::setResult, exception -> {
+                    boolean endpointTimeoutFailure =
+                            isEndpointTimeout(exception);
                     String endpointPath = "/api/v1/cases/"
                             + caseId
                             + "/source/suspect-change-analysis";
@@ -93,13 +124,33 @@ public class SourceSuspectChangeAnalysisController {
                             exception.getMessage(),
                             exception
                     );
-                    return Mono.just(fallbackResponse(
+                    result.setResult(fallbackResponse(
                             caseId,
                             lookbackDays,
                             "endpoint",
-                            endpointTimeout
+                            endpointTimeout,
+                            List.of(endpointTimeoutFailure
+                                    ? SourceSuspectChangeAnalysisService
+                                            .SOURCE_CHANGE_ANALYSIS_TIMEOUT
+                                    : SourceSuspectChangeAnalysisService
+                                            .SOURCE_CHANGE_ANALYSIS_FAILED),
+                            Math.max(1, companyLlmTimeoutSeconds),
+                            endpointTimeoutFailure
+                                    ? "TIMEOUT"
+                                    : "NOT_REQUESTED",
+                            llmContextMode,
+                            Math.max(1, companyLlmMaxPromptChars),
+                            normalizedOutputTokenLimit(
+                                    companyLlmMaxOutputTokens
+                            )
                     ));
                 });
+        return result;
+    }
+
+    private boolean isEndpointTimeout(Throwable exception) {
+        return exception instanceof TimeoutException
+                || exception instanceof AsyncRequestTimeoutException;
     }
 
     static Duration endpointTimeout(
@@ -174,8 +225,16 @@ public class SourceSuspectChangeAnalysisController {
             UUID caseId,
             int lookbackDays,
             String currentPhaseOnTimeout,
-            Duration endpointTimeout
+            Duration endpointTimeout,
+            List<String> warnings,
+            int companyLlmTimeoutSeconds,
+            String companyLlmStatus,
+            String llmContextMode,
+            int companyLlmMaxPromptChars,
+            int companyLlmMaxOutputTokens
     ) {
+        int normalizedMaxOutputTokens =
+                normalizedOutputTokenLimit(companyLlmMaxOutputTokens);
         return new SourceSuspectChangeAnalysisResponse(
                 caseId,
                 "",
@@ -207,8 +266,7 @@ public class SourceSuspectChangeAnalysisController {
                 List.of(),
                 "HYPOTHESIS",
                 0.0,
-                List.of(SourceSuspectChangeAnalysisService
-                        .SOURCE_CHANGE_ANALYSIS_FAILED),
+                warnings,
                 "DETERMINISTIC_ONLY",
                 true,
                 fallbackTimings(endpointTimeout),
@@ -225,19 +283,30 @@ public class SourceSuspectChangeAnalysisController {
                 List.of(),
                 List.of(),
                 List.of(),
-                0,
+                companyLlmTimeoutSeconds,
                 0L,
-                "NOT_REQUESTED",
+                companyLlmStatus,
                 0,
-                "COMPACT",
-                12000,
-                500,
+                normalizeLlmContextMode(llmContextMode),
+                companyLlmMaxPromptChars,
+                normalizedMaxOutputTokens,
                 "",
                 null,
                 "",
-                500,
+                normalizedMaxOutputTokens,
                 Map.of()
         );
+    }
+
+    private int normalizedOutputTokenLimit(int companyLlmMaxOutputTokens) {
+        return Math.min(3_000, Math.max(1, companyLlmMaxOutputTokens));
+    }
+
+    private String normalizeLlmContextMode(String llmContextMode) {
+        if (llmContextMode == null || llmContextMode.isBlank()) {
+            return "COMPACT";
+        }
+        return llmContextMode;
     }
 
     private Map<String, Long> fallbackTimings(Duration endpointTimeout) {
