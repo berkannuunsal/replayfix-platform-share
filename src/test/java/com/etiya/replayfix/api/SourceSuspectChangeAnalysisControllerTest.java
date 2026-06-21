@@ -11,6 +11,7 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,6 +37,29 @@ class SourceSuspectChangeAnalysisControllerTest {
 
     private final ObjectMapper objectMapper =
             new ObjectMapper().findAndRegisterModules();
+
+    @Test
+    void endpointTimeoutIsDynamicForLongCompanyLlmTimeout() {
+        assertThat(SourceSuspectChangeAnalysisController.endpointTimeout(
+                10,
+                8,
+                45
+        )).isEqualTo(Duration.ofSeconds(78));
+    }
+
+    @Test
+    void endpointTimeoutKeepsMinimumAndCapsMaximum() {
+        assertThat(SourceSuspectChangeAnalysisController.endpointTimeout(
+                1,
+                1,
+                1
+        )).isEqualTo(Duration.ofSeconds(30));
+        assertThat(SourceSuspectChangeAnalysisController.endpointTimeout(
+                90,
+                90,
+                90
+        )).isEqualTo(Duration.ofSeconds(120));
+    }
 
     @Test
     void endpointWorksWithCompanyLlmDisabled() {

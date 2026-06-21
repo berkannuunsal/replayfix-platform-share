@@ -294,6 +294,50 @@ class CompanySourceReasoningServiceTest {
                 .contains("\"status\": \"HYPOTHESIS\"");
     }
 
+    @Test
+    void successfulMinimalSourceReasoningJsonParsesWithThreeThousandTokens() {
+        when(provider.generate(any())).thenReturn(new AiGenerationResponse(
+                true,
+                "COMPANY_LLM",
+                "AI-Coder-PR-Review",
+                "request-1",
+                "stop",
+                25,
+                10,
+                10,
+                new ObjectMapper().valueToTree(Map.of(
+                        "status", "HYPOTHESIS",
+                        "confidence", 0.6,
+                        "suspectReason", "service validation guard",
+                        "facts", List.of("UserServiceImpl#updateUser")
+                )),
+                List.of(),
+                null,
+                null,
+                null,
+                "",
+                3_000
+        ));
+
+        var result = service.reason(
+                UUID.randomUUID(),
+                "{\"contextMode\":\"MINIMAL\"}",
+                3_000,
+                "MINIMAL"
+        );
+
+        ArgumentCaptor<AiGenerationRequest> request =
+                ArgumentCaptor.forClass(AiGenerationRequest.class);
+        verify(provider).generate(request.capture());
+        assertThat(request.getValue().maxOutputChars()).isEqualTo(3_000);
+        assertThat(result.llmUsed()).isTrue();
+        assertThat(result.status()).isEqualTo("HYPOTHESIS");
+        assertThat(result.effectiveOutputTokenLimit()).isEqualTo(3_000);
+        assertThat(result.warnings()).doesNotContain(
+                CompanySourceReasoningService.COMPANY_LLM_INVALID_RESPONSE
+        );
+    }
+
     private SourceReasoningContext context() {
         return new SourceReasoningContext(
                 Map.of(),

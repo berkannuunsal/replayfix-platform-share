@@ -26,7 +26,9 @@ public class SourceSuspectChangeAnalysisController {
     private static final Logger log = LoggerFactory.getLogger(
             SourceSuspectChangeAnalysisController.class
     );
-    private static final Duration ENDPOINT_TIMEOUT = Duration.ofSeconds(30);
+    private static final int MIN_ENDPOINT_TIMEOUT_SECONDS = 30;
+    private static final int MAX_ENDPOINT_TIMEOUT_SECONDS = 120;
+    private static final int ENDPOINT_TIMEOUT_BUFFER_SECONDS = 15;
 
     private final SourceSuspectChangeAnalysisService service;
 
@@ -54,6 +56,11 @@ public class SourceSuspectChangeAnalysisController {
             @RequestParam(defaultValue = "12000") int companyLlmMaxPromptChars,
             @RequestParam(defaultValue = "500") int companyLlmMaxOutputTokens
     ) {
+        Duration endpointTimeout = endpointTimeout(
+                sourceDiscoveryTimeoutSeconds,
+                gitHistoryTimeoutSeconds,
+                companyLlmTimeoutSeconds
+        );
         return Mono.fromCallable(() -> service.analyze(
                         caseId,
                         lookbackDays,
@@ -73,7 +80,7 @@ public class SourceSuspectChangeAnalysisController {
                 ))
                 .subscribeOn(Schedulers.boundedElastic())
                 .map(this::jsonSafeResponse)
-                .timeout(ENDPOINT_TIMEOUT)
+                .timeout(endpointTimeout)
                 .onErrorResume(exception -> {
                     String endpointPath = "/api/v1/cases/"
                             + caseId
@@ -89,9 +96,26 @@ public class SourceSuspectChangeAnalysisController {
                     return Mono.just(fallbackResponse(
                             caseId,
                             lookbackDays,
-                            "endpoint"
+                            "endpoint",
+                            endpointTimeout
                     ));
                 });
+    }
+
+    static Duration endpointTimeout(
+            int sourceDiscoveryTimeoutSeconds,
+            int gitHistoryTimeoutSeconds,
+            int companyLlmTimeoutSeconds
+    ) {
+        long requestedSeconds = Math.max(1, sourceDiscoveryTimeoutSeconds)
+                + Math.max(1, gitHistoryTimeoutSeconds)
+                + Math.max(1, companyLlmTimeoutSeconds)
+                + ENDPOINT_TIMEOUT_BUFFER_SECONDS;
+        long boundedSeconds = Math.min(
+                MAX_ENDPOINT_TIMEOUT_SECONDS,
+                Math.max(MIN_ENDPOINT_TIMEOUT_SECONDS, requestedSeconds)
+        );
+        return Duration.ofSeconds(boundedSeconds);
     }
 
     private SourceSuspectChangeAnalysisResponse jsonSafeResponse(
@@ -149,7 +173,8 @@ public class SourceSuspectChangeAnalysisController {
     private SourceSuspectChangeAnalysisResponse fallbackResponse(
             UUID caseId,
             int lookbackDays,
-            String currentPhaseOnTimeout
+            String currentPhaseOnTimeout,
+            Duration endpointTimeout
     ) {
         return new SourceSuspectChangeAnalysisResponse(
                 caseId,
@@ -186,7 +211,7 @@ public class SourceSuspectChangeAnalysisController {
                         .SOURCE_CHANGE_ANALYSIS_FAILED),
                 "DETERMINISTIC_ONLY",
                 true,
-                fallbackTimings(),
+                fallbackTimings(endpointTimeout),
                 "",
                 currentPhaseOnTimeout,
                 0,
@@ -215,7 +240,7 @@ public class SourceSuspectChangeAnalysisController {
         );
     }
 
-    private Map<String, Long> fallbackTimings() {
+    private Map<String, Long> fallbackTimings(Duration endpointTimeout) {
         Map<String, Long> timings = new LinkedHashMap<>();
         timings.put("evidenceResolution", 0L);
         timings.put("flowAnchorExtraction", 0L);
@@ -224,7 +249,7 @@ public class SourceSuspectChangeAnalysisController {
         timings.put("gitHistory", 0L);
         timings.put("contextBuild", 0L);
         timings.put("companyLlm", 0L);
-        timings.put("total", ENDPOINT_TIMEOUT.toMillis());
+        timings.put("total", endpointTimeout.toMillis());
         return timings;
     }
 }

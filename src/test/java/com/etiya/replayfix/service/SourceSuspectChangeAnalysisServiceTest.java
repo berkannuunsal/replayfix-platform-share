@@ -876,7 +876,7 @@ class SourceSuspectChangeAnalysisServiceTest {
                 8,
                 "MINIMAL",
                 12_000,
-                500
+                3_000
         );
 
         ArgumentCaptor<Integer> maxOutputTokens =
@@ -887,9 +887,59 @@ class SourceSuspectChangeAnalysisServiceTest {
                 maxOutputTokens.capture(),
                 eq("MINIMAL")
         );
-        assertThat(maxOutputTokens.getValue()).isEqualTo(500);
-        assertThat(response.companyLlmOutputTokenLimit()).isEqualTo(500);
+        assertThat(maxOutputTokens.getValue()).isEqualTo(3_000);
+        assertThat(response.companyLlmOutputTokenLimit()).isEqualTo(3_000);
+        assertThat(response.companyLlmEffectiveOutputTokenLimit())
+                .isEqualTo(3_000);
         assertThat(response.companyLlmPromptHash()).isNotBlank();
+    }
+
+    @Test
+    void sourceChangeAnalysisClampsOutputTokenLimitAboveMaximum()
+            throws Exception {
+        writeWorkspaceFile();
+        useExpandedDeterministicPipeline();
+        when(companyReasoningService.reason(
+                eq(caseId),
+                anyString(),
+                anyInt(),
+                anyString()
+        ))
+                .thenReturn(successfulReasoning());
+
+        var response = service.analyze(
+                caseId,
+                45,
+                20,
+                10,
+                false,
+                true,
+                2_000,
+                256,
+                false,
+                10,
+                8,
+                8,
+                "MINIMAL",
+                12_000,
+                5_000
+        );
+
+        ArgumentCaptor<Integer> maxOutputTokens =
+                ArgumentCaptor.forClass(Integer.class);
+        verify(companyReasoningService).reason(
+                eq(caseId),
+                anyString(),
+                maxOutputTokens.capture(),
+                eq("MINIMAL")
+        );
+        assertThat(maxOutputTokens.getValue()).isEqualTo(3_000);
+        assertThat(response.companyLlmOutputTokenLimit()).isEqualTo(3_000);
+        assertThat(response.companyLlmEffectiveOutputTokenLimit())
+                .isEqualTo(3_000);
+        assertThat(response.warnings())
+                .contains(SourceSuspectChangeAnalysisService
+                        .COMPANY_LLM_OUTPUT_TOKEN_LIMIT_CLAMPED);
     }
 
     @Test

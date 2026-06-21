@@ -75,11 +75,14 @@ public class SourceSuspectChangeAnalysisService {
             CompanySourceReasoningService.COMPANY_LLM_TIMEOUT;
     public static final String COMPANY_LLM_CONTEXT_TRUNCATED =
             "COMPANY_LLM_CONTEXT_TRUNCATED";
+    public static final String COMPANY_LLM_OUTPUT_TOKEN_LIMIT_CLAMPED =
+            "COMPANY_LLM_OUTPUT_TOKEN_LIMIT_CLAMPED";
     private static final String LLM_CONTEXT_MINIMAL = "MINIMAL";
     private static final String LLM_CONTEXT_COMPACT = "COMPACT";
     private static final String LLM_CONTEXT_FULL = "FULL";
     private static final int DEFAULT_COMPANY_LLM_MAX_PROMPT_CHARS = 12_000;
     private static final int DEFAULT_COMPANY_LLM_MAX_OUTPUT_TOKENS = 500;
+    private static final int MAX_COMPANY_LLM_OUTPUT_TOKENS = 3_000;
 
     private final ReplayCaseRepository caseRepository;
     private final EvidenceRepository evidenceRepository;
@@ -271,7 +274,10 @@ public class SourceSuspectChangeAnalysisService {
         String currentPhaseOnTimeout = null;
         String normalizedLlmContextMode = normalizeLlmContextMode(llmContextMode);
         int normalizedMaxPromptChars = Math.max(1, companyLlmMaxPromptChars);
-        int normalizedMaxOutputTokens = Math.max(1, companyLlmMaxOutputTokens);
+        int normalizedMaxOutputTokens = normalizeMaxOutputTokens(
+                companyLlmMaxOutputTokens,
+                warnings
+        );
         CompanyLlmPhase companyLlmPhase = new CompanyLlmPhase(
                 Math.max(1, companyLlmTimeoutSeconds),
                 0L,
@@ -1121,6 +1127,17 @@ public class SourceSuspectChangeAnalysisService {
             return LLM_CONTEXT_FULL;
         }
         return LLM_CONTEXT_COMPACT;
+    }
+
+    private int normalizeMaxOutputTokens(
+            int requestedTokens,
+            List<String> warnings
+    ) {
+        if (requestedTokens > MAX_COMPANY_LLM_OUTPUT_TOKENS) {
+            warnings.add(COMPANY_LLM_OUTPUT_TOKEN_LIMIT_CLAMPED);
+            return MAX_COMPANY_LLM_OUTPUT_TOKENS;
+        }
+        return Math.max(1, requestedTokens);
     }
 
     private String sanitizeCompactText(String value) {
