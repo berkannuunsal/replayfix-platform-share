@@ -486,7 +486,14 @@ class SourceSuspectChangeAnalysisServiceTest {
                         .COMPANY_LLM_INVALID_RESPONSE),
                 "NON_JSON_RESPONSE",
                 rawPreview,
-                1000
+                1000,
+                java.util.Map.of(
+                        "finishReason", "stop",
+                        "hasContent", true,
+                        "contentLength", rawPreview.length(),
+                        "extractionSource", "content",
+                        "parseErrorCategory", "NON_JSON_RESPONSE"
+                )
         ));
 
         var response = service.analyze(
@@ -519,6 +526,10 @@ class SourceSuspectChangeAnalysisServiceTest {
                 .doesNotContain("Secret.java");
         assertThat(response.companyLlmEffectiveOutputTokenLimit())
                 .isEqualTo(1000);
+        assertThat(response.companyLlmResponseShape())
+                .containsEntry("hasContent", true)
+                .containsEntry("extractionSource", "content")
+                .containsEntry("parseErrorCategory", "NON_JSON_RESPONSE");
         assertThat(response.candidateFlowChain())
                 .extracting("className")
                 .contains("UserController", "UserServiceImpl");

@@ -141,7 +141,8 @@ public class SourceSuspectChangeAnalysisController {
                 response.companyLlmPromptHash(),
                 response.companyLlmParseErrorCategory(),
                 response.companyLlmOutputPreview(),
-                response.companyLlmEffectiveOutputTokenLimit()
+                response.companyLlmEffectiveOutputTokenLimit(),
+                response.companyLlmResponseShape()
         );
     }
 
@@ -209,7 +210,8 @@ public class SourceSuspectChangeAnalysisController {
                 "",
                 null,
                 "",
-                500
+                500,
+                Map.of()
         );
     }
 

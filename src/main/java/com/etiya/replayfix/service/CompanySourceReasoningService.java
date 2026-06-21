@@ -31,8 +31,11 @@ public class CompanySourceReasoningService {
             "COMPANY_LLM_TIMEOUT";
     public static final String COMPANY_LLM_EMPTY_RESPONSE =
             "COMPANY_LLM_EMPTY_RESPONSE";
+    public static final String COMPANY_LLM_STATUS_DOWNGRADED =
+            "COMPANY_LLM_STATUS_DOWNGRADED";
     public static final String PARSE_EMPTY_RESPONSE = "EMPTY_RESPONSE";
     public static final String PARSE_NON_JSON_RESPONSE = "NON_JSON_RESPONSE";
+    public static final String PARSE_SCHEMA_MISMATCH = "SCHEMA_MISMATCH";
     public static final String PARSE_UNKNOWN = "UNKNOWN";
 
     private final ReplayFixProperties properties;
@@ -107,7 +110,8 @@ public class CompanySourceReasoningService {
                         firstPositive(
                                 response.effectiveOutputTokenLimit(),
                                 effectiveOutputTokenLimit
-                        )
+                        ),
+                        response.responseShape()
                 );
             }
             if (response.structuredResponse() == null) {
@@ -115,7 +119,8 @@ public class CompanySourceReasoningService {
                         response.warnings(),
                         PARSE_UNKNOWN,
                         "",
-                        effectiveOutputTokenLimit
+                        effectiveOutputTokenLimit,
+                        response.responseShape()
                 );
             }
 
@@ -125,7 +130,8 @@ public class CompanySourceReasoningService {
                     firstPositive(
                             response.effectiveOutputTokenLimit(),
                             effectiveOutputTokenLimit
-                    )
+                    ),
+                    response.responseShape()
             );
         } catch (Exception ignored) {
             return unavailable(effectiveOutputTokenLimit);
@@ -135,10 +141,25 @@ public class CompanySourceReasoningService {
     private ReasoningResult parse(
             JsonNode node,
             List<String> providerWarnings,
-            int effectiveOutputTokenLimit
+            int effectiveOutputTokenLimit,
+            Map<String, Object> responseShape
     ) {
         List<String> warnings = new ArrayList<>(providerWarnings);
+        if (!node.isObject()) {
+            return invalidResponse(
+                    warnings,
+                    PARSE_SCHEMA_MISMATCH,
+                    "",
+                    effectiveOutputTokenLimit,
+                    responseShape
+            );
+        }
         String status = "HYPOTHESIS";
+        if (!"HYPOTHESIS".equalsIgnoreCase(
+                node.path("status").asText("HYPOTHESIS")
+        )) {
+            warnings.add(COMPANY_LLM_STATUS_DOWNGRADED);
+        }
         double confidence = clamp(node.path("confidence").asDouble(0.0));
         List<SourceSuspectChange> suspectChanges = new ArrayList<>();
 
@@ -175,7 +196,8 @@ public class CompanySourceReasoningService {
                 warnings,
                 null,
                 "",
-                effectiveOutputTokenLimit
+                effectiveOutputTokenLimit,
+                safeResponseShape(responseShape)
         );
     }
 
@@ -204,7 +226,8 @@ public class CompanySourceReasoningService {
                 warningsWith(providerWarnings, COMPANY_LLM_UNAVAILABLE),
                 null,
                 "",
-                effectiveOutputTokenLimit
+                effectiveOutputTokenLimit,
+                Map.of()
         );
     }
 
@@ -217,6 +240,22 @@ public class CompanySourceReasoningService {
             String parseErrorCategory,
             String outputPreview,
             int effectiveOutputTokenLimit
+    ) {
+        return invalidResponse(
+                providerWarnings,
+                parseErrorCategory,
+                outputPreview,
+                effectiveOutputTokenLimit,
+                Map.of()
+        );
+    }
+
+    private ReasoningResult invalidResponse(
+            List<String> providerWarnings,
+            String parseErrorCategory,
+            String outputPreview,
+            int effectiveOutputTokenLimit,
+            Map<String, Object> responseShape
     ) {
         return new ReasoningResult(
                 false,
@@ -231,7 +270,8 @@ public class CompanySourceReasoningService {
                 warningsWith(providerWarnings, COMPANY_LLM_INVALID_RESPONSE),
                 normalizedParseErrorCategory(parseErrorCategory),
                 safeOutputPreview(outputPreview),
-                effectiveOutputTokenLimit
+                effectiveOutputTokenLimit,
+                safeResponseShape(responseShape)
         );
     }
 
@@ -256,7 +296,8 @@ public class CompanySourceReasoningService {
                 warningsWith(providerWarnings, COMPANY_LLM_TIMEOUT),
                 null,
                 "",
-                effectiveOutputTokenLimit
+                effectiveOutputTokenLimit,
+                Map.of()
         );
     }
 
@@ -271,19 +312,39 @@ public class CompanySourceReasoningService {
             String outputPreview,
             int effectiveOutputTokenLimit
     ) {
+        return failed(
+                errorCategory,
+                providerWarnings,
+                parseErrorCategory,
+                outputPreview,
+                effectiveOutputTokenLimit,
+                Map.of()
+        );
+    }
+
+    private ReasoningResult failed(
+            String errorCategory,
+            List<String> providerWarnings,
+            String parseErrorCategory,
+            String outputPreview,
+            int effectiveOutputTokenLimit,
+            Map<String, Object> responseShape
+    ) {
         if ("INVALID_JSON".equalsIgnoreCase(errorCategory)) {
             return invalidResponse(
                     providerWarnings,
                     firstNonBlank(parseErrorCategory, PARSE_NON_JSON_RESPONSE),
                     outputPreview,
-                    effectiveOutputTokenLimit
+                    effectiveOutputTokenLimit,
+                    responseShape
             );
         }
         if ("EMPTY_RESPONSE".equalsIgnoreCase(errorCategory)) {
             return invalidResponse(warningsWith(
                     providerWarnings,
                     COMPANY_LLM_EMPTY_RESPONSE
-            ), PARSE_EMPTY_RESPONSE, outputPreview, effectiveOutputTokenLimit);
+            ), PARSE_EMPTY_RESPONSE, outputPreview, effectiveOutputTokenLimit,
+                    responseShape);
         }
         if ("TIMEOUT".equalsIgnoreCase(errorCategory)) {
             return timeout(providerWarnings, effectiveOutputTokenLimit);
@@ -347,6 +408,10 @@ public class CompanySourceReasoningService {
         return first > 0 ? first : Math.max(0, second);
     }
 
+    private Map<String, Object> safeResponseShape(Map<String, Object> value) {
+        return value == null || value.isEmpty() ? Map.of() : Map.copyOf(value);
+    }
+
     private String firstNonBlank(String first, String second) {
         return first == null || first.isBlank() ? second : first;
     }
@@ -354,12 +419,13 @@ public class CompanySourceReasoningService {
     private String systemPrompt(String contextMode) {
         if ("MINIMAL".equalsIgnoreCase(contextMode)) {
             return """
-                    Return only compact JSON.
-                    Do not explain.
-                    Do not include markdown.
-                    Do not include reasoning.
-                    Do not include code blocks.
-                    Do not mark anything CONFIRMED.
+                    Return only one valid JSON object.
+                    No markdown.
+                    No explanation.
+                    No reasoning.
+                    No code fences.
+                    No text before or after JSON.
+                    Never return CONFIRMED.
                     """;
         }
         return """
@@ -460,7 +526,8 @@ public class CompanySourceReasoningService {
             List<String> warnings,
             String parseErrorCategory,
             String outputPreview,
-            int effectiveOutputTokenLimit
+            int effectiveOutputTokenLimit,
+            Map<String, Object> responseShape
     ) {
         public ReasoningResult(
                 boolean llmUsed,
@@ -487,7 +554,41 @@ public class CompanySourceReasoningService {
                     warnings,
                     null,
                     "",
-                    0
+                    0,
+                    Map.of()
+            );
+        }
+
+        public ReasoningResult(
+                boolean llmUsed,
+                List<SourceSuspectChange> suspectChanges,
+                String status,
+                double confidence,
+                List<String> facts,
+                List<String> inferences,
+                List<String> unknowns,
+                List<String> missingEvidence,
+                String recommendedNextAction,
+                List<String> warnings,
+                String parseErrorCategory,
+                String outputPreview,
+                int effectiveOutputTokenLimit
+        ) {
+            this(
+                    llmUsed,
+                    suspectChanges,
+                    status,
+                    confidence,
+                    facts,
+                    inferences,
+                    unknowns,
+                    missingEvidence,
+                    recommendedNextAction,
+                    warnings,
+                    parseErrorCategory,
+                    outputPreview,
+                    effectiveOutputTokenLimit,
+                    Map.of()
             );
         }
     }

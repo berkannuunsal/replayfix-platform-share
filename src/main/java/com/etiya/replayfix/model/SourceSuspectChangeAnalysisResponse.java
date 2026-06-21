@@ -48,7 +48,8 @@ public record SourceSuspectChangeAnalysisResponse(
         String companyLlmPromptHash,
         String companyLlmParseErrorCategory,
         String companyLlmOutputPreview,
-        int companyLlmEffectiveOutputTokenLimit
+        int companyLlmEffectiveOutputTokenLimit,
+        Map<String, Object> companyLlmResponseShape
 ) {
     public SourceSuspectChangeAnalysisResponse(
             UUID caseId,
@@ -115,7 +116,8 @@ public record SourceSuspectChangeAnalysisResponse(
                 "",
                 null,
                 "",
-                500
+                500,
+                Map.of()
         );
     }
 
@@ -187,7 +189,8 @@ public record SourceSuspectChangeAnalysisResponse(
                 "",
                 null,
                 "",
-                500
+                500,
+                Map.of()
         );
     }
 
@@ -252,6 +255,9 @@ public record SourceSuspectChangeAnalysisResponse(
         if (companyLlmEffectiveOutputTokenLimit <= 0) {
             companyLlmEffectiveOutputTokenLimit = companyLlmOutputTokenLimit;
         }
+        companyLlmResponseShape = JsonSafeValueSanitizer.safeMap(
+                companyLlmResponseShape
+        );
     }
 
     private static String normalizedParseErrorCategory(String value) {

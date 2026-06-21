@@ -22,6 +22,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -88,10 +89,65 @@ class CompanyLlmProviderClientTest {
         JsonNode payload = client.buildSourceReasoningPayload(request);
 
         assertThat(payload.path("max_tokens").asInt()).isEqualTo(500);
+        assertThat(payload.path("response_format").path("type").asText())
+                .isEqualTo("json_object");
         assertThat(payload.path("messages").path(0).path("content").asText())
                 .isEqualTo("Return only compact JSON.");
         assertThat(payload.path("messages").path(1).path("content").asText())
                 .contains("\"contextMode\":\"MINIMAL\"");
+    }
+
+    @Test
+    void sourceChangeAnalysisPayloadCanDisableJsonMode() {
+        CompanyLlmProviderClient client = client(okResponse());
+        AiGenerationRequest request = sourceRequest(UUID.randomUUID());
+
+        JsonNode payload = client.buildSourceReasoningPayload(request, false);
+
+        assertThat(payload.has("response_format")).isFalse();
+    }
+
+    @Test
+    void unsupportedJsonModeRetriesWithoutResponseFormat() {
+        UUID caseId = UUID.randomUUID();
+        AtomicInteger attempts = new AtomicInteger();
+        WebClient.Builder builder = WebClient.builder()
+                .exchangeFunction(request -> {
+                    if (attempts.incrementAndGet() == 1) {
+                        return Mono.just(ClientResponse
+                                .create(HttpStatus.BAD_REQUEST)
+                                .header("Content-Type", "application/json")
+                                .body("{\"error\":{\"message\":\"response_format unsupported\"}}")
+                                .build());
+                    }
+                    return Mono.just(ClientResponse
+                            .create(HttpStatus.OK)
+                            .header("Content-Type", "application/json")
+                            .body(chatResponse(
+                                    "stop",
+                                    sourceJson("retry success"),
+                                    null,
+                                    null
+                            ))
+                            .build());
+                });
+        CompanyLlmProviderClient client = new CompanyLlmProviderClient(
+                properties,
+                evidenceRepository,
+                new EvidenceSanitizer(),
+                builder,
+                objectMapper
+        );
+
+        AiGenerationResponse response = client.generate(sourceRequest(caseId));
+
+        assertThat(attempts.get()).isEqualTo(2);
+        assertThat(response.success()).isTrue();
+        assertThat(response.warnings())
+                .contains(CompanyLlmProviderClient
+                        .COMPANY_LLM_JSON_MODE_UNSUPPORTED);
+        assertThat(response.structuredResponse().path("probableRootCause").asText())
+                .isEqualTo("retry success");
     }
 
     @Test
@@ -170,6 +226,41 @@ class CompanyLlmProviderClientTest {
         assertThat(response.success()).isTrue();
         assertThat(response.structuredResponse().path("probableRootCause").asText())
                 .isEqualTo("json string content");
+    }
+
+    @Test
+    void parsesFencedJsonContent() {
+        UUID caseId = UUID.randomUUID();
+        CompanyLlmProviderClient client = client(chatResponse(
+                "stop",
+                "```json\n" + sourceJson("fenced content") + "\n```",
+                null,
+                null
+        ));
+
+        AiGenerationResponse response = client.generate(sourceRequest(caseId));
+
+        assertThat(response.success()).isTrue();
+        assertThat(response.structuredResponse().path("probableRootCause").asText())
+                .isEqualTo("fenced content");
+    }
+
+    @Test
+    void parsesJsonWithTextBeforeAndAfterContent() {
+        UUID caseId = UUID.randomUUID();
+        CompanyLlmProviderClient client = client(chatResponse(
+                "stop",
+                "final answer:\n" + sourceJson("embedded content")
+                        + "\nthank you",
+                null,
+                null
+        ));
+
+        AiGenerationResponse response = client.generate(sourceRequest(caseId));
+
+        assertThat(response.success()).isTrue();
+        assertThat(response.structuredResponse().path("probableRootCause").asText())
+                .isEqualTo("embedded content");
     }
 
     @Test
@@ -296,6 +387,10 @@ class CompanyLlmProviderClientTest {
         assertThat(response.parseErrorCategory())
                 .isEqualTo("NON_JSON_RESPONSE");
         assertThat(response.outputPreview()).contains("not json");
+        assertThat(response.responseShape())
+                .containsEntry("hasContent", true)
+                .containsEntry("extractionSource", "content")
+                .containsEntry("parseErrorCategory", "NON_JSON_RESPONSE");
         assertThat(response.errorMessage()).doesNotContain(SECRET);
     }
 
@@ -534,6 +629,20 @@ class CompanyLlmProviderClientTest {
                 2000,
                 true,
                 Map.of("jiraKey", "FIZZMS-10228")
+        );
+    }
+
+    private AiGenerationRequest sourceRequest(UUID caseId) {
+        return new AiGenerationRequest(
+                caseId,
+                "SOURCE_CHANGE_ANALYSIS",
+                "Return only compact JSON.",
+                "{\"contextMode\":\"MINIMAL\"}",
+                "company-model",
+                0.1,
+                500,
+                true,
+                Map.of("requestType", "SOURCE_CHANGE_ANALYSIS")
         );
     }
 

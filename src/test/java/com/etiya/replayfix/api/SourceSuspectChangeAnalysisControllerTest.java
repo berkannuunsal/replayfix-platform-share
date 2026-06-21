@@ -406,6 +406,10 @@ class SourceSuspectChangeAnalysisControllerTest {
                         .value("not json"))
                 .andExpect(jsonPath("$.companyLlmEffectiveOutputTokenLimit")
                         .value(500))
+                .andExpect(jsonPath("$.companyLlmResponseShape.hasContent")
+                        .value(true))
+                .andExpect(jsonPath("$.companyLlmResponseShape.extractionSource")
+                        .value("content"))
                 .andExpect(jsonPath("$.candidateFlowChain[0].className")
                         .value("UserController"));
     }
@@ -595,7 +599,12 @@ class SourceSuspectChangeAnalysisControllerTest {
                 "prompt-hash",
                 "NON_JSON_RESPONSE",
                 "not json",
-                500
+                500,
+                Map.of(
+                        "hasContent", true,
+                        "extractionSource", "content",
+                        "parseErrorCategory", "NON_JSON_RESPONSE"
+                )
         );
     }
 

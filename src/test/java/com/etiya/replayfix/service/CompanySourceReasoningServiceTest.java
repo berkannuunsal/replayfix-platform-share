@@ -81,6 +81,45 @@ class CompanySourceReasoningServiceTest {
         assertThat(result.suspectChanges()).hasSize(1);
         assertThat(result.suspectChanges().get(0).status())
                 .isEqualTo("HYPOTHESIS");
+        assertThat(result.warnings())
+                .contains(CompanySourceReasoningService
+                        .COMPANY_LLM_STATUS_DOWNGRADED);
+    }
+
+    @Test
+    void missingMinimalArraysDefaultToEmptyLists() {
+        when(provider.generate(any())).thenReturn(new AiGenerationResponse(
+                true,
+                "COMPANY_LLM",
+                "AI-Coder-PR-Review",
+                "request-1",
+                "stop",
+                25,
+                10,
+                10,
+                new ObjectMapper().valueToTree(Map.of(
+                        "status", "HYPOTHESIS",
+                        "confidence", 2.0,
+                        "suspectReason", "reason"
+                )),
+                List.of(),
+                null,
+                null
+        ));
+
+        var result = service.reason(
+                UUID.randomUUID(),
+                "{\"contextMode\":\"MINIMAL\"}",
+                500,
+                "MINIMAL"
+        );
+
+        assertThat(result.llmUsed()).isTrue();
+        assertThat(result.confidence()).isEqualTo(1.0);
+        assertThat(result.facts()).isEmpty();
+        assertThat(result.inferences()).isEmpty();
+        assertThat(result.unknowns()).isEmpty();
+        assertThat(result.missingEvidence()).isEmpty();
     }
 
     @Test
@@ -247,7 +286,9 @@ class CompanySourceReasoningServiceTest {
                 .isEqualTo("SOURCE_CHANGE_ANALYSIS");
         assertThat(request.getValue().maxOutputChars()).isEqualTo(500);
         assertThat(request.getValue().systemPrompt())
-                .contains("Return only compact JSON");
+                .contains("Return only one valid JSON object")
+                .contains("No text before or after JSON")
+                .contains("Never return CONFIRMED");
         assertThat(request.getValue().userPrompt())
                 .contains("Given this small ReplayFix evidence packet")
                 .contains("\"status\": \"HYPOTHESIS\"");

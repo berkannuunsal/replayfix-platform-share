@@ -34,6 +34,8 @@ public class CompanyLlmProviderClient implements AiProviderClient {
             "COMPANY_LLM_OUTPUT_TRUNCATED";
     static final String COMPANY_LLM_EMPTY_RESPONSE =
             "COMPANY_LLM_EMPTY_RESPONSE";
+    static final String COMPANY_LLM_JSON_MODE_UNSUPPORTED =
+            "COMPANY_LLM_JSON_MODE_UNSUPPORTED";
     static final String PARSE_EMPTY_RESPONSE = "EMPTY_RESPONSE";
     static final String PARSE_NON_JSON_RESPONSE = "NON_JSON_RESPONSE";
     static final String PARSE_JSON_EXTRACTION_FAILED =
@@ -149,12 +151,24 @@ public class CompanyLlmProviderClient implements AiProviderClient {
     @Override
     public AiGenerationResponse generate(AiGenerationRequest request) {
         long startedAt = System.currentTimeMillis();
+        List<String> requestWarnings = new ArrayList<>();
         try {
             if ("SOURCE_CHANGE_ANALYSIS".equalsIgnoreCase(request.requestType())) {
-                JsonNode payload = buildSourceReasoningPayload(request);
-                JsonNode response = post(payload);
+                JsonNode payload = buildSourceReasoningPayload(request, true);
+                JsonNode response;
+                try {
+                    response = post(payload);
+                } catch (WebClientResponseException exception) {
+                    if (!jsonModeUnsupported(exception)) {
+                        throw exception;
+                    }
+                    requestWarnings.add(COMPANY_LLM_JSON_MODE_UNSUPPORTED);
+                    payload = buildSourceReasoningPayload(request, false);
+                    response = post(payload);
+                }
                 JsonNode content = parseContent(response);
                 List<String> warnings = generationWarnings(content, response);
+                warnings.addAll(requestWarnings);
                 return new AiGenerationResponse(
                         true,
                         PROVIDER,
@@ -209,26 +223,29 @@ public class CompanyLlmProviderClient implements AiProviderClient {
                     startedAt,
                     "EMPTY_RESPONSE",
                     "Company LLM response content is empty",
-                    exception.warnings(),
+                    mergeWarnings(requestWarnings, exception.warnings()),
                     PARSE_EMPTY_RESPONSE,
                     "",
-                    request.maxOutputChars()
+                    request.maxOutputChars(),
+                    exception.responseShape()
             );
         } catch (CompanyLlmParseException exception) {
             return failedResponse(
                     startedAt,
                     "INVALID_JSON",
                     sanitizeError(exception.getMessage()),
-                    List.of(),
+                    requestWarnings,
                     exception.parseErrorCategory(),
                     exception.outputPreview(),
-                    request.maxOutputChars()
+                    request.maxOutputChars(),
+                    exception.responseShape()
             );
         } catch (Exception exception) {
             return failedResponse(
                     startedAt,
                     errorCategory(exception),
-                    sanitizeError(exception.getMessage())
+                    sanitizeError(exception.getMessage()),
+                    requestWarnings
             );
         }
     }
@@ -254,6 +271,13 @@ public class CompanyLlmProviderClient implements AiProviderClient {
     }
 
     JsonNode buildSourceReasoningPayload(AiGenerationRequest request) {
+        return buildSourceReasoningPayload(request, true);
+    }
+
+    JsonNode buildSourceReasoningPayload(
+            AiGenerationRequest request,
+            boolean jsonMode
+    ) {
         String prompt = evidenceSanitizer.sanitize(firstNonBlank(
                 request.userPrompt(),
                 ""
@@ -262,18 +286,28 @@ public class CompanyLlmProviderClient implements AiProviderClient {
         return buildChatPayload(
                 firstNonBlank(request.systemPrompt(), systemPrompt()),
                 prompt,
-                Math.max(1, request.maxOutputChars())
+                Math.max(1, request.maxOutputChars()),
+                jsonMode
         );
     }
 
     private JsonNode buildChatPayload(String prompt, int maxOutputChars) {
-        return buildChatPayload(systemPrompt(), prompt, maxOutputChars);
+        return buildChatPayload(systemPrompt(), prompt, maxOutputChars, false);
     }
 
     private JsonNode buildChatPayload(
             String systemPrompt,
             String prompt,
             int maxOutputChars
+    ) {
+        return buildChatPayload(systemPrompt, prompt, maxOutputChars, false);
+    }
+
+    private JsonNode buildChatPayload(
+            String systemPrompt,
+            String prompt,
+            int maxOutputChars,
+            boolean jsonMode
     ) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("model", model());
@@ -293,6 +327,9 @@ public class CompanyLlmProviderClient implements AiProviderClient {
                         prompt
                 )
         ));
+        if (jsonMode) {
+            payload.put("response_format", Map.of("type", "json_object"));
+        }
         return objectMapper.valueToTree(payload);
     }
 
@@ -323,6 +360,7 @@ public class CompanyLlmProviderClient implements AiProviderClient {
         JsonNode contentNode = choice
                 .path("message")
                 .path("content");
+        Map<String, Object> shape = responseShape(response, "");
 
         if (contentNode.isObject()) {
             return contentNode;
@@ -347,6 +385,7 @@ public class CompanyLlmProviderClient implements AiProviderClient {
                 contentSource = "reasoning_content";
             }
         }
+        shape = responseShape(response, contentSource);
         if (content.isBlank()) {
             JsonNode error = response.path("error");
             if (!error.isMissingNode() && !error.isNull()) {
@@ -360,20 +399,13 @@ public class CompanyLlmProviderClient implements AiProviderClient {
                 );
             }
             throw new EmptyCompanyLlmResponseException(
-                    "length".equalsIgnoreCase(finishReason(response))
+                    "length".equalsIgnoreCase(finishReason(response)),
+                    shape
             );
         }
 
-        content = stripJsonFence(content);
         try {
-            JsonNode parsed = objectMapper.readTree(content);
-            if (parsed.isTextual()) {
-                String nestedJson = stripJsonFence(parsed.asText()).trim();
-                if (!nestedJson.isBlank()) {
-                    return objectMapper.readTree(nestedJson);
-                }
-            }
-            return parsed;
+            return parseJsonContent(content);
         } catch (Exception exception) {
             throw new CompanyLlmParseException(
                     "Company LLM response is not valid JSON",
@@ -383,9 +415,42 @@ public class CompanyLlmProviderClient implements AiProviderClient {
                     "reasoning_content".equals(contentSource)
                             ? ""
                             : safeOutputPreview(content),
+                    shape,
                     exception
             );
         }
+    }
+
+    private JsonNode parseJsonContent(String content) throws Exception {
+        String value = stripJsonFence(firstNonBlank(content, ""));
+        try {
+            return parseJsonNode(value);
+        } catch (Exception ignored) {
+            String extracted = extractFirstJsonObject(value);
+            if (!extracted.isBlank()) {
+                return parseJsonNode(extracted);
+            }
+            throw ignored;
+        }
+    }
+
+    private JsonNode parseJsonNode(String content) throws Exception {
+        JsonNode parsed = objectMapper.readTree(content);
+        if (parsed.isTextual()) {
+            String nestedJson = stripJsonFence(parsed.asText()).trim();
+            if (!nestedJson.isBlank()) {
+                try {
+                    return parseJsonNode(nestedJson);
+                } catch (Exception ignored) {
+                    String extracted = extractFirstJsonObject(nestedJson);
+                    if (!extracted.isBlank()) {
+                        return parseJsonNode(extracted);
+                    }
+                    throw ignored;
+                }
+            }
+        }
+        return parsed;
     }
 
     private List<String> generationWarnings(JsonNode content, JsonNode response) {
@@ -550,6 +615,34 @@ public class CompanyLlmProviderClient implements AiProviderClient {
             String outputPreview,
             int effectiveOutputTokenLimit
     ) {
+        return failedResponse(
+                startedAt,
+                errorCategory,
+                errorMessage,
+                warnings,
+                parseErrorCategory,
+                outputPreview,
+                effectiveOutputTokenLimit,
+                Map.of()
+        );
+    }
+
+    private AiGenerationResponse failedResponse(
+            long startedAt,
+            String errorCategory,
+            String errorMessage,
+            List<String> warnings,
+            String parseErrorCategory,
+            String outputPreview,
+            int effectiveOutputTokenLimit,
+            Map<String, Object> responseShape
+    ) {
+        Map<String, Object> safeShape = new LinkedHashMap<>(
+                responseShape == null ? Map.of() : responseShape
+        );
+        if (parseErrorCategory != null && !parseErrorCategory.isBlank()) {
+            safeShape.put("parseErrorCategory", parseErrorCategory);
+        }
         return new AiGenerationResponse(
                 false,
                 PROVIDER,
@@ -565,7 +658,8 @@ public class CompanyLlmProviderClient implements AiProviderClient {
                 errorMessage,
                 parseErrorCategory,
                 safeOutputPreview(outputPreview),
-                Math.max(0, effectiveOutputTokenLimit)
+                Math.max(0, effectiveOutputTokenLimit),
+                safeShape
         );
     }
 
@@ -673,6 +767,78 @@ public class CompanyLlmProviderClient implements AiProviderClient {
         return truncate(sanitized.trim(), 500);
     }
 
+    private boolean jsonModeUnsupported(WebClientResponseException exception) {
+        if (exception.getStatusCode().value() != 400) {
+            return false;
+        }
+        String message = firstNonBlank(exception.getResponseBodyAsString(), "")
+                .toLowerCase(java.util.Locale.ROOT);
+        return message.contains("response_format")
+                || message.contains("json mode")
+                || message.contains("json_object")
+                || message.contains("unsupported");
+    }
+
+    private List<String> mergeWarnings(
+            List<String> first,
+            List<String> second
+    ) {
+        List<String> values = new ArrayList<>();
+        if (first != null) {
+            values.addAll(first);
+        }
+        if (second != null) {
+            values.addAll(second);
+        }
+        return values;
+    }
+
+    private Map<String, Object> responseShape(
+            JsonNode response,
+            String extractionSource
+    ) {
+        JsonNode choice = response.path("choices").path(0);
+        JsonNode message = choice.path("message");
+        JsonNode content = message.path("content");
+        JsonNode text = choice.path("text");
+        JsonNode reasoning = message.path("reasoning_content");
+        Map<String, Object> shape = new LinkedHashMap<>();
+        shape.put("finishReason", finishReason(response));
+        shape.put("messageKeys", fieldNames(message));
+        shape.put("hasContent", hasNodeText(content));
+        shape.put("contentLength", nodeTextLength(content));
+        shape.put("hasText", hasNodeText(text));
+        shape.put("textLength", nodeTextLength(text));
+        shape.put("hasReasoningContent", hasNodeText(reasoning));
+        shape.put("reasoningContentLength", nodeTextLength(reasoning));
+        shape.put("extractionSource", firstNonBlank(extractionSource, ""));
+        shape.put("parseErrorCategory", "");
+        return shape;
+    }
+
+    private List<String> fieldNames(JsonNode node) {
+        if (node == null || !node.isObject()) {
+            return List.of();
+        }
+        List<String> names = new ArrayList<>();
+        node.fieldNames().forEachRemaining(names::add);
+        return names;
+    }
+
+    private boolean hasNodeText(JsonNode node) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return false;
+        }
+        return !node.asText("").isBlank();
+    }
+
+    private int nodeTextLength(JsonNode node) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return 0;
+        }
+        return node.asText("").length();
+    }
+
     private List<String> mergeStrings(JsonNode first, JsonNode second) {
         List<String> values = new ArrayList<>(toStrings(first));
         values.addAll(toStrings(second));
@@ -708,11 +874,58 @@ public class CompanyLlmProviderClient implements AiProviderClient {
             return "";
         }
 
-        String object = extractLastBalanced(value, '{', '}');
+        String object = extractFirstJsonObject(value);
         if (!object.isBlank()) {
             return object;
         }
         return extractLastBalanced(value, '[', ']');
+    }
+
+    private String extractFirstJsonObject(String content) {
+        return extractFirstBalanced(firstNonBlank(content, ""), '{', '}');
+    }
+
+    private String extractFirstBalanced(
+            String value,
+            char open,
+            char close
+    ) {
+        for (int start = value.indexOf(open);
+             start >= 0;
+             start = value.indexOf(open, start + 1)) {
+            int depth = 0;
+            boolean inString = false;
+            boolean escaped = false;
+            for (int index = start; index < value.length(); index++) {
+                char current = value.charAt(index);
+                if (escaped) {
+                    escaped = false;
+                    continue;
+                }
+                if (current == '\\') {
+                    escaped = true;
+                    continue;
+                }
+                if (current == '"') {
+                    inString = !inString;
+                    continue;
+                }
+                if (inString) {
+                    continue;
+                }
+                if (current == open) {
+                    depth++;
+                    continue;
+                }
+                if (current == close) {
+                    depth--;
+                    if (depth == 0) {
+                        return value.substring(start, index + 1).trim();
+                    }
+                }
+            }
+        }
+        return "";
     }
 
     private String extractLastBalanced(
@@ -799,9 +1012,14 @@ public class CompanyLlmProviderClient implements AiProviderClient {
     private static class EmptyCompanyLlmResponseException
             extends RuntimeException {
         private final boolean truncated;
+        private final Map<String, Object> responseShape;
 
-        private EmptyCompanyLlmResponseException(boolean truncated) {
+        private EmptyCompanyLlmResponseException(
+                boolean truncated,
+                Map<String, Object> responseShape
+        ) {
             this.truncated = truncated;
+            this.responseShape = responseShape == null ? Map.of() : responseShape;
         }
 
         private List<String> warnings() {
@@ -812,16 +1030,22 @@ public class CompanyLlmProviderClient implements AiProviderClient {
             }
             return warnings;
         }
+
+        private Map<String, Object> responseShape() {
+            return responseShape;
+        }
     }
 
     private static class CompanyLlmParseException extends RuntimeException {
         private final String parseErrorCategory;
         private final String outputPreview;
+        private final Map<String, Object> responseShape;
 
         private CompanyLlmParseException(
                 String message,
                 String parseErrorCategory,
                 String outputPreview,
+                Map<String, Object> responseShape,
                 Throwable cause
         ) {
             super(message, cause);
@@ -829,6 +1053,11 @@ public class CompanyLlmProviderClient implements AiProviderClient {
                     ? PARSE_UNKNOWN
                     : parseErrorCategory;
             this.outputPreview = outputPreview == null ? "" : outputPreview;
+            Map<String, Object> shape = new LinkedHashMap<>(
+                    responseShape == null ? Map.of() : responseShape
+            );
+            shape.put("parseErrorCategory", this.parseErrorCategory);
+            this.responseShape = Map.copyOf(shape);
         }
 
         private String parseErrorCategory() {
@@ -837,6 +1066,10 @@ public class CompanyLlmProviderClient implements AiProviderClient {
 
         private String outputPreview() {
             return outputPreview;
+        }
+
+        private Map<String, Object> responseShape() {
+            return responseShape;
         }
     }
 }

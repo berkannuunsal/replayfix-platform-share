@@ -283,7 +283,8 @@ public class SourceSuspectChangeAnalysisService {
                 "",
                 null,
                 "",
-                normalizedMaxOutputTokens
+                normalizedMaxOutputTokens,
+                Map.of()
         );
         ReplayCaseEntity replayCase = defaultCase(caseId);
         RepositoryContext repositoryContext =
@@ -614,7 +615,8 @@ public class SourceSuspectChangeAnalysisService {
                             firstPositive(
                                     reasoning.effectiveOutputTokenLimit(),
                                     normalizedMaxOutputTokens
-                            )
+                            ),
+                            reasoning.responseShape()
                     );
                 } catch (TimeoutException exception) {
                     log.warn(
@@ -634,7 +636,8 @@ public class SourceSuspectChangeAnalysisService {
                             companyLlmPhase.promptHash(),
                             null,
                             "",
-                            normalizedMaxOutputTokens
+                            normalizedMaxOutputTokens,
+                            Map.of()
                     );
                 } catch (Exception exception) {
                     log.warn(
@@ -655,7 +658,8 @@ public class SourceSuspectChangeAnalysisService {
                             companyLlmPhase.promptHash(),
                             "UNKNOWN",
                             "",
-                            normalizedMaxOutputTokens
+                            normalizedMaxOutputTokens,
+                            Map.of()
                     );
                 } finally {
                     timings.stop("companyLlm");
@@ -785,7 +789,8 @@ public class SourceSuspectChangeAnalysisService {
                 companyLlmPhase.promptHash(),
                 companyLlmPhase.parseErrorCategory(),
                 companyLlmPhase.outputPreview(),
-                companyLlmPhase.effectiveOutputTokenLimit()
+                companyLlmPhase.effectiveOutputTokenLimit(),
+                companyLlmPhase.responseShape()
         );
     }
 
@@ -1462,7 +1467,8 @@ public class SourceSuspectChangeAnalysisService {
             String promptHash,
             String parseErrorCategory,
             String outputPreview,
-            int effectiveOutputTokenLimit
+            int effectiveOutputTokenLimit,
+            Map<String, Object> responseShape
     ) {
         private CompanyLlmPhase withPrompt(
                 int promptChars,
@@ -1479,7 +1485,8 @@ public class SourceSuspectChangeAnalysisService {
                     promptHash,
                     parseErrorCategory,
                     outputPreview,
-                    effectiveOutputTokenLimit
+                    effectiveOutputTokenLimit,
+                    responseShape
             );
         }
     }
