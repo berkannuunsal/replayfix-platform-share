@@ -594,7 +594,8 @@ public class SourceSuspectChangeAnalysisService {
                                             caseId,
                                             llmContextJson,
                                             normalizedMaxOutputTokens,
-                                            normalizedLlmContextMode
+                                            normalizedLlmContextMode,
+                                            Math.max(1, companyLlmTimeoutSeconds)
                                     ),
                                     Math.max(1, companyLlmTimeoutSeconds)
                             );

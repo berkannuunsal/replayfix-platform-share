@@ -103,7 +103,8 @@ class SourceSuspectChangeAnalysisServiceTest {
                 eq(caseId),
                 anyString(),
                 anyInt(),
-                anyString()
+                anyString(),
+                anyInt()
         )).thenReturn(new CompanySourceReasoningService.ReasoningResult(
                 false,
                 List.of(),
@@ -205,7 +206,8 @@ class SourceSuspectChangeAnalysisServiceTest {
                 eq(caseId),
                 anyString(),
                 anyInt(),
-                anyString()
+                anyString(),
+                anyInt()
         )).thenReturn(new CompanySourceReasoningService.ReasoningResult(
                 true,
                 List.of(llmSuspect()),
@@ -249,7 +251,8 @@ class SourceSuspectChangeAnalysisServiceTest {
                 eq(caseId),
                 anyString(),
                 anyInt(),
-                anyString()
+                anyString(),
+                anyInt()
         )).thenAnswer(invocation -> {
             Thread.sleep(1_500);
             return new CompanySourceReasoningService.ReasoningResult(
@@ -303,7 +306,8 @@ class SourceSuspectChangeAnalysisServiceTest {
                 eq(caseId),
                 anyString(),
                 anyInt(),
-                anyString()
+                anyString(),
+                anyInt()
         )).thenReturn(new CompanySourceReasoningService.ReasoningResult(
                 false,
                 List.of(),
@@ -347,7 +351,8 @@ class SourceSuspectChangeAnalysisServiceTest {
                 eq(caseId),
                 anyString(),
                 anyInt(),
-                anyString()
+                anyString(),
+                anyInt()
         )).thenReturn(new CompanySourceReasoningService.ReasoningResult(
                 false,
                 List.of(),
@@ -395,7 +400,8 @@ class SourceSuspectChangeAnalysisServiceTest {
                 eq(caseId),
                 anyString(),
                 anyInt(),
-                eq("MINIMAL")
+                eq("MINIMAL"),
+                anyInt()
         )).thenReturn(new CompanySourceReasoningService.ReasoningResult(
                 false,
                 List.of(),
@@ -471,7 +477,8 @@ class SourceSuspectChangeAnalysisServiceTest {
                 eq(caseId),
                 anyString(),
                 anyInt(),
-                eq("MINIMAL")
+                eq("MINIMAL"),
+                anyInt()
         )).thenReturn(new CompanySourceReasoningService.ReasoningResult(
                 false,
                 List.of(),
@@ -549,7 +556,8 @@ class SourceSuspectChangeAnalysisServiceTest {
                 eq(caseId),
                 anyString(),
                 anyInt(),
-                anyString()
+                anyString(),
+                anyInt()
         ))
                 .thenReturn(successfulReasoning());
 
@@ -563,7 +571,7 @@ class SourceSuspectChangeAnalysisServiceTest {
         );
 
         ArgumentCaptor<String> packet = ArgumentCaptor.forClass(String.class);
-        verify(companyReasoningService).reason(eq(caseId), packet.capture(), anyInt(), anyString());
+        verify(companyReasoningService).reason(eq(caseId), packet.capture(), anyInt(), anyString(), anyInt());
         assertThat(packet.getValue()).contains("UserController");
         assertThat(packet.getValue()).contains("UserServiceImpl");
         assertThat(packet.getValue()).contains("UpdateAplUserPrefPrvncRequest");
@@ -587,14 +595,15 @@ class SourceSuspectChangeAnalysisServiceTest {
                 eq(caseId),
                 anyString(),
                 anyInt(),
-                anyString()
+                anyString(),
+                anyInt()
         ))
                 .thenReturn(successfulReasoning());
 
         service.analyze(caseId, 45, 20, 10, false, true);
 
         ArgumentCaptor<String> packet = ArgumentCaptor.forClass(String.class);
-        verify(companyReasoningService).reason(eq(caseId), packet.capture(), anyInt(), anyString());
+        verify(companyReasoningService).reason(eq(caseId), packet.capture(), anyInt(), anyString(), anyInt());
         assertThat(packet.getValue()).doesNotContain("SECRET_REASONING");
     }
 
@@ -607,14 +616,15 @@ class SourceSuspectChangeAnalysisServiceTest {
                 eq(caseId),
                 anyString(),
                 anyInt(),
-                anyString()
+                anyString(),
+                anyInt()
         ))
                 .thenReturn(successfulReasoning());
 
         service.analyze(caseId, 45, 20, 10, false, true);
 
         ArgumentCaptor<String> packet = ArgumentCaptor.forClass(String.class);
-        verify(companyReasoningService).reason(eq(caseId), packet.capture(), anyInt(), anyString());
+        verify(companyReasoningService).reason(eq(caseId), packet.capture(), anyInt(), anyString(), anyInt());
         assertThat(packet.getValue()).doesNotContain("OtherController");
         assertThat(packet.getValue()).doesNotContain("/other/debug");
     }
@@ -628,7 +638,8 @@ class SourceSuspectChangeAnalysisServiceTest {
                 eq(caseId),
                 anyString(),
                 anyInt(),
-                anyString()
+                anyString(),
+                anyInt()
         ))
                 .thenReturn(successfulReasoning());
 
@@ -651,7 +662,7 @@ class SourceSuspectChangeAnalysisServiceTest {
         );
 
         ArgumentCaptor<String> packet = ArgumentCaptor.forClass(String.class);
-        verify(companyReasoningService).reason(eq(caseId), packet.capture(), anyInt(), anyString());
+        verify(companyReasoningService).reason(eq(caseId), packet.capture(), anyInt(), anyString(), anyInt());
         assertThat(packet.getValue().length()).isLessThanOrEqualTo(700);
         assertThat(response.companyLlmPromptChars()).isLessThanOrEqualTo(700);
         assertThat(response.companyLlmMaxPromptChars()).isEqualTo(700);
@@ -669,7 +680,8 @@ class SourceSuspectChangeAnalysisServiceTest {
                 eq(caseId),
                 anyString(),
                 anyInt(),
-                anyString()
+                anyString(),
+                anyInt()
         ))
                 .thenReturn(successfulReasoning());
 
@@ -679,7 +691,8 @@ class SourceSuspectChangeAnalysisServiceTest {
                 eq(caseId),
                 packet.capture(),
                 anyInt(),
-                anyString()
+                anyString(),
+                anyInt()
         );
         String compactPacket = packet.getValue();
 
@@ -705,7 +718,8 @@ class SourceSuspectChangeAnalysisServiceTest {
                 eq(caseId),
                 packet.capture(),
                 anyInt(),
-                eq("MINIMAL")
+                eq("MINIMAL"),
+                anyInt()
         );
         String minimalPacket = packet.getValue();
 
@@ -722,7 +736,8 @@ class SourceSuspectChangeAnalysisServiceTest {
                 eq(caseId),
                 anyString(),
                 anyInt(),
-                anyString()
+                anyString(),
+                anyInt()
         ))
                 .thenReturn(successfulReasoning());
 
@@ -749,7 +764,8 @@ class SourceSuspectChangeAnalysisServiceTest {
                 eq(caseId),
                 packet.capture(),
                 anyInt(),
-                eq("MINIMAL")
+                eq("MINIMAL"),
+                anyInt()
         );
         assertThat(packet.getValue()).contains("UserController");
         assertThat(packet.getValue()).contains("UserServiceImpl");
@@ -768,7 +784,8 @@ class SourceSuspectChangeAnalysisServiceTest {
                 eq(caseId),
                 anyString(),
                 anyInt(),
-                anyString()
+                anyString(),
+                anyInt()
         ))
                 .thenReturn(successfulReasoning());
 
@@ -795,7 +812,8 @@ class SourceSuspectChangeAnalysisServiceTest {
                 eq(caseId),
                 packet.capture(),
                 anyInt(),
-                eq("MINIMAL")
+                eq("MINIMAL"),
+                anyInt()
         );
         assertThat(packet.getValue()).doesNotContain("OtherController");
         assertThat(packet.getValue()).doesNotContain("/other/debug");
@@ -810,7 +828,8 @@ class SourceSuspectChangeAnalysisServiceTest {
                 eq(caseId),
                 anyString(),
                 anyInt(),
-                anyString()
+                anyString(),
+                anyInt()
         ))
                 .thenReturn(successfulReasoning());
 
@@ -837,7 +856,8 @@ class SourceSuspectChangeAnalysisServiceTest {
                 eq(caseId),
                 packet.capture(),
                 anyInt(),
-                eq("MINIMAL")
+                eq("MINIMAL"),
+                anyInt()
         );
         var json = objectMapper.readTree(packet.getValue());
         int totalSnippetChars = 0;
@@ -857,7 +877,8 @@ class SourceSuspectChangeAnalysisServiceTest {
                 eq(caseId),
                 anyString(),
                 anyInt(),
-                anyString()
+                anyString(),
+                anyInt()
         ))
                 .thenReturn(successfulReasoning());
 
@@ -873,7 +894,7 @@ class SourceSuspectChangeAnalysisServiceTest {
                 false,
                 10,
                 8,
-                8,
+                45,
                 "MINIMAL",
                 12_000,
                 3_000
@@ -881,13 +902,18 @@ class SourceSuspectChangeAnalysisServiceTest {
 
         ArgumentCaptor<Integer> maxOutputTokens =
                 ArgumentCaptor.forClass(Integer.class);
+        ArgumentCaptor<Integer> timeoutSeconds =
+                ArgumentCaptor.forClass(Integer.class);
         verify(companyReasoningService).reason(
                 eq(caseId),
                 anyString(),
                 maxOutputTokens.capture(),
-                eq("MINIMAL")
+                eq("MINIMAL"),
+                timeoutSeconds.capture()
         );
         assertThat(maxOutputTokens.getValue()).isEqualTo(3_000);
+        assertThat(timeoutSeconds.getValue()).isEqualTo(45);
+        assertThat(timeoutSeconds.getValue()).isGreaterThan(30);
         assertThat(response.companyLlmOutputTokenLimit()).isEqualTo(3_000);
         assertThat(response.companyLlmEffectiveOutputTokenLimit())
                 .isEqualTo(3_000);
@@ -903,7 +929,8 @@ class SourceSuspectChangeAnalysisServiceTest {
                 eq(caseId),
                 anyString(),
                 anyInt(),
-                anyString()
+                anyString(),
+                anyInt()
         ))
                 .thenReturn(successfulReasoning());
 
@@ -931,7 +958,8 @@ class SourceSuspectChangeAnalysisServiceTest {
                 eq(caseId),
                 anyString(),
                 maxOutputTokens.capture(),
-                eq("MINIMAL")
+                eq("MINIMAL"),
+                anyInt()
         );
         assertThat(maxOutputTokens.getValue()).isEqualTo(3_000);
         assertThat(response.companyLlmOutputTokenLimit()).isEqualTo(3_000);

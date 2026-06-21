@@ -41,6 +41,7 @@ public class CompanyLlmProviderClient implements AiProviderClient {
     static final String PARSE_JSON_EXTRACTION_FAILED =
             "JSON_EXTRACTION_FAILED";
     static final String PARSE_UNKNOWN = "UNKNOWN";
+    private static final long SOURCE_REASONING_TIMEOUT_BUFFER_MS = 5_000L;
 
     private final ReplayFixProperties properties;
     private final EvidenceRepository evidenceRepository;
@@ -155,16 +156,17 @@ public class CompanyLlmProviderClient implements AiProviderClient {
         try {
             if ("SOURCE_CHANGE_ANALYSIS".equalsIgnoreCase(request.requestType())) {
                 JsonNode payload = buildSourceReasoningPayload(request, true);
+                long requestTimeoutMs = sourceReasoningTimeoutMs(request);
                 JsonNode response;
                 try {
-                    response = post(payload);
+                    response = post(payload, requestTimeoutMs);
                 } catch (WebClientResponseException exception) {
                     if (!jsonModeUnsupported(exception)) {
                         throw exception;
                     }
                     requestWarnings.add(COMPANY_LLM_JSON_MODE_UNSUPPORTED);
                     payload = buildSourceReasoningPayload(request, false);
-                    response = post(payload);
+                    response = post(payload, requestTimeoutMs);
                 }
                 JsonNode content = parseContent(response);
                 List<String> warnings = generationWarnings(content, response);
@@ -334,6 +336,10 @@ public class CompanyLlmProviderClient implements AiProviderClient {
     }
 
     private JsonNode post(JsonNode payload) {
+        return post(payload, Math.max(1, company().getTimeoutMs()));
+    }
+
+    private JsonNode post(JsonNode payload, long timeoutMs) {
         ReplayFixProperties.Company cfg = company();
         JsonNode response = webClientBuilder
                 .baseUrl(trimTrailingSlash(cfg.getBaseUrl()))
@@ -345,12 +351,23 @@ public class CompanyLlmProviderClient implements AiProviderClient {
                 .bodyValue(payload)
                 .retrieve()
                 .bodyToMono(JsonNode.class)
-                .block(Duration.ofMillis(Math.max(1, cfg.getTimeoutMs())));
+                .block(Duration.ofMillis(Math.max(1, timeoutMs)));
 
         if (response == null) {
             throw new IllegalStateException("Company LLM returned an empty response");
         }
         return response;
+    }
+
+    long sourceReasoningTimeoutMs(AiGenerationRequest request) {
+        long requestedSeconds = metadataLong(
+                request,
+                "companyLlmTimeoutSeconds"
+        );
+        long requestedMs = requestedSeconds > 0
+                ? requestedSeconds * 1_000L + SOURCE_REASONING_TIMEOUT_BUFFER_MS
+                : 0L;
+        return Math.max(Math.max(1, company().getTimeoutMs()), requestedMs);
     }
 
     private JsonNode parseContent(JsonNode response) {
@@ -777,6 +794,20 @@ public class CompanyLlmProviderClient implements AiProviderClient {
                 || message.contains("json mode")
                 || message.contains("json_object")
                 || message.contains("unsupported");
+    }
+
+    private long metadataLong(
+            AiGenerationRequest request,
+            String key
+    ) {
+        if (request == null || request.metadata() == null) {
+            return 0L;
+        }
+        try {
+            return Long.parseLong(firstNonBlank(request.metadata().get(key), ""));
+        } catch (NumberFormatException ignored) {
+            return 0L;
+        }
     }
 
     private List<String> mergeWarnings(

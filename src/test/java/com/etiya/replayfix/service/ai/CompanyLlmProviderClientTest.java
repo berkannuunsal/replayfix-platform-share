@@ -108,6 +108,30 @@ class CompanyLlmProviderClientTest {
     }
 
     @Test
+    void sourceReasoningTimeoutUsesRequestedCompanyLlmTimeout() {
+        CompanyLlmProviderClient client = client(okResponse());
+        AiGenerationRequest request = new AiGenerationRequest(
+                UUID.randomUUID(),
+                "SOURCE_CHANGE_ANALYSIS",
+                "Return only compact JSON.",
+                "{\"contextMode\":\"MINIMAL\"}",
+                "company-model",
+                0.1,
+                3_000,
+                true,
+                Map.of(
+                        "requestType", "SOURCE_CHANGE_ANALYSIS",
+                        "companyLlmTimeoutSeconds", "45"
+                )
+        );
+
+        long timeoutMs = client.sourceReasoningTimeoutMs(request);
+
+        assertThat(timeoutMs).isEqualTo(50_000L);
+        assertThat(timeoutMs).isGreaterThan(30_000L);
+    }
+
+    @Test
     void unsupportedJsonModeRetriesWithoutResponseFormat() {
         UUID caseId = UUID.randomUUID();
         AtomicInteger attempts = new AtomicInteger();

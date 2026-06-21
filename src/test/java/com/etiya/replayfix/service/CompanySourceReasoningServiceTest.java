@@ -323,13 +323,16 @@ class CompanySourceReasoningServiceTest {
                 UUID.randomUUID(),
                 "{\"contextMode\":\"MINIMAL\"}",
                 3_000,
-                "MINIMAL"
+                "MINIMAL",
+                45
         );
 
         ArgumentCaptor<AiGenerationRequest> request =
                 ArgumentCaptor.forClass(AiGenerationRequest.class);
         verify(provider).generate(request.capture());
         assertThat(request.getValue().maxOutputChars()).isEqualTo(3_000);
+        assertThat(request.getValue().metadata())
+                .containsEntry("companyLlmTimeoutSeconds", "45");
         assertThat(result.llmUsed()).isTrue();
         assertThat(result.status()).isEqualTo("HYPOTHESIS");
         assertThat(result.effectiveOutputTokenLimit()).isEqualTo(3_000);

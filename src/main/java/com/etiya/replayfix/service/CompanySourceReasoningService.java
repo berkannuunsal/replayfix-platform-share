@@ -37,6 +37,7 @@ public class CompanySourceReasoningService {
     public static final String PARSE_NON_JSON_RESPONSE = "NON_JSON_RESPONSE";
     public static final String PARSE_SCHEMA_MISMATCH = "SCHEMA_MISMATCH";
     public static final String PARSE_UNKNOWN = "UNKNOWN";
+    private static final int DEFAULT_SOURCE_LLM_TIMEOUT_SECONDS = 8;
 
     private final ReplayFixProperties properties;
     private final AiProviderClientFactory aiProviderClientFactory;
@@ -76,7 +77,24 @@ public class CompanySourceReasoningService {
             int maxOutputTokens,
             String contextMode
     ) {
+        return reason(
+                caseId,
+                contextJson,
+                maxOutputTokens,
+                contextMode,
+                DEFAULT_SOURCE_LLM_TIMEOUT_SECONDS
+        );
+    }
+
+    public ReasoningResult reason(
+            UUID caseId,
+            String contextJson,
+            int maxOutputTokens,
+            String contextMode,
+            int timeoutSeconds
+    ) {
         int effectiveOutputTokenLimit = Math.max(1, maxOutputTokens);
+        int effectiveTimeoutSeconds = Math.max(1, timeoutSeconds);
         if (!properties.getAi().isEnabled()
                 || properties.getAi().getProvider() != AiProviderType.COMPANY_LLM) {
             return unavailable(effectiveOutputTokenLimit);
@@ -97,7 +115,9 @@ public class CompanySourceReasoningService {
                             "requestType", "SOURCE_CHANGE_ANALYSIS",
                             "contextMode", contextMode == null
                                     ? "COMPACT"
-                                    : contextMode
+                                    : contextMode,
+                            "companyLlmTimeoutSeconds",
+                            String.valueOf(effectiveTimeoutSeconds)
                     )
             ));
 
