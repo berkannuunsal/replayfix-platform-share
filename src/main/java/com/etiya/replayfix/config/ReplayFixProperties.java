@@ -22,6 +22,7 @@ public class ReplayFixProperties {
     private Notifications notifications = new Notifications();
     private Ai ai = new Ai();
     private Demo demo = new Demo();
+    private DbEvidence dbEvidence = new DbEvidence();
     private Map<String, Target> targets = new LinkedHashMap<>();
     private Map<String, LogParser> logParsers = new LinkedHashMap<>();
 
@@ -43,6 +44,8 @@ public class ReplayFixProperties {
     public void setAi(Ai ai) { this.ai = ai; }
     public Demo getDemo() { return demo; }
     public void setDemo(Demo demo) { this.demo = demo; }
+    public DbEvidence getDbEvidence() { return dbEvidence; }
+    public void setDbEvidence(DbEvidence value) { this.dbEvidence = value; }
     public Map<String, Target> getTargets() { return targets; }
     public void setTargets(Map<String, Target> targets) { this.targets = targets; }
     public Map<String, LogParser> getLogParsers() { return logParsers; }
@@ -590,5 +593,31 @@ public class ReplayFixProperties {
         public void setEnabled(boolean value) { this.enabled = value; }
         public boolean isAllowReset() { return allowReset; }
         public void setAllowReset(boolean value) { this.allowReset = value; }
+    }
+
+    public static class DbEvidence {
+        private boolean enabled;
+        private DbEvidenceDataSource backend = new DbEvidenceDataSource();
+
+        public boolean isEnabled() { return enabled; }
+        public void setEnabled(boolean value) { this.enabled = value; }
+        public DbEvidenceDataSource getBackend() { return backend; }
+        public void setBackend(DbEvidenceDataSource value) { this.backend = value; }
+    }
+
+    public static class DbEvidenceDataSource {
+        private String url = "";
+        private String username = "";
+        private String password = "";
+        private String schema = "";
+
+        public String getUrl() { return url; }
+        public void setUrl(String value) { this.url = value; }
+        public String getUsername() { return username; }
+        public void setUsername(String value) { this.username = value; }
+        public String getPassword() { return password; }
+        public void setPassword(String value) { this.password = value; }
+        public String getSchema() { return schema; }
+        public void setSchema(String value) { this.schema = value; }
     }
 }

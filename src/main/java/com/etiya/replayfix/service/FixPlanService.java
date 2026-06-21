@@ -1,6 +1,7 @@
 package com.etiya.replayfix.service;
 
 import com.etiya.replayfix.domain.EvidenceEntity;
+import com.etiya.replayfix.domain.EvidenceType;
 import com.etiya.replayfix.domain.ReplayCaseEntity;
 import com.etiya.replayfix.model.FixPlanCandidate;
 import com.etiya.replayfix.model.FixPlanEvidenceReference;
@@ -105,7 +106,8 @@ public class FixPlanService {
         ).orElse(null);
         String combinedSignals = combinedSignals(sourceAnalysis);
         boolean dbEvidenceRequired = requiresDatabaseEvidence(combinedSignals);
-        boolean hasDbEvidence = hasApplicationDbEvidence(caseId);
+        Optional<EvidenceEntity> dbEvidence = applicationDbEvidence(caseId);
+        boolean hasDbEvidence = dbEvidence.isPresent();
         boolean requiresDbEvidence = dbEvidenceRequired && !hasDbEvidence;
         if (sourceAnalysis.recentCommits().isEmpty()) {
             warnings.add(NO_RECENT_CHANGE_EVIDENCE);
@@ -118,13 +120,15 @@ public class FixPlanService {
 
         List<FixPlanEvidenceReference> requiredEvidence = requiredEvidence(
                 sourceAnalysis,
-                requiresDbEvidence
+                requiresDbEvidence,
+                dbEvidence
         );
         List<FixPlanCandidate> candidates = candidates(
                 sourceAnalysis,
                 target,
                 combinedSignals,
                 requiresDbEvidence,
+                hasDbEvidence,
                 warnings,
                 Math.max(1, maxCandidates)
         );
@@ -155,6 +159,7 @@ public class FixPlanService {
             SourceCandidateFlowChainItem target,
             String combinedSignals,
             boolean requiresDbEvidence,
+            boolean hasDbEvidence,
             List<String> warnings,
             int maxCandidates
     ) {
@@ -169,6 +174,7 @@ public class FixPlanService {
                 target,
                 sourceAnalysis,
                 requiresDbEvidence,
+                hasDbEvidence,
                 "Primary deterministic source candidate from suspect change analysis.",
                 warnings
         );
@@ -180,6 +186,7 @@ public class FixPlanService {
                     target,
                     sourceAnalysis,
                     requiresDbEvidence,
+                    hasDbEvidence,
                     "Region/preferred province signal may require request-to-domain mapping review.",
                     warnings
             );
@@ -198,6 +205,7 @@ public class FixPlanService {
                     dto.get(),
                     sourceAnalysis,
                     requiresDbEvidence,
+                    hasDbEvidence,
                     "DTO fields related to region, tax or timezone require boundary validation.",
                     warnings
             );
@@ -210,6 +218,7 @@ public class FixPlanService {
                     target,
                     sourceAnalysis,
                     true,
+                    hasDbEvidence,
                     "Region/tax/timezone hypothesis needs application database state evidence before code changes.",
                     warnings
             );
@@ -226,6 +235,7 @@ public class FixPlanService {
             SourceCandidateFlowChainItem target,
             SourceSuspectChangeAnalysisResponse sourceAnalysis,
             boolean requiresDbEvidence,
+            boolean hasDbEvidence,
             String reason,
             List<String> warnings
     ) {
@@ -253,7 +263,7 @@ public class FixPlanService {
                 rule.name(),
                 reason + " Status remains HYPOTHESIS; no patch is generated.",
                 rule.riskLevel(),
-                candidateConfidence(sourceAnalysis, requiresDbEvidence),
+                candidateConfidence(sourceAnalysis, requiresDbEvidence, hasDbEvidence),
                 "HYPOTHESIS",
                 true,
                 candidateEvidence(sourceAnalysis, target),
@@ -297,7 +307,8 @@ public class FixPlanService {
 
     private List<FixPlanEvidenceReference> requiredEvidence(
             SourceSuspectChangeAnalysisResponse sourceAnalysis,
-            boolean requiresDbEvidence
+            boolean requiresDbEvidence,
+            Optional<EvidenceEntity> dbEvidence
     ) {
         List<FixPlanEvidenceReference> values = new ArrayList<>();
         values.add(new FixPlanEvidenceReference(
@@ -316,6 +327,13 @@ public class FixPlanService {
                     "Region/tax/timezone state evidence is required before patch approval."
             ));
         }
+        dbEvidence.ifPresent(evidence -> values.add(new FixPlanEvidenceReference(
+                APPLICATION_DB_EVIDENCE,
+                safeString(evidence.getSource()),
+                evidence.getId() == null ? "" : evidence.getId().toString(),
+                "HYPOTHESIS",
+                "Read-only application database evidence is available."
+        )));
         return values;
     }
 
@@ -368,7 +386,8 @@ public class FixPlanService {
 
     private double candidateConfidence(
             SourceSuspectChangeAnalysisResponse sourceAnalysis,
-            boolean requiresDbEvidence
+            boolean requiresDbEvidence,
+            boolean hasDbEvidence
     ) {
         double value = 0.55;
         if (sourceAnalysis.recentCommits().isEmpty()) {
@@ -376,6 +395,9 @@ public class FixPlanService {
         }
         if (requiresDbEvidence) {
             value -= 0.10;
+        }
+        if (hasDbEvidence) {
+            value += 0.05;
         }
         if (sourceAnalysis.candidateFlowChain().isEmpty()) {
             value -= 0.20;
@@ -395,13 +417,16 @@ public class FixPlanService {
         );
     }
 
-    private boolean hasApplicationDbEvidence(UUID caseId) {
+    private Optional<EvidenceEntity> applicationDbEvidence(UUID caseId) {
         try {
             List<EvidenceEntity> evidence = evidenceRepository.findByCaseId(caseId);
             if (evidence == null) {
-                return false;
+                return Optional.empty();
             }
-            return evidence.stream().anyMatch(item -> {
+            return evidence.stream().filter(item -> {
+                if (item.getEvidenceType() == EvidenceType.APPLICATION_DB_EVIDENCE) {
+                    return true;
+                }
                 String haystack = (
                         safeString(item.getSource())
                                 + " "
@@ -410,14 +435,14 @@ public class FixPlanService {
                 return haystack.contains("application_db_evidence")
                         || haystack.contains("db_evidence")
                         || haystack.contains("database evidence");
-            });
+            }).findFirst();
         } catch (Exception exception) {
             log.warn(
                     "Fix plan DB evidence lookup failed for caseId={}",
                     caseId,
                     exception
             );
-            return false;
+            return Optional.empty();
         }
     }
 

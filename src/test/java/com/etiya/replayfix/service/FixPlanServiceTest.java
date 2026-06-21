@@ -1,5 +1,7 @@
 package com.etiya.replayfix.service;
 
+import com.etiya.replayfix.domain.EvidenceEntity;
+import com.etiya.replayfix.domain.EvidenceType;
 import com.etiya.replayfix.domain.ReplayCaseEntity;
 import com.etiya.replayfix.model.FixPlanResponse;
 import com.etiya.replayfix.model.SourceCandidateFlowChainItem;
@@ -12,6 +14,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -161,6 +164,33 @@ class FixPlanServiceTest {
         assertThat(response.fixCandidates()).isNotEmpty();
         assertThat(response.warnings())
                 .contains(CompanySourceReasoningService.COMPANY_LLM_UNAVAILABLE);
+    }
+
+    @Test
+    void canReferenceDbEvidenceIfPresent() {
+        EvidenceEntity evidence = new EvidenceEntity();
+        evidence.setId(UUID.randomUUID());
+        evidence.setCaseId(caseId);
+        evidence.setEvidenceType(EvidenceType.APPLICATION_DB_EVIDENCE);
+        evidence.setSource("application-db");
+        evidence.setContentText("{\"finding\":\"preferred province read-only evidence\"}");
+        evidence.setCreatedAt(Instant.now());
+        evidence.setSanitized(true);
+        when(evidenceRepository.findByCaseId(caseId))
+                .thenReturn(List.of(evidence));
+
+        FixPlanResponse response = service.plan(caseId, false, 5);
+
+        assertThat(response.requiresDbEvidence()).isFalse();
+        assertThat(response.missingEvidence())
+                .doesNotContain(FixPlanService.APPLICATION_DB_EVIDENCE);
+        assertThat(response.requiredEvidence())
+                .anySatisfy(reference -> {
+                    assertThat(reference.evidenceType())
+                            .isEqualTo(FixPlanService.APPLICATION_DB_EVIDENCE);
+                    assertThat(reference.source()).isEqualTo("application-db");
+                });
+        assertThat(response.confidence()).isGreaterThan(0.4);
     }
 
     private ReplayCaseEntity replayCase() {
