@@ -58,6 +58,9 @@ class WorkspaceWriteServiceTest {
         assertThat(response.filesPlanned())
                 .extracting("fileType")
                 .contains("REGRESSION_TEST", "SOURCE_FIX");
+        assertThat(asJson(response))
+                .contains("FIZZMS-10228")
+                .contains("FIZZMS10228UpdateUserRegressionTest");
         assertThat(Files.exists(tempDir.resolve(response.workspacePath())))
                 .isFalse();
     }
