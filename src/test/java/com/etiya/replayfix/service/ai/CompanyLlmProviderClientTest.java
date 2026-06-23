@@ -98,6 +98,176 @@ class CompanyLlmProviderClientTest {
     }
 
     @Test
+    void liteLlmDefaultModelUsesOpenAiPrefix() {
+        configureLiteLlm();
+        CompanyLlmProviderClient client = client(okResponse());
+
+        JsonNode payload = client.buildSourceReasoningPayload(
+                sourceRequest(UUID.randomUUID())
+        );
+
+        assertThat(payload.path("model").asText())
+                .isEqualTo("openai/gpt-4o-mini");
+    }
+
+    @Test
+    void backendMethodMapsToCodeAdvisoryProfile() {
+        configureLiteLlm();
+        CompanyLlmProviderClient client = client(okResponse());
+
+        JsonNode payload = client.buildSourceReasoningPayload(
+                sourceRequestWithMetadata(Map.of(
+                        "requestType", "CODE_CHANGE_ADVISORY",
+                        "advisoryMode", "BACKEND_METHOD"
+                ))
+        );
+
+        assertThat(payload.path("model").asText())
+                .isEqualTo("openai/gpt-4o-mini");
+        assertThat(payload.path("max_tokens").asInt()).isEqualTo(500);
+    }
+
+    @Test
+    void testSuggestionMapsToTestSuggestionProfile() {
+        configureLiteLlm();
+        CompanyLlmProviderClient client = client(okResponse());
+
+        JsonNode payload = client.buildSourceReasoningPayload(
+                sourceRequestWithMetadata(Map.of(
+                        "requestType", "CODE_CHANGE_ADVISORY",
+                        "advisoryMode", "TEST_SUGGESTION"
+                ))
+        );
+
+        assertThat(payload.path("model").asText())
+                .isEqualTo("openai/gpt-4o-mini");
+    }
+
+    @Test
+    void riskReviewMapsToRiskReviewProfile() {
+        configureLiteLlm();
+        CompanyLlmProviderClient client = client(okResponse());
+
+        JsonNode payload = client.buildSourceReasoningPayload(
+                sourceRequestWithMetadata(Map.of(
+                        "requestType", "CODE_CHANGE_ADVISORY",
+                        "advisoryMode", "RISK_REVIEW"
+                ))
+        );
+
+        assertThat(payload.path("model").asText())
+                .isEqualTo("openai/gpt-4o");
+    }
+
+    @Test
+    void explicitAllowedLiteLlmModelIsAccepted() {
+        configureLiteLlm();
+        CompanyLlmProviderClient client = client(okResponse());
+
+        JsonNode payload = client.buildSourceReasoningPayload(
+                sourceRequestWithMetadata(Map.of(
+                        "requestType", "CODE_CHANGE_ADVISORY",
+                        "modelName", "openai/gpt-3.5-turbo"
+                ))
+        );
+
+        assertThat(payload.path("model").asText())
+                .isEqualTo("openai/gpt-3.5-turbo");
+    }
+
+    @Test
+    void plainLiteLlmModelNameIsRejected() {
+        configureLiteLlm();
+        CompanyLlmProviderClient client = client(okResponse());
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                client.buildSourceReasoningPayload(sourceRequestWithMetadata(
+                        Map.of("modelName", "gpt-3.5-turbo")
+                )))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("MODEL_NAME_MUST_USE_OPENAI_PREFIX");
+    }
+
+    @Test
+    void unknownLiteLlmModelNameIsRejected() {
+        configureLiteLlm();
+        CompanyLlmProviderClient client = client(okResponse());
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                client.buildSourceReasoningPayload(sourceRequestWithMetadata(
+                        Map.of("modelName", "openai/not-allowed")
+                )))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("MODEL_NOT_ALLOWED");
+    }
+
+    @Test
+    void liteLlmResponseUsageTokensAreCaptured() {
+        configureLiteLlm();
+        CompanyLlmProviderClient client = client(chatResponseWithUsage(
+                "stop",
+                sourceJson("usage captured"),
+                123,
+                456,
+                579
+        ));
+
+        AiGenerationResponse response = client.generate(
+                sourceRequestWithMetadata(Map.of(
+                        "requestType", "CODE_CHANGE_ADVISORY",
+                        "advisoryMode", "BACKEND_METHOD"
+                ))
+        );
+
+        assertThat(response.provider())
+                .isEqualTo("LITELLM_OPENAI_COMPATIBLE");
+        assertThat(response.effectiveModelName())
+                .isEqualTo("openai/gpt-4o-mini");
+        assertThat(response.modelProfile()).isEqualTo("CODE_ADVISORY");
+        assertThat(response.budgetTrackingEnabled()).isTrue();
+        assertThat(response.budgetPeriod()).isEqualTo("WEEKLY");
+        assertThat(response.weeklyBudgetUsd()).isEqualTo(200.0);
+        assertThat(response.estimatedUsageAvailable()).isTrue();
+        assertThat(response.promptTokenCount()).isEqualTo(123);
+        assertThat(response.completionTokenCount()).isEqualTo(456);
+        assertThat(response.totalTokenCount()).isEqualTo(579);
+        assertThat(response.toString()).doesNotContain(SECRET);
+    }
+
+    @Test
+    void liteLlmMissingUsageReturnsWarning() {
+        configureLiteLlm();
+        CompanyLlmProviderClient client = client(chatResponse(
+                "stop",
+                sourceJson("missing usage"),
+                null,
+                null
+        ));
+
+        AiGenerationResponse response = client.generate(
+                sourceRequestWithMetadata(Map.of(
+                        "requestType", "CODE_CHANGE_ADVISORY"
+                ))
+        );
+
+        assertThat(response.estimatedUsageAvailable()).isFalse();
+        assertThat(response.warnings())
+                .contains(
+                        "LLM_USAGE_NOT_RETURNED_BY_PROVIDER",
+                        "WEEKLY_BUDGET_USAGE_ESTIMATION_UNAVAILABLE"
+                );
+    }
+
+    @Test
+    void oldMonthlyBudgetConfigFallsBackToWeeklyBudgetValue() {
+        ReplayFixProperties.Llm llm = new ReplayFixProperties.Llm();
+        llm.setMonthlyBudgetUsd(350.0);
+
+        assertThat(llm.getBudgetPeriod()).isEqualTo("WEEKLY");
+        assertThat(llm.getWeeklyBudgetUsd()).isEqualTo(350.0);
+    }
+
+    @Test
     void sourceChangeAnalysisPayloadCanDisableJsonMode() {
         CompanyLlmProviderClient client = client(okResponse());
         AiGenerationRequest request = sourceRequest(UUID.randomUUID());
@@ -524,6 +694,65 @@ class CompanyLlmProviderClientTest {
         assertThat(result.toString()).doesNotContain(SECRET);
     }
 
+    @Test
+    void liteLlmConnectivityRejectsPlainModelNameBeforeHttpCall() {
+        configureLiteLlm();
+        AtomicInteger calls = new AtomicInteger();
+        WebClient.Builder builder = WebClient.builder()
+                .exchangeFunction(request -> {
+                    calls.incrementAndGet();
+                    return Mono.just(ClientResponse
+                            .create(HttpStatus.UNAUTHORIZED)
+                            .header("Content-Type", "text/plain")
+                            .body("unauthorized")
+                            .build());
+                });
+        CompanyLlmProviderClient client = new CompanyLlmProviderClient(
+                properties,
+                evidenceRepository,
+                new EvidenceSanitizer(),
+                builder,
+                objectMapper
+        );
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                client.connectivity(null, "gpt-3.5-turbo"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("MODEL_NAME_MUST_USE_OPENAI_PREFIX");
+        assertThat(calls.get()).isZero();
+    }
+
+    @Test
+    void liteLlmRoutingFromBaseUrlRejectsPlainModelNameBeforeHttpCall() {
+        properties.getAi().setProvider(AiProviderType.COMPANY_LLM);
+        properties.getLlm().setProvider(AiProviderType.DISABLED);
+        properties.getLlm().setBaseUrl("https://llm.example.test");
+        properties.getLlm().setDefaultModelName("openai/gpt-3.5-turbo");
+        AtomicInteger calls = new AtomicInteger();
+        WebClient.Builder builder = WebClient.builder()
+                .exchangeFunction(request -> {
+                    calls.incrementAndGet();
+                    return Mono.just(ClientResponse
+                            .create(HttpStatus.UNAUTHORIZED)
+                            .header("Content-Type", "text/plain")
+                            .body("unauthorized")
+                            .build());
+                });
+        CompanyLlmProviderClient client = new CompanyLlmProviderClient(
+                properties,
+                evidenceRepository,
+                new EvidenceSanitizer(),
+                builder,
+                objectMapper
+        );
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                client.connectivity(null, "gpt-3.5-turbo"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("MODEL_NAME_MUST_USE_OPENAI_PREFIX");
+        assertThat(calls.get()).isZero();
+    }
+
     private CompanyLlmProviderClient client(String body) {
         WebClient.Builder builder = WebClient.builder()
                 .exchangeFunction(request -> Mono.just(ClientResponse
@@ -616,6 +845,33 @@ class CompanyLlmProviderClientTest {
         }
     }
 
+    private String chatResponseWithUsage(
+            String finishReason,
+            String content,
+            int promptTokens,
+            int completionTokens,
+            int totalTokens
+    ) {
+        Map<String, Object> message = new java.util.LinkedHashMap<>();
+        message.put("content", content);
+        Map<String, Object> choice = new java.util.LinkedHashMap<>();
+        choice.put("finish_reason", finishReason);
+        choice.put("message", message);
+        Map<String, Object> response = new java.util.LinkedHashMap<>();
+        response.put("id", "chatcmpl-test");
+        response.put("choices", List.of(choice));
+        response.put("usage", Map.of(
+                "prompt_tokens", promptTokens,
+                "completion_tokens", completionTokens,
+                "total_tokens", totalTokens
+        ));
+        try {
+            return objectMapper.writeValueAsString(response);
+        } catch (Exception exception) {
+            throw new IllegalStateException(exception);
+        }
+    }
+
     private String sourceJson(String probableRootCause) {
         try {
             return objectMapper.writeValueAsString(Map.of(
@@ -668,6 +924,38 @@ class CompanyLlmProviderClientTest {
                 true,
                 Map.of("requestType", "SOURCE_CHANGE_ANALYSIS")
         );
+    }
+
+    private AiGenerationRequest sourceRequestWithMetadata(
+            Map<String, String> metadata
+    ) {
+        return new AiGenerationRequest(
+                UUID.randomUUID(),
+                metadata.getOrDefault("requestType", "SOURCE_CHANGE_ANALYSIS"),
+                "Return only compact JSON.",
+                "{\"contextMode\":\"MINIMAL\"}",
+                "openai/gpt-4o-mini",
+                0.1,
+                500,
+                true,
+                metadata
+        );
+    }
+
+    private void configureLiteLlm() {
+        properties.getAi().setProvider(AiProviderType.LITELLM_OPENAI_COMPATIBLE);
+        properties.getLlm().setProvider(AiProviderType.LITELLM_OPENAI_COMPATIBLE);
+        properties.getLlm().setBaseUrl("https://llm.example.test");
+        properties.getLlm().setApiKeyEnv("__MISSING_COMPANY_LLM_API_KEY__");
+        properties.getLlm().setDefaultModelName("openai/gpt-3.5-turbo");
+        properties.getLlm().setAllowedModelNames(List.of(
+                "openai/gpt-3.5-turbo",
+                "openai/gpt-4o-mini",
+                "openai/gpt-4o"
+        ));
+        properties.getLlm().setWeeklyBudgetUsd(200.0);
+        properties.getLlm().setBudgetPeriod("WEEKLY");
+        properties.getLlm().setBudgetTrackingEnabled(true);
     }
 
     private EvidenceEntity aiInputBundle(String content) {

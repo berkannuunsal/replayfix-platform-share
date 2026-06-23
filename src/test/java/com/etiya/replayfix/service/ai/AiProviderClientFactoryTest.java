@@ -29,4 +29,28 @@ class AiProviderClientFactoryTest {
 
         assertThat(factory.getProvider()).isSameAs(companyProvider);
     }
+
+    @Test
+    void shouldSelectCompanyLlmProviderFromLiteLlmConfig() {
+        ReplayFixProperties properties = new ReplayFixProperties();
+        properties.getAi().setEnabled(true);
+        properties.getAi().setProvider(AiProviderType.DISABLED);
+        properties.getLlm().setProvider(
+                AiProviderType.LITELLM_OPENAI_COMPATIBLE
+        );
+
+        DisabledAiProviderClient disabled = mock(DisabledAiProviderClient.class);
+        MockAiProviderClient mockProvider = mock(MockAiProviderClient.class);
+        CompanyLlmProviderClient companyProvider =
+                mock(CompanyLlmProviderClient.class);
+
+        AiProviderClientFactory factory = new AiProviderClientFactory(
+                properties,
+                disabled,
+                mockProvider,
+                companyProvider
+        );
+
+        assertThat(factory.getProvider()).isSameAs(companyProvider);
+    }
 }

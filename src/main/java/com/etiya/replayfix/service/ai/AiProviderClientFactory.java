@@ -30,6 +30,11 @@ public class AiProviderClientFactory {
         }
 
         AiProviderType providerType = properties.getAi().getProvider();
+        AiProviderType llmProviderType = properties.getLlm().getProvider();
+        if ((providerType == null || providerType == AiProviderType.DISABLED)
+                && llmProviderType == AiProviderType.LITELLM_OPENAI_COMPATIBLE) {
+            providerType = llmProviderType;
+        }
         if (providerType == null) {
             return disabledProvider;
         }
@@ -37,7 +42,7 @@ public class AiProviderClientFactory {
         return switch (providerType) {
             case DISABLED -> disabledProvider;
             case MOCK -> mockProvider;
-            case COMPANY_LLM -> companyLlmProvider;
+            case COMPANY_LLM, LITELLM_OPENAI_COMPATIBLE -> companyLlmProvider;
             case OPENAI_COMPATIBLE, LOCAL_PRIVATE -> throw new UnsupportedOperationException(
                     "Provider " + providerType + " not yet implemented in this POC"
             );

@@ -59,6 +59,39 @@ replayfix:
       timeout-ms: ${REPLAYFIX_AI_COMPANY_TIMEOUT_MS:30000}
       max-input-chars: ${REPLAYFIX_AI_COMPANY_MAX_INPUT_CHARS:${REPLAYFIX_AI_MAX_INPUT_CHARS:120000}}
       max-output-chars: ${REPLAYFIX_AI_COMPANY_MAX_OUTPUT_CHARS:${REPLAYFIX_AI_MAX_OUTPUT_CHARS:30000}}
+  llm:
+    provider: ${REPLAYFIX_LLM_PROVIDER:DISABLED}
+    base-url: ${COMPANY_LLM_BASE_URL:}
+    api-key-env: COMPANY_LLM_API_KEY
+    default-model-name: ${COMPANY_LLM_MODEL_NAME:openai/gpt-3.5-turbo}
+    weekly-budget-usd: ${COMPANY_LLM_WEEKLY_BUDGET_USD:200}
+    budget-period: WEEKLY
+    budget-tracking-enabled: true
+    allowed-model-names:
+      - openai/gpt-3.5-turbo
+      - openai/gpt-4o-mini
+      - openai/gpt-4o
+    model-profiles:
+      CODE_ADVISORY:
+        model-name: ${CODE_ADVISORY_MODEL_NAME:openai/gpt-4o-mini}
+        timeout-seconds: 90
+        max-prompt-chars: 12000
+        max-output-tokens: 3000
+      TEST_SUGGESTION:
+        model-name: ${TEST_SUGGESTION_MODEL_NAME:openai/gpt-4o-mini}
+        timeout-seconds: 60
+        max-prompt-chars: 10000
+        max-output-tokens: 2500
+      RISK_REVIEW:
+        model-name: ${RISK_REVIEW_MODEL_NAME:openai/gpt-4o}
+        timeout-seconds: 90
+        max-prompt-chars: 12000
+        max-output-tokens: 3000
+      EXECUTIVE_SUMMARY:
+        model-name: ${EXECUTIVE_SUMMARY_MODEL_NAME:openai/gpt-4o-mini}
+        timeout-seconds: 45
+        max-prompt-chars: 8000
+        max-output-tokens: 1200
   notifications:
     webhook:
       enabled: ${REPLAYFIX_NOTIFICATION_WEBHOOK_ENABLED:false}

@@ -21,6 +21,18 @@ public record AiGenerationResponse(
         String parseErrorCategory,
         String outputPreview,
         int effectiveOutputTokenLimit,
+        String modelProfile,
+        String effectiveModelName,
+        int effectiveTimeoutSeconds,
+        int effectiveMaxPromptChars,
+        int effectiveMaxOutputTokens,
+        boolean budgetTrackingEnabled,
+        String budgetPeriod,
+        double weeklyBudgetUsd,
+        boolean estimatedUsageAvailable,
+        int promptTokenCount,
+        int completionTokenCount,
+        int totalTokenCount,
         Map<String, Object> responseShape
 ) {
     public AiGenerationResponse(
@@ -52,6 +64,18 @@ public record AiGenerationResponse(
                 errorMessage,
                 null,
                 "",
+                0,
+                "",
+                model,
+                0,
+                0,
+                0,
+                false,
+                "WEEKLY",
+                200.0,
+                false,
+                0,
+                0,
                 0,
                 Map.of()
         );
@@ -90,6 +114,18 @@ public record AiGenerationResponse(
                 parseErrorCategory,
                 outputPreview,
                 effectiveOutputTokenLimit,
+                "",
+                model,
+                0,
+                0,
+                0,
+                false,
+                "WEEKLY",
+                200.0,
+                false,
+                0,
+                0,
+                0,
                 Map.of()
         );
     }
@@ -97,6 +133,13 @@ public record AiGenerationResponse(
     public AiGenerationResponse {
         warnings = warnings == null ? List.of() : List.copyOf(warnings);
         outputPreview = outputPreview == null ? "" : outputPreview;
+        modelProfile = modelProfile == null ? "" : modelProfile;
+        effectiveModelName = effectiveModelName == null
+                ? ""
+                : effectiveModelName;
+        budgetPeriod = budgetPeriod == null || budgetPeriod.isBlank()
+                ? "WEEKLY"
+                : budgetPeriod;
         responseShape = responseShape == null ? Map.of() : Map.copyOf(responseShape);
     }
 }

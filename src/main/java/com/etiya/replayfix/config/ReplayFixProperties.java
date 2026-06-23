@@ -1,5 +1,6 @@
 package com.etiya.replayfix.config;
 
+import com.etiya.replayfix.domain.AiProviderType;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.time.Duration;
@@ -21,6 +22,8 @@ public class ReplayFixProperties {
     private Integrations integrations = new Integrations();
     private Notifications notifications = new Notifications();
     private Ai ai = new Ai();
+    private Llm llm = new Llm();
+    private ArgoCd argocd = new ArgoCd();
     private Demo demo = new Demo();
     private DbEvidence dbEvidence = new DbEvidence();
     private Map<String, Target> targets = new LinkedHashMap<>();
@@ -42,6 +45,12 @@ public class ReplayFixProperties {
     public void setNotifications(Notifications notifications) { this.notifications = notifications; }
     public Ai getAi() { return ai; }
     public void setAi(Ai ai) { this.ai = ai; }
+    public Llm getLlm() { return llm; }
+    public void setLlm(Llm value) {
+        this.llm = value == null ? new Llm() : value;
+    }
+    public ArgoCd getArgocd() { return argocd; }
+    public void setArgocd(ArgoCd value) { this.argocd = value; }
     public Demo getDemo() { return demo; }
     public void setDemo(Demo demo) { this.demo = demo; }
     public DbEvidence getDbEvidence() { return dbEvidence; }
@@ -233,6 +242,140 @@ public class ReplayFixProperties {
         public void setCompany(Company value) { this.company = value; }
     }
 
+    public static class ArgoCd {
+        private boolean enabled;
+        private String baseUrl = "";
+        private String tokenEnvVarName = "";
+        private boolean tokenConfigured;
+        private String project = "";
+        private boolean realProvisioningEnabled;
+
+        public boolean isEnabled() { return enabled; }
+        public void setEnabled(boolean value) { this.enabled = value; }
+        public String getBaseUrl() { return baseUrl; }
+        public void setBaseUrl(String value) { this.baseUrl = value; }
+        public String getTokenEnvVarName() { return tokenEnvVarName; }
+        public void setTokenEnvVarName(String value) { this.tokenEnvVarName = value; }
+        public boolean isTokenConfigured() { return tokenConfigured; }
+        public void setTokenConfigured(boolean value) { this.tokenConfigured = value; }
+        public String getProject() { return project; }
+        public void setProject(String value) { this.project = value; }
+        public boolean isRealProvisioningEnabled() { return realProvisioningEnabled; }
+        public void setRealProvisioningEnabled(boolean value) { this.realProvisioningEnabled = value; }
+    }
+
+    public static class Llm {
+        private AiProviderType provider = AiProviderType.DISABLED;
+        private String baseUrl = "";
+        private String apiKeyEnv = "COMPANY_LLM_API_KEY";
+        private String defaultModelName = "openai/gpt-3.5-turbo";
+        private Double weeklyBudgetUsd;
+        private String budgetPeriod = "WEEKLY";
+        private double monthlyBudgetUsd = 200.0;
+        private boolean budgetTrackingEnabled = true;
+        private boolean allowPlainModelNames;
+        private List<String> allowedModelNames = new ArrayList<>(List.of(
+                "openai/gpt-3.5-turbo",
+                "openai/gpt-4o-mini",
+                "openai/gpt-4o"
+        ));
+        private Map<String, LlmModelProfile> modelProfiles =
+                new LinkedHashMap<>();
+
+        public Llm() {
+            modelProfiles.put("CODE_ADVISORY", new LlmModelProfile(
+                    "openai/gpt-4o-mini",
+                    90,
+                    12000,
+                    3000
+            ));
+            modelProfiles.put("TEST_SUGGESTION", new LlmModelProfile(
+                    "openai/gpt-4o-mini",
+                    60,
+                    10000,
+                    2500
+            ));
+            modelProfiles.put("RISK_REVIEW", new LlmModelProfile(
+                    "openai/gpt-4o",
+                    90,
+                    12000,
+                    3000
+            ));
+            modelProfiles.put("EXECUTIVE_SUMMARY", new LlmModelProfile(
+                    "openai/gpt-4o-mini",
+                    45,
+                    8000,
+                    1200
+            ));
+        }
+
+        public AiProviderType getProvider() { return provider; }
+        public void setProvider(AiProviderType value) { this.provider = value; }
+        public String getBaseUrl() { return baseUrl; }
+        public void setBaseUrl(String value) { this.baseUrl = value; }
+        public String getApiKeyEnv() { return apiKeyEnv; }
+        public void setApiKeyEnv(String value) { this.apiKeyEnv = value; }
+        public String getDefaultModelName() { return defaultModelName; }
+        public void setDefaultModelName(String value) { this.defaultModelName = value; }
+        public double getWeeklyBudgetUsd() {
+            return weeklyBudgetUsd == null ? monthlyBudgetUsd : weeklyBudgetUsd;
+        }
+        public void setWeeklyBudgetUsd(Double value) { this.weeklyBudgetUsd = value; }
+        public String getBudgetPeriod() { return budgetPeriod; }
+        public void setBudgetPeriod(String value) { this.budgetPeriod = value; }
+        public double getMonthlyBudgetUsd() { return monthlyBudgetUsd; }
+        public void setMonthlyBudgetUsd(double value) { this.monthlyBudgetUsd = value; }
+        public boolean isBudgetTrackingEnabled() { return budgetTrackingEnabled; }
+        public void setBudgetTrackingEnabled(boolean value) { this.budgetTrackingEnabled = value; }
+        public boolean isAllowPlainModelNames() { return allowPlainModelNames; }
+        public void setAllowPlainModelNames(boolean value) { this.allowPlainModelNames = value; }
+        public List<String> getAllowedModelNames() { return allowedModelNames; }
+        public void setAllowedModelNames(List<String> value) {
+            this.allowedModelNames = value == null
+                    ? new ArrayList<>()
+                    : value;
+        }
+        public Map<String, LlmModelProfile> getModelProfiles() {
+            return modelProfiles;
+        }
+        public void setModelProfiles(Map<String, LlmModelProfile> value) {
+            this.modelProfiles = value == null
+                    ? new LinkedHashMap<>()
+                    : value;
+        }
+    }
+
+    public static class LlmModelProfile {
+        private String modelName = "";
+        private int timeoutSeconds = 60;
+        private int maxPromptChars = 12000;
+        private int maxOutputTokens = 3000;
+
+        public LlmModelProfile() {
+        }
+
+        public LlmModelProfile(
+                String modelName,
+                int timeoutSeconds,
+                int maxPromptChars,
+                int maxOutputTokens
+        ) {
+            this.modelName = modelName;
+            this.timeoutSeconds = timeoutSeconds;
+            this.maxPromptChars = maxPromptChars;
+            this.maxOutputTokens = maxOutputTokens;
+        }
+
+        public String getModelName() { return modelName; }
+        public void setModelName(String value) { this.modelName = value; }
+        public int getTimeoutSeconds() { return timeoutSeconds; }
+        public void setTimeoutSeconds(int value) { this.timeoutSeconds = value; }
+        public int getMaxPromptChars() { return maxPromptChars; }
+        public void setMaxPromptChars(int value) { this.maxPromptChars = value; }
+        public int getMaxOutputTokens() { return maxOutputTokens; }
+        public void setMaxOutputTokens(int value) { this.maxOutputTokens = value; }
+    }
+
     public static class Company {
         private String baseUrl = "";
         private String endpoint = "/v1/chat/completions";
@@ -363,9 +506,91 @@ public class ReplayFixProperties {
     }
 
     public static class Target {
+        private String applicationKey = "";
+        private String backendProjectKey = "";
+        private String backendRepositorySlug = "";
+        private String customerUiProjectKey = "";
+        private String customerUiRepositorySlug = "";
+        private String defaultBranch = "";
+        private String argocdApplicationName = "";
+        private String argocdProject = "";
+        private String destinationServer = "";
+        private String clusterName = "";
+        private String namespaceStrategy = "";
+        private String backendArgoCdApplicationName = "";
+        private String backendSourceRepoUrl = "";
+        private String backendChartPath = "";
+        private String backendTargetRevision = "";
+        private String backendValuesFile = "";
+        private String backendNamespace = "";
+        private String backendImageRepository = "";
+        private String backendImageTag = "";
+        private String backendHealthEndpoint = "";
+        private String customerUiArgoCdApplicationName = "";
+        private String customerUiSourceRepoUrl = "";
+        private String customerUiChartPath = "";
+        private String customerUiTargetRevision = "";
+        private String customerUiValuesFile = "";
+        private String customerUiNamespace = "";
+        private String customerUiImageRepository = "";
+        private String customerUiImageTag = "";
+        private String customerUiHealthEndpoint = "";
+        private String replayNamespacePrefix = "";
+        private String preCreatedReplayNamespace = "";
+        private String dbStateMode = "";
+        private boolean stateContinuationRequested;
+        private String secretStrategy = "";
+        private boolean dbStrategyConfirmed;
+        private boolean ingressConfigured;
+        private String cleanupTtl = "";
+        private String dbRuntimeMode = "";
+        private boolean dbTest2WriteAllowed;
+        private boolean dbTest2WriteRequiresApproval;
+        private String dbRuntimeUserMode = "";
+        private String activeMqMode = "";
+        private boolean activeMqConnectionRequired;
+        private boolean activeMqConsumerEnabled;
+        private boolean activeMqProducerEnabled;
+        private String kafkaMode = "";
+        private boolean kafkaConnectionRequired;
+        private boolean kafkaConsumerEnabled;
+        private boolean kafkaProducerEnabled;
+        private String redisMode = "";
+        private boolean redisKeyPrefixRequired;
+        private String emailMode = "";
+        private String httpExternalMode = "";
+        private String mqListenerEnabledConfigKey = "";
+        private String kafkaListenerEnabledConfigKey = "";
+        private String redisKeyPrefixConfigKey = "";
+        private List<String> requiredMqSecretKeys = new ArrayList<>();
+        private List<String> requiredKafkaSecretKeys = new ArrayList<>();
+        private List<String> requiredRedisSecretKeys = new ArrayList<>();
+        private int backendServicePort = 8080;
+        private String backendContextPath = "";
+        private String accessMode = "";
+        private String replayHostSuffix = "";
+        private String customerUiBackendBaseUrlConfigKey = "";
+        private String backendAllowedOriginsConfigKey = "";
+        private List<String> requiredDbSecretKeys = new ArrayList<>();
+        private List<String> requiredCustomerUiConfigKeys = new ArrayList<>();
+        private List<String> requiredBackendConfigKeys = new ArrayList<>();
+        private String argocdDestinationCluster = "";
+        private String argocdDestinationNamespacePrefix = "";
+        private String helmChartPath = "";
+        private String customerUiHelmChartPath = "";
+        private String mockServerChartPath = "";
         private String repository = "";
         private String cloneUrl = "";
         private String localSourcePath = "";
+        private String sourceWorkspaceRoot = "";
+        private boolean sourceCandidateExtractionEnabled;
+        private String sourceCandidateSource = "";
+        private String sourceCandidateExtractionBranch = "";
+        private List<String> allowedSourceExtensions = new ArrayList<>();
+        private int maxSourceCandidateFiles = 3;
+        private int maxSnippetChars = 12000;
+        private SourceCandidateBitbucket bitbucket =
+                new SourceCandidateBitbucket();
         private String image = "";
         private int containerPort = 8080;
         private String healthPath = "/actuator/health";
@@ -378,13 +603,197 @@ public class ReplayFixProperties {
         private Git git = new Git();
         private Map<String, String> environment = new LinkedHashMap<>();
         private List<String> dependencies = new ArrayList<>();
+        private Map<String, ExternalDependency> externalDependencies =
+                new LinkedHashMap<>();
+        private Map<String, DbSampleDomain> dbSampleDomains =
+                new LinkedHashMap<>();
 
+        public String getApplicationKey() { return applicationKey; }
+        public void setApplicationKey(String value) { this.applicationKey = value; }
+        public String getBackendProjectKey() { return backendProjectKey; }
+        public void setBackendProjectKey(String value) { this.backendProjectKey = value; }
+        public String getBackendRepositorySlug() { return backendRepositorySlug; }
+        public void setBackendRepositorySlug(String value) { this.backendRepositorySlug = value; }
+        public String getCustomerUiProjectKey() { return customerUiProjectKey; }
+        public void setCustomerUiProjectKey(String value) { this.customerUiProjectKey = value; }
+        public String getCustomerUiRepositorySlug() { return customerUiRepositorySlug; }
+        public void setCustomerUiRepositorySlug(String value) { this.customerUiRepositorySlug = value; }
+        public String getDefaultBranch() { return defaultBranch; }
+        public void setDefaultBranch(String value) { this.defaultBranch = value; }
+        public String getArgocdApplicationName() { return argocdApplicationName; }
+        public void setArgocdApplicationName(String value) { this.argocdApplicationName = value; }
+        public String getArgocdProject() { return argocdProject; }
+        public void setArgocdProject(String value) { this.argocdProject = value; }
+        public String getDestinationServer() { return destinationServer; }
+        public void setDestinationServer(String value) { this.destinationServer = value; }
+        public String getClusterName() { return clusterName; }
+        public void setClusterName(String value) { this.clusterName = value; }
+        public String getNamespaceStrategy() { return namespaceStrategy; }
+        public void setNamespaceStrategy(String value) { this.namespaceStrategy = value; }
+        public String getBackendArgoCdApplicationName() { return backendArgoCdApplicationName; }
+        public void setBackendArgoCdApplicationName(String value) { this.backendArgoCdApplicationName = value; }
+        public String getBackendSourceRepoUrl() { return backendSourceRepoUrl; }
+        public void setBackendSourceRepoUrl(String value) { this.backendSourceRepoUrl = value; }
+        public String getBackendChartPath() { return backendChartPath; }
+        public void setBackendChartPath(String value) { this.backendChartPath = value; }
+        public String getBackendTargetRevision() { return backendTargetRevision; }
+        public void setBackendTargetRevision(String value) { this.backendTargetRevision = value; }
+        public String getBackendValuesFile() { return backendValuesFile; }
+        public void setBackendValuesFile(String value) { this.backendValuesFile = value; }
+        public String getBackendNamespace() { return backendNamespace; }
+        public void setBackendNamespace(String value) { this.backendNamespace = value; }
+        public String getBackendImageRepository() { return backendImageRepository; }
+        public void setBackendImageRepository(String value) { this.backendImageRepository = value; }
+        public String getBackendImageTag() { return backendImageTag; }
+        public void setBackendImageTag(String value) { this.backendImageTag = value; }
+        public String getBackendHealthEndpoint() { return backendHealthEndpoint; }
+        public void setBackendHealthEndpoint(String value) { this.backendHealthEndpoint = value; }
+        public String getCustomerUiArgoCdApplicationName() { return customerUiArgoCdApplicationName; }
+        public void setCustomerUiArgoCdApplicationName(String value) { this.customerUiArgoCdApplicationName = value; }
+        public String getCustomerUiSourceRepoUrl() { return customerUiSourceRepoUrl; }
+        public void setCustomerUiSourceRepoUrl(String value) { this.customerUiSourceRepoUrl = value; }
+        public String getCustomerUiChartPath() { return customerUiChartPath; }
+        public void setCustomerUiChartPath(String value) { this.customerUiChartPath = value; }
+        public String getCustomerUiTargetRevision() { return customerUiTargetRevision; }
+        public void setCustomerUiTargetRevision(String value) { this.customerUiTargetRevision = value; }
+        public String getCustomerUiValuesFile() { return customerUiValuesFile; }
+        public void setCustomerUiValuesFile(String value) { this.customerUiValuesFile = value; }
+        public String getCustomerUiNamespace() { return customerUiNamespace; }
+        public void setCustomerUiNamespace(String value) { this.customerUiNamespace = value; }
+        public String getCustomerUiImageRepository() { return customerUiImageRepository; }
+        public void setCustomerUiImageRepository(String value) { this.customerUiImageRepository = value; }
+        public String getCustomerUiImageTag() { return customerUiImageTag; }
+        public void setCustomerUiImageTag(String value) { this.customerUiImageTag = value; }
+        public String getCustomerUiHealthEndpoint() { return customerUiHealthEndpoint; }
+        public void setCustomerUiHealthEndpoint(String value) { this.customerUiHealthEndpoint = value; }
+        public String getReplayNamespacePrefix() { return replayNamespacePrefix; }
+        public void setReplayNamespacePrefix(String value) { this.replayNamespacePrefix = value; }
+        public String getPreCreatedReplayNamespace() { return preCreatedReplayNamespace; }
+        public void setPreCreatedReplayNamespace(String value) { this.preCreatedReplayNamespace = value; }
+        public String getDbStateMode() { return dbStateMode; }
+        public void setDbStateMode(String value) { this.dbStateMode = value; }
+        public boolean isStateContinuationRequested() { return stateContinuationRequested; }
+        public void setStateContinuationRequested(boolean value) { this.stateContinuationRequested = value; }
+        public String getSecretStrategy() { return secretStrategy; }
+        public void setSecretStrategy(String value) { this.secretStrategy = value; }
+        public boolean isDbStrategyConfirmed() { return dbStrategyConfirmed; }
+        public void setDbStrategyConfirmed(boolean value) { this.dbStrategyConfirmed = value; }
+        public boolean isIngressConfigured() { return ingressConfigured; }
+        public void setIngressConfigured(boolean value) { this.ingressConfigured = value; }
+        public String getCleanupTtl() { return cleanupTtl; }
+        public void setCleanupTtl(String value) { this.cleanupTtl = value; }
+        public String getDbRuntimeMode() { return dbRuntimeMode; }
+        public void setDbRuntimeMode(String value) { this.dbRuntimeMode = value; }
+        public boolean isDbTest2WriteAllowed() { return dbTest2WriteAllowed; }
+        public void setDbTest2WriteAllowed(boolean value) { this.dbTest2WriteAllowed = value; }
+        public boolean isDbTest2WriteRequiresApproval() { return dbTest2WriteRequiresApproval; }
+        public void setDbTest2WriteRequiresApproval(boolean value) { this.dbTest2WriteRequiresApproval = value; }
+        public String getDbRuntimeUserMode() { return dbRuntimeUserMode; }
+        public void setDbRuntimeUserMode(String value) { this.dbRuntimeUserMode = value; }
+        public String getActiveMqMode() { return activeMqMode; }
+        public void setActiveMqMode(String value) { this.activeMqMode = value; }
+        public boolean isActiveMqConnectionRequired() { return activeMqConnectionRequired; }
+        public void setActiveMqConnectionRequired(boolean value) { this.activeMqConnectionRequired = value; }
+        public boolean isActiveMqConsumerEnabled() { return activeMqConsumerEnabled; }
+        public void setActiveMqConsumerEnabled(boolean value) { this.activeMqConsumerEnabled = value; }
+        public boolean isActiveMqProducerEnabled() { return activeMqProducerEnabled; }
+        public void setActiveMqProducerEnabled(boolean value) { this.activeMqProducerEnabled = value; }
+        public String getKafkaMode() { return kafkaMode; }
+        public void setKafkaMode(String value) { this.kafkaMode = value; }
+        public boolean isKafkaConnectionRequired() { return kafkaConnectionRequired; }
+        public void setKafkaConnectionRequired(boolean value) { this.kafkaConnectionRequired = value; }
+        public boolean isKafkaConsumerEnabled() { return kafkaConsumerEnabled; }
+        public void setKafkaConsumerEnabled(boolean value) { this.kafkaConsumerEnabled = value; }
+        public boolean isKafkaProducerEnabled() { return kafkaProducerEnabled; }
+        public void setKafkaProducerEnabled(boolean value) { this.kafkaProducerEnabled = value; }
+        public String getRedisMode() { return redisMode; }
+        public void setRedisMode(String value) { this.redisMode = value; }
+        public boolean isRedisKeyPrefixRequired() { return redisKeyPrefixRequired; }
+        public void setRedisKeyPrefixRequired(boolean value) { this.redisKeyPrefixRequired = value; }
+        public String getEmailMode() { return emailMode; }
+        public void setEmailMode(String value) { this.emailMode = value; }
+        public String getHttpExternalMode() { return httpExternalMode; }
+        public void setHttpExternalMode(String value) { this.httpExternalMode = value; }
+        public String getMqListenerEnabledConfigKey() { return mqListenerEnabledConfigKey; }
+        public void setMqListenerEnabledConfigKey(String value) { this.mqListenerEnabledConfigKey = value; }
+        public String getKafkaListenerEnabledConfigKey() { return kafkaListenerEnabledConfigKey; }
+        public void setKafkaListenerEnabledConfigKey(String value) { this.kafkaListenerEnabledConfigKey = value; }
+        public String getRedisKeyPrefixConfigKey() { return redisKeyPrefixConfigKey; }
+        public void setRedisKeyPrefixConfigKey(String value) { this.redisKeyPrefixConfigKey = value; }
+        public List<String> getRequiredMqSecretKeys() { return requiredMqSecretKeys; }
+        public void setRequiredMqSecretKeys(List<String> value) {
+            this.requiredMqSecretKeys = value == null ? new ArrayList<>() : value;
+        }
+        public List<String> getRequiredKafkaSecretKeys() { return requiredKafkaSecretKeys; }
+        public void setRequiredKafkaSecretKeys(List<String> value) {
+            this.requiredKafkaSecretKeys = value == null ? new ArrayList<>() : value;
+        }
+        public List<String> getRequiredRedisSecretKeys() { return requiredRedisSecretKeys; }
+        public void setRequiredRedisSecretKeys(List<String> value) {
+            this.requiredRedisSecretKeys = value == null ? new ArrayList<>() : value;
+        }
+        public int getBackendServicePort() { return backendServicePort; }
+        public void setBackendServicePort(int value) { this.backendServicePort = value; }
+        public String getBackendContextPath() { return backendContextPath; }
+        public void setBackendContextPath(String value) { this.backendContextPath = value; }
+        public String getAccessMode() { return accessMode; }
+        public void setAccessMode(String value) { this.accessMode = value; }
+        public String getReplayHostSuffix() { return replayHostSuffix; }
+        public void setReplayHostSuffix(String value) { this.replayHostSuffix = value; }
+        public String getCustomerUiBackendBaseUrlConfigKey() { return customerUiBackendBaseUrlConfigKey; }
+        public void setCustomerUiBackendBaseUrlConfigKey(String value) { this.customerUiBackendBaseUrlConfigKey = value; }
+        public String getBackendAllowedOriginsConfigKey() { return backendAllowedOriginsConfigKey; }
+        public void setBackendAllowedOriginsConfigKey(String value) { this.backendAllowedOriginsConfigKey = value; }
+        public List<String> getRequiredDbSecretKeys() { return requiredDbSecretKeys; }
+        public void setRequiredDbSecretKeys(List<String> value) {
+            this.requiredDbSecretKeys = value == null ? new ArrayList<>() : value;
+        }
+        public List<String> getRequiredCustomerUiConfigKeys() { return requiredCustomerUiConfigKeys; }
+        public void setRequiredCustomerUiConfigKeys(List<String> value) {
+            this.requiredCustomerUiConfigKeys = value == null ? new ArrayList<>() : value;
+        }
+        public List<String> getRequiredBackendConfigKeys() { return requiredBackendConfigKeys; }
+        public void setRequiredBackendConfigKeys(List<String> value) {
+            this.requiredBackendConfigKeys = value == null ? new ArrayList<>() : value;
+        }
+        public String getArgocdDestinationCluster() { return argocdDestinationCluster; }
+        public void setArgocdDestinationCluster(String value) { this.argocdDestinationCluster = value; }
+        public String getArgocdDestinationNamespacePrefix() { return argocdDestinationNamespacePrefix; }
+        public void setArgocdDestinationNamespacePrefix(String value) { this.argocdDestinationNamespacePrefix = value; }
+        public String getHelmChartPath() { return helmChartPath; }
+        public void setHelmChartPath(String value) { this.helmChartPath = value; }
+        public String getCustomerUiHelmChartPath() { return customerUiHelmChartPath; }
+        public void setCustomerUiHelmChartPath(String value) { this.customerUiHelmChartPath = value; }
+        public String getMockServerChartPath() { return mockServerChartPath; }
+        public void setMockServerChartPath(String value) { this.mockServerChartPath = value; }
         public String getRepository() { return repository; }
         public void setRepository(String value) { this.repository = value; }
         public String getCloneUrl() { return cloneUrl; }
         public void setCloneUrl(String value) { this.cloneUrl = value; }
         public String getLocalSourcePath() { return localSourcePath; }
         public void setLocalSourcePath(String value) { this.localSourcePath = value; }
+        public String getSourceWorkspaceRoot() { return sourceWorkspaceRoot; }
+        public void setSourceWorkspaceRoot(String value) { this.sourceWorkspaceRoot = value; }
+        public boolean isSourceCandidateExtractionEnabled() { return sourceCandidateExtractionEnabled; }
+        public void setSourceCandidateExtractionEnabled(boolean value) { this.sourceCandidateExtractionEnabled = value; }
+        public String getSourceCandidateSource() { return sourceCandidateSource; }
+        public void setSourceCandidateSource(String value) { this.sourceCandidateSource = value; }
+        public String getSourceCandidateExtractionBranch() { return sourceCandidateExtractionBranch; }
+        public void setSourceCandidateExtractionBranch(String value) { this.sourceCandidateExtractionBranch = value; }
+        public List<String> getAllowedSourceExtensions() { return allowedSourceExtensions; }
+        public void setAllowedSourceExtensions(List<String> value) {
+            this.allowedSourceExtensions = value == null ? new ArrayList<>() : value;
+        }
+        public int getMaxSourceCandidateFiles() { return maxSourceCandidateFiles; }
+        public void setMaxSourceCandidateFiles(int value) { this.maxSourceCandidateFiles = value; }
+        public int getMaxSnippetChars() { return maxSnippetChars; }
+        public void setMaxSnippetChars(int value) { this.maxSnippetChars = value; }
+        public SourceCandidateBitbucket getBitbucket() { return bitbucket; }
+        public void setBitbucket(SourceCandidateBitbucket value) {
+            this.bitbucket = value == null
+                    ? new SourceCandidateBitbucket()
+                    : value;
+        }
         public String getImage() { return image; }
         public void setImage(String value) { this.image = value; }
         public int getContainerPort() { return containerPort; }
@@ -409,6 +818,169 @@ public class ReplayFixProperties {
         public void setEnvironment(Map<String, String> value) { this.environment = value; }
         public List<String> getDependencies() { return dependencies; }
         public void setDependencies(List<String> value) { this.dependencies = value; }
+        public Map<String, ExternalDependency> getExternalDependencies() {
+            return externalDependencies;
+        }
+        public void setExternalDependencies(
+                Map<String, ExternalDependency> value
+        ) {
+            this.externalDependencies = value == null
+                    ? new LinkedHashMap<>()
+                    : value;
+        }
+        public Map<String, DbSampleDomain> getDbSampleDomains() {
+            return dbSampleDomains;
+        }
+        public void setDbSampleDomains(Map<String, DbSampleDomain> value) {
+            this.dbSampleDomains = value == null
+                    ? new LinkedHashMap<>()
+                    : value;
+        }
+    }
+
+    public static class SourceCandidateBitbucket {
+        private String baseUrl = "";
+        private String usernameEnv = "";
+        private String tokenEnv = "";
+        private String accessKeyEnv = "";
+        private int requestTimeoutSeconds = 30;
+        private Map<String, SourceCandidateRepository> repositories =
+                new LinkedHashMap<>();
+
+        public String getBaseUrl() { return baseUrl; }
+        public void setBaseUrl(String value) { this.baseUrl = value; }
+        public String getUsernameEnv() { return usernameEnv; }
+        public void setUsernameEnv(String value) { this.usernameEnv = value; }
+        public String getTokenEnv() { return tokenEnv; }
+        public void setTokenEnv(String value) { this.tokenEnv = value; }
+        /**
+         * Backward-compatible alias for older local config. Prefer tokenEnv.
+         */
+        public String getAccessKeyEnv() { return accessKeyEnv; }
+        public void setAccessKeyEnv(String value) { this.accessKeyEnv = value; }
+        public int getRequestTimeoutSeconds() { return requestTimeoutSeconds; }
+        public void setRequestTimeoutSeconds(int value) {
+            this.requestTimeoutSeconds = value;
+        }
+        public Map<String, SourceCandidateRepository> getRepositories() {
+            return repositories;
+        }
+        public void setRepositories(
+                Map<String, SourceCandidateRepository> value
+        ) {
+            this.repositories = value == null
+                    ? new LinkedHashMap<>()
+                    : value;
+        }
+    }
+
+    public static class SourceCandidateRepository {
+        private String logicalName = "";
+        private String projectKey = "";
+        private String repositorySlug = "";
+        private String branch = "";
+        private String browseUrl = "";
+        private String rawPathTemplate = "";
+        private String language = "";
+        private List<String> allowedExtensions = new ArrayList<>();
+
+        public String getLogicalName() { return logicalName; }
+        public void setLogicalName(String value) { this.logicalName = value; }
+        public String getProjectKey() { return projectKey; }
+        public void setProjectKey(String value) { this.projectKey = value; }
+        public String getRepositorySlug() { return repositorySlug; }
+        public void setRepositorySlug(String value) { this.repositorySlug = value; }
+        public String getBranch() { return branch; }
+        public void setBranch(String value) { this.branch = value; }
+        public String getBrowseUrl() { return browseUrl; }
+        public void setBrowseUrl(String value) { this.browseUrl = value; }
+        public String getRawPathTemplate() { return rawPathTemplate; }
+        public void setRawPathTemplate(String value) { this.rawPathTemplate = value; }
+        public String getLanguage() { return language; }
+        public void setLanguage(String value) { this.language = value; }
+        public List<String> getAllowedExtensions() { return allowedExtensions; }
+        public void setAllowedExtensions(List<String> value) {
+            this.allowedExtensions = value == null
+                    ? new ArrayList<>()
+                    : value;
+        }
+    }
+
+    public static class ExternalDependency {
+        private String dependencyName = "";
+        private String dependencyType = "";
+        private String originalBaseUrl = "";
+        private String configKey = "";
+        private String mockPath = "";
+        private String mockType = "";
+        private String responseSource = "";
+
+        public String getDependencyName() { return dependencyName; }
+        public void setDependencyName(String value) { this.dependencyName = value; }
+        public String getDependencyType() { return dependencyType; }
+        public void setDependencyType(String value) { this.dependencyType = value; }
+        public String getOriginalBaseUrl() { return originalBaseUrl; }
+        public void setOriginalBaseUrl(String value) { this.originalBaseUrl = value; }
+        public String getConfigKey() { return configKey; }
+        public void setConfigKey(String value) { this.configKey = value; }
+        public String getMockPath() { return mockPath; }
+        public void setMockPath(String value) { this.mockPath = value; }
+        public String getMockType() { return mockType; }
+        public void setMockType(String value) { this.mockType = value; }
+        public String getResponseSource() { return responseSource; }
+        public void setResponseSource(String value) { this.responseSource = value; }
+    }
+
+    public static class DbSampleDomain {
+        private String domain = "";
+        private String schema = "";
+        private String tableName = "";
+        private List<String> keyFields = new ArrayList<>();
+        private String sampleQueryTemplate = "";
+        private List<String> expectedResponseFields = new ArrayList<>();
+        private List<String> expectedMockResponseFields = new ArrayList<>();
+        private List<String> sanitizationRules = new ArrayList<>();
+
+        public String getDomain() { return domain; }
+        public void setDomain(String value) { this.domain = value; }
+        public String getSchema() { return schema; }
+        public void setSchema(String value) { this.schema = value; }
+        public String getTableName() { return tableName; }
+        public void setTableName(String value) { this.tableName = value; }
+        public List<String> getKeyFields() { return keyFields; }
+        public void setKeyFields(List<String> value) {
+            this.keyFields = value == null ? new ArrayList<>() : value;
+        }
+        public String getSampleQueryTemplate() { return sampleQueryTemplate; }
+        public void setSampleQueryTemplate(String value) {
+            this.sampleQueryTemplate = value;
+        }
+        public List<String> getExpectedResponseFields() {
+            return expectedResponseFields;
+        }
+        public void setExpectedResponseFields(List<String> value) {
+            this.expectedResponseFields = value == null
+                    ? new ArrayList<>()
+                    : value;
+        }
+        public List<String> getExpectedMockResponseFields() {
+            return expectedMockResponseFields.isEmpty()
+                    ? expectedResponseFields
+                    : expectedMockResponseFields;
+        }
+        public void setExpectedMockResponseFields(List<String> value) {
+            this.expectedMockResponseFields = value == null
+                    ? new ArrayList<>()
+                    : value;
+        }
+        public List<String> getSanitizationRules() {
+            return sanitizationRules;
+        }
+        public void setSanitizationRules(List<String> value) {
+            this.sanitizationRules = value == null
+                    ? new ArrayList<>()
+                    : value;
+        }
     }
 
     public static class Database {

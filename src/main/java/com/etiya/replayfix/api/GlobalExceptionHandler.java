@@ -7,6 +7,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -21,6 +22,16 @@ public class GlobalExceptionHandler {
         );
         detail.setTitle("Invalid request");
         detail.setDetail(exception.getMessage());
+        return detail;
+    }
+
+    @ExceptionHandler(ResponseStatusException.class)
+    ProblemDetail responseStatus(ResponseStatusException exception) {
+        ProblemDetail detail = ProblemDetail.forStatus(
+                exception.getStatusCode()
+        );
+        detail.setTitle(exception.getStatusCode().toString());
+        detail.setDetail(exception.getReason());
         return detail;
     }
 

@@ -1,6 +1,7 @@
 package com.etiya.replayfix.service.ai;
 
 import com.etiya.replayfix.config.ReplayFixProperties;
+import com.etiya.replayfix.domain.AiProviderType;
 import com.etiya.replayfix.domain.EvidenceEntity;
 import com.etiya.replayfix.domain.EvidenceType;
 import com.etiya.replayfix.model.AiConnectivityResult;
@@ -30,6 +31,16 @@ import java.util.UUID;
 public class CompanyLlmProviderClient implements AiProviderClient {
 
     private static final String PROVIDER = "COMPANY_LLM";
+    private static final String LITELLM_PROVIDER =
+            "LITELLM_OPENAI_COMPATIBLE";
+    static final String MODEL_NAME_MUST_USE_OPENAI_PREFIX =
+            "MODEL_NAME_MUST_USE_OPENAI_PREFIX";
+    static final String MODEL_NOT_ALLOWED = "MODEL_NOT_ALLOWED";
+    static final String LLM_USAGE_NOT_RETURNED_BY_PROVIDER =
+            "LLM_USAGE_NOT_RETURNED_BY_PROVIDER";
+    static final String WEEKLY_BUDGET_USAGE_ESTIMATION_UNAVAILABLE =
+            "WEEKLY_BUDGET_USAGE_ESTIMATION_UNAVAILABLE";
+    static final String LARGE_PROMPT_COST_RISK = "LARGE_PROMPT_COST_RISK";
     static final String COMPANY_LLM_OUTPUT_TRUNCATED =
             "COMPANY_LLM_OUTPUT_TRUNCATED";
     static final String COMPANY_LLM_EMPTY_RESPONSE =
@@ -65,11 +76,23 @@ public class CompanyLlmProviderClient implements AiProviderClient {
 
     @Override
     public AiConnectivityResult connectivity() {
-        ReplayFixProperties.Company cfg = company();
+        return connectivity(null, null);
+    }
+
+    @Override
+    public AiConnectivityResult connectivity(
+            String modelProfile,
+            String modelName
+    ) {
+        ResolvedModel resolved = resolveModel(
+                "CODE_ADVISORY",
+                modelProfile,
+                modelName
+        );
         long startedAt = System.currentTimeMillis();
-        boolean baseUrlConfigured = hasText(cfg.getBaseUrl());
-        boolean tokenConfigured = hasText(cfg.getToken());
-        boolean modelConfigured = hasText(model());
+        boolean baseUrlConfigured = hasText(resolved.baseUrl());
+        boolean tokenConfigured = hasText(resolved.token());
+        boolean modelConfigured = hasText(resolved.modelName());
 
         if (!properties.getAi().isEnabled()) {
             return connectivityResult(
@@ -82,7 +105,9 @@ public class CompanyLlmProviderClient implements AiProviderClient {
                     null,
                     startedAt,
                     "AI integration is disabled.",
-                    List.of("AI integration is disabled.")
+                    List.of("AI integration is disabled."),
+                    resolved,
+                    null
             );
         }
 
@@ -97,17 +122,26 @@ public class CompanyLlmProviderClient implements AiProviderClient {
                     null,
                     startedAt,
                     "Company LLM configuration is incomplete.",
-                    List.of("Company LLM base URL, model and token must be configured.")
+                    List.of("Company LLM base URL, model and token must be configured."),
+                    resolved,
+                    null
             );
         }
 
         try {
             JsonNode payload = buildChatPayload(
                     "Return strict JSON only: {\"ok\":true}",
-                    500
+                    500,
+                    resolved
             );
-            JsonNode response = post(payload);
+            JsonNode response = post(payload, resolved.timeoutMs(), resolved);
             boolean reachable = response != null && !response.isMissingNode();
+            Usage usage = usage(response);
+            List<String> warnings = usageWarnings(
+                    usage,
+                    payload.toString().length(),
+                    resolved
+            );
             return connectivityResult(
                     reachable,
                     true,
@@ -118,7 +152,9 @@ public class CompanyLlmProviderClient implements AiProviderClient {
                     200,
                     startedAt,
                     null,
-                    List.of()
+                    warnings,
+                    resolved,
+                    usage
             );
         } catch (WebClientResponseException exception) {
             return connectivityResult(
@@ -131,7 +167,9 @@ public class CompanyLlmProviderClient implements AiProviderClient {
                     exception.getStatusCode().value(),
                     startedAt,
                     sanitizedError(exception),
-                    List.of(sanitizedWarning(exception))
+                    List.of(sanitizedWarning(exception)),
+                    resolved,
+                    null
             );
         } catch (Exception exception) {
             return connectivityResult(
@@ -144,7 +182,9 @@ public class CompanyLlmProviderClient implements AiProviderClient {
                     null,
                     startedAt,
                     sanitizeError(exception.getMessage()),
-                    List.of("Company LLM connectivity failed: " + sanitizeError(exception.getMessage()))
+                    List.of("Company LLM connectivity failed: " + sanitizeError(exception.getMessage())),
+                    resolved,
+                    null
             );
         }
     }
@@ -153,28 +193,54 @@ public class CompanyLlmProviderClient implements AiProviderClient {
     public AiGenerationResponse generate(AiGenerationRequest request) {
         long startedAt = System.currentTimeMillis();
         List<String> requestWarnings = new ArrayList<>();
+        ResolvedModel resolved = resolveModel(
+                profileForRequest(request),
+                metadataString(request, "modelProfile"),
+                metadataString(request, "modelName")
+        );
         try {
-            if ("SOURCE_CHANGE_ANALYSIS".equalsIgnoreCase(request.requestType())) {
-                JsonNode payload = buildSourceReasoningPayload(request, true);
-                long requestTimeoutMs = sourceReasoningTimeoutMs(request);
+            if ("SOURCE_CHANGE_ANALYSIS".equalsIgnoreCase(request.requestType())
+                    || "REPLAY_ENVIRONMENT_ADVISORY".equalsIgnoreCase(
+                    request.requestType())
+                    || "CODE_CHANGE_ADVISORY".equalsIgnoreCase(
+                    request.requestType())) {
+                JsonNode payload = buildSourceReasoningPayload(
+                        request,
+                        true,
+                        resolved
+                );
+                long requestTimeoutMs = sourceReasoningTimeoutMs(
+                        request,
+                        resolved
+                );
                 JsonNode response;
                 try {
-                    response = post(payload, requestTimeoutMs);
+                    response = post(payload, requestTimeoutMs, resolved);
                 } catch (WebClientResponseException exception) {
                     if (!jsonModeUnsupported(exception)) {
                         throw exception;
                     }
                     requestWarnings.add(COMPANY_LLM_JSON_MODE_UNSUPPORTED);
-                    payload = buildSourceReasoningPayload(request, false);
-                    response = post(payload, requestTimeoutMs);
+                    payload = buildSourceReasoningPayload(
+                            request,
+                            false,
+                            resolved
+                    );
+                    response = post(payload, requestTimeoutMs, resolved);
                 }
                 JsonNode content = parseContent(response);
                 List<String> warnings = generationWarnings(content, response);
                 warnings.addAll(requestWarnings);
+                Usage usage = usage(response);
+                warnings.addAll(usageWarnings(
+                        usage,
+                        payload.toString().length(),
+                        resolved
+                ));
                 return new AiGenerationResponse(
                         true,
-                        PROVIDER,
-                        model(),
+                        resolved.provider(),
+                        resolved.modelName(),
                         requestId(response),
                         finishReason(response),
                         System.currentTimeMillis() - startedAt,
@@ -183,7 +249,23 @@ public class CompanyLlmProviderClient implements AiProviderClient {
                         content,
                         warnings,
                         null,
-                        null
+                        null,
+                        null,
+                        "",
+                        resolved.maxOutputTokens(),
+                        resolved.profile(),
+                        resolved.modelName(),
+                        resolved.timeoutSeconds(),
+                        resolved.maxPromptChars(),
+                        resolved.maxOutputTokens(),
+                        resolved.budgetTrackingEnabled(),
+                        resolved.budgetPeriod(),
+                        resolved.weeklyBudgetUsd(),
+                        usage.available(),
+                        usage.promptTokens(),
+                        usage.completionTokens(),
+                        usage.totalTokens(),
+                        responseShape(response, "content")
                 );
             }
 
@@ -191,10 +273,16 @@ public class CompanyLlmProviderClient implements AiProviderClient {
                     .orElseThrow(() -> new IllegalStateException(
                             "AI_INPUT_BUNDLE evidence is required for COMPANY_LLM"
                     ));
-            JsonNode payload = buildAnalysisPayload(request, evidenceBundle);
-            JsonNode response = post(payload);
+            JsonNode payload = buildAnalysisPayload(request, evidenceBundle, resolved);
+            JsonNode response = post(payload, resolved.timeoutMs(), resolved);
             JsonNode content = parseContent(response);
             List<String> warnings = generationWarnings(content, response);
+            Usage usage = usage(response);
+            warnings.addAll(usageWarnings(
+                    usage,
+                    payload.toString().length(),
+                    resolved
+            ));
             StructuredAiRootCauseAnalysis analysis =
                     toStructuredAnalysis(request, content);
             JsonNode structured = objectMapper.valueToTree(analysis);
@@ -202,8 +290,8 @@ public class CompanyLlmProviderClient implements AiProviderClient {
 
             return new AiGenerationResponse(
                     true,
-                    PROVIDER,
-                    model(),
+                    resolved.provider(),
+                    resolved.modelName(),
                     requestId(response),
                     finishReason(response),
                     System.currentTimeMillis() - startedAt,
@@ -212,13 +300,30 @@ public class CompanyLlmProviderClient implements AiProviderClient {
                     structured,
                     warnings,
                     null,
-                    null
+                    null,
+                    null,
+                    "",
+                    resolved.maxOutputTokens(),
+                    resolved.profile(),
+                    resolved.modelName(),
+                    resolved.timeoutSeconds(),
+                    resolved.maxPromptChars(),
+                    resolved.maxOutputTokens(),
+                    resolved.budgetTrackingEnabled(),
+                    resolved.budgetPeriod(),
+                    resolved.weeklyBudgetUsd(),
+                    usage.available(),
+                    usage.promptTokens(),
+                    usage.completionTokens(),
+                    usage.totalTokens(),
+                    responseShape(response, "content")
             );
         } catch (WebClientResponseException exception) {
             return failedResponse(
                     startedAt,
                     "HTTP_" + exception.getStatusCode().value(),
-                    sanitizedWarning(exception)
+                    sanitizedWarning(exception),
+                    resolved
             );
         } catch (EmptyCompanyLlmResponseException exception) {
             return failedResponse(
@@ -229,7 +334,8 @@ public class CompanyLlmProviderClient implements AiProviderClient {
                     PARSE_EMPTY_RESPONSE,
                     "",
                     request.maxOutputChars(),
-                    exception.responseShape()
+                    exception.responseShape(),
+                    resolved
             );
         } catch (CompanyLlmParseException exception) {
             return failedResponse(
@@ -240,14 +346,16 @@ public class CompanyLlmProviderClient implements AiProviderClient {
                     exception.parseErrorCategory(),
                     exception.outputPreview(),
                     request.maxOutputChars(),
-                    exception.responseShape()
+                    exception.responseShape(),
+                    resolved
             );
         } catch (Exception exception) {
             return failedResponse(
                     startedAt,
                     errorCategory(exception),
                     sanitizeError(exception.getMessage()),
-                    requestWarnings
+                    requestWarnings,
+                    resolved
             );
         }
     }
@@ -266,35 +374,88 @@ public class CompanyLlmProviderClient implements AiProviderClient {
             AiGenerationRequest request,
             String evidenceBundle
     ) {
+        return buildAnalysisPayload(
+                request,
+                evidenceBundle,
+                resolveModel(profileForRequest(request), "", "")
+        );
+    }
+
+    private JsonNode buildAnalysisPayload(
+            AiGenerationRequest request,
+            String evidenceBundle,
+            ResolvedModel resolved
+    ) {
         String sanitizedBundle = evidenceSanitizer.sanitize(evidenceBundle);
-        sanitizedBundle = truncate(sanitizedBundle, company().getMaxInputChars());
+        sanitizedBundle = truncate(
+                sanitizedBundle,
+                Math.max(1, resolved.maxPromptChars())
+        );
         String prompt = companyPrompt(request, sanitizedBundle);
-        return buildChatPayload(prompt, company().getMaxOutputChars());
+        return buildChatPayload(
+                prompt,
+                resolved.maxOutputTokens(),
+                resolved
+        );
     }
 
     JsonNode buildSourceReasoningPayload(AiGenerationRequest request) {
-        return buildSourceReasoningPayload(request, true);
+        return buildSourceReasoningPayload(
+                request,
+                true,
+                resolveModel(
+                        profileForRequest(request),
+                        metadataString(request, "modelProfile"),
+                        metadataString(request, "modelName")
+                )
+        );
     }
 
     JsonNode buildSourceReasoningPayload(
             AiGenerationRequest request,
             boolean jsonMode
     ) {
+        return buildSourceReasoningPayload(
+                request,
+                jsonMode,
+                resolveModel(
+                        profileForRequest(request),
+                        metadataString(request, "modelProfile"),
+                        metadataString(request, "modelName")
+                )
+        );
+    }
+
+    private JsonNode buildSourceReasoningPayload(
+            AiGenerationRequest request,
+            boolean jsonMode,
+            ResolvedModel resolved
+    ) {
         String prompt = evidenceSanitizer.sanitize(firstNonBlank(
                 request.userPrompt(),
                 ""
         ));
-        prompt = truncate(prompt, company().getMaxInputChars());
+        prompt = truncate(prompt, Math.max(1, resolved.maxPromptChars()));
         return buildChatPayload(
                 firstNonBlank(request.systemPrompt(), systemPrompt()),
                 prompt,
-                Math.max(1, request.maxOutputChars()),
-                jsonMode
+                Math.max(1, Math.min(
+                        request.maxOutputChars(),
+                        resolved.maxOutputTokens()
+                )),
+                jsonMode,
+                resolved
         );
     }
 
     private JsonNode buildChatPayload(String prompt, int maxOutputChars) {
-        return buildChatPayload(systemPrompt(), prompt, maxOutputChars, false);
+        return buildChatPayload(
+                systemPrompt(),
+                prompt,
+                maxOutputChars,
+                false,
+                resolveModel("CODE_ADVISORY", "", "")
+        );
     }
 
     private JsonNode buildChatPayload(
@@ -302,7 +463,21 @@ public class CompanyLlmProviderClient implements AiProviderClient {
             String prompt,
             int maxOutputChars
     ) {
-        return buildChatPayload(systemPrompt, prompt, maxOutputChars, false);
+        return buildChatPayload(
+                systemPrompt,
+                prompt,
+                maxOutputChars,
+                false,
+                resolveModel("CODE_ADVISORY", "", "")
+        );
+    }
+
+    private JsonNode buildChatPayload(
+            String prompt,
+            int maxOutputChars,
+            ResolvedModel resolved
+    ) {
+        return buildChatPayload(systemPrompt(), prompt, maxOutputChars, false, resolved);
     }
 
     private JsonNode buildChatPayload(
@@ -311,8 +486,24 @@ public class CompanyLlmProviderClient implements AiProviderClient {
             int maxOutputChars,
             boolean jsonMode
     ) {
+        return buildChatPayload(
+                systemPrompt,
+                prompt,
+                maxOutputChars,
+                jsonMode,
+                resolveModel("CODE_ADVISORY", "", "")
+        );
+    }
+
+    private JsonNode buildChatPayload(
+            String systemPrompt,
+            String prompt,
+            int maxOutputChars,
+            boolean jsonMode,
+            ResolvedModel resolved
+    ) {
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("model", model());
+        payload.put("model", resolved.modelName());
         payload.put("temperature", properties.getAi().getTemperature());
         payload.put("max_tokens", Math.max(1, maxOutputChars));
         payload.put("messages", List.of(
@@ -336,17 +527,25 @@ public class CompanyLlmProviderClient implements AiProviderClient {
     }
 
     private JsonNode post(JsonNode payload) {
-        return post(payload, Math.max(1, company().getTimeoutMs()));
+        ResolvedModel resolved = resolveModel("CODE_ADVISORY", "", "");
+        return post(payload, Math.max(1, resolved.timeoutMs()), resolved);
     }
 
     private JsonNode post(JsonNode payload, long timeoutMs) {
-        ReplayFixProperties.Company cfg = company();
+        return post(payload, timeoutMs, resolveModel("CODE_ADVISORY", "", ""));
+    }
+
+    private JsonNode post(
+            JsonNode payload,
+            long timeoutMs,
+            ResolvedModel resolved
+    ) {
         JsonNode response = webClientBuilder
-                .baseUrl(trimTrailingSlash(cfg.getBaseUrl()))
+                .baseUrl(trimTrailingSlash(resolved.baseUrl()))
                 .build()
                 .post()
-                .uri(normalizedEndpoint(cfg.getEndpoint()))
-                .headers(headers -> applyAuth(headers, cfg))
+                .uri(normalizedEndpoint(resolved.endpoint()))
+                .headers(headers -> applyAuth(headers, resolved))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(payload)
                 .retrieve()
@@ -360,6 +559,20 @@ public class CompanyLlmProviderClient implements AiProviderClient {
     }
 
     long sourceReasoningTimeoutMs(AiGenerationRequest request) {
+        return sourceReasoningTimeoutMs(
+                request,
+                resolveModel(
+                        profileForRequest(request),
+                        metadataString(request, "modelProfile"),
+                        metadataString(request, "modelName")
+                )
+        );
+    }
+
+    long sourceReasoningTimeoutMs(
+            AiGenerationRequest request,
+            ResolvedModel resolved
+    ) {
         long requestedSeconds = metadataLong(
                 request,
                 "companyLlmTimeoutSeconds"
@@ -367,7 +580,7 @@ public class CompanyLlmProviderClient implements AiProviderClient {
         long requestedMs = requestedSeconds > 0
                 ? requestedSeconds * 1_000L + SOURCE_REASONING_TIMEOUT_BUFFER_MS
                 : 0L;
-        return Math.max(Math.max(1, company().getTimeoutMs()), requestedMs);
+        return Math.max(Math.max(1, resolved.timeoutMs()), requestedMs);
     }
 
     private JsonNode parseContent(JsonNode response) {
@@ -598,12 +811,190 @@ public class CompanyLlmProviderClient implements AiProviderClient {
         headers.setBearerAuth(token);
     }
 
+    private void applyAuth(HttpHeaders headers, ResolvedModel resolved) {
+        String token = resolved.token();
+        if (!hasText(token) || "NONE".equalsIgnoreCase(resolved.authType())) {
+            return;
+        }
+        if ("API_KEY".equalsIgnoreCase(resolved.authType())) {
+            headers.set("x-api-key", token);
+            return;
+        }
+        headers.setBearerAuth(token);
+    }
+
+    private ResolvedModel resolveModel(
+            String defaultProfile,
+            String requestedProfile,
+            String requestedModelName
+    ) {
+        boolean liteLlm = isLiteLlm(requestedProfile, requestedModelName);
+        ReplayFixProperties.Llm llm = properties.getLlm();
+        ReplayFixProperties.Company company = company();
+        String profile = liteLlm
+                ? firstNonBlank(requestedProfile, defaultProfile)
+                : "";
+        ReplayFixProperties.LlmModelProfile profileConfig =
+                liteLlm ? llm.getModelProfiles().get(profile) : null;
+        String configuredModel = profileConfig == null
+                ? ""
+                : profileConfig.getModelName();
+        String modelName = firstNonBlank(
+                requestedModelName,
+                configuredModel,
+                liteLlm ? llm.getDefaultModelName() : company.getModel(),
+                properties.getAi().getModel(),
+                liteLlm ? "openai/gpt-3.5-turbo" : "company-llm"
+        );
+        if (liteLlm) {
+            validateLiteLlmModel(modelName);
+        }
+        int timeoutSeconds = profileConfig == null
+                ? Math.max(1, (int) (company.getTimeoutMs() / 1000L))
+                : Math.max(1, profileConfig.getTimeoutSeconds());
+        int maxPromptChars = profileConfig == null
+                ? Math.max(1, company.getMaxInputChars())
+                : Math.max(1, profileConfig.getMaxPromptChars());
+        int maxOutputTokens = profileConfig == null
+                ? Math.max(1, company.getMaxOutputChars())
+                : Math.max(1, profileConfig.getMaxOutputTokens());
+        String baseUrl = liteLlm
+                ? firstNonBlank(llm.getBaseUrl(), company.getBaseUrl())
+                : company.getBaseUrl();
+        String token = liteLlm
+                ? firstNonBlank(env(llm.getApiKeyEnv()), company.getToken())
+                : company.getToken();
+        return new ResolvedModel(
+                liteLlm ? LITELLM_PROVIDER : PROVIDER,
+                profile,
+                modelName,
+                timeoutSeconds,
+                timeoutSeconds * 1000L,
+                maxPromptChars,
+                maxOutputTokens,
+                baseUrl,
+                liteLlm ? "/chat/completions" : company.getEndpoint(),
+                token,
+                company.getAuthType(),
+                liteLlm && llm.isBudgetTrackingEnabled(),
+                liteLlm ? firstNonBlank(llm.getBudgetPeriod(), "WEEKLY") : "WEEKLY",
+                liteLlm ? llm.getWeeklyBudgetUsd() : 200.0
+        );
+    }
+
+    private void validateLiteLlmModel(String modelName) {
+        if (!modelName.startsWith("openai/")) {
+            throw new IllegalArgumentException(
+                    MODEL_NAME_MUST_USE_OPENAI_PREFIX
+            );
+        }
+        List<String> allowed = properties.getLlm().getAllowedModelNames();
+        if (allowed != null && !allowed.isEmpty()
+                && !allowed.contains(modelName)) {
+            throw new IllegalArgumentException(MODEL_NOT_ALLOWED);
+        }
+    }
+
+    private boolean isLiteLlm() {
+        return isLiteLlm("", "");
+    }
+
+    private boolean isLiteLlm(
+            String requestedProfile,
+            String requestedModelName
+    ) {
+        ReplayFixProperties.Llm llm = properties.getLlm();
+        return properties.getAi().getProvider()
+                == AiProviderType.LITELLM_OPENAI_COMPATIBLE
+                || llm.getProvider() == AiProviderType.LITELLM_OPENAI_COMPATIBLE
+                || (hasText(requestedProfile)
+                && !llm.isAllowPlainModelNames())
+                || (hasText(requestedModelName)
+                && !llm.isAllowPlainModelNames())
+                || (hasText(llm.getBaseUrl())
+                && firstNonBlank(llm.getDefaultModelName(), "")
+                .startsWith("openai/"));
+    }
+
+    private String profileForRequest(AiGenerationRequest request) {
+        String explicit = metadataString(request, "modelProfile");
+        if (hasText(explicit)) {
+            return explicit;
+        }
+        String mode = metadataString(request, "advisoryMode");
+        if ("TEST_SUGGESTION".equalsIgnoreCase(mode)) {
+            return "TEST_SUGGESTION";
+        }
+        if ("RISK_REVIEW".equalsIgnoreCase(mode)) {
+            return "RISK_REVIEW";
+        }
+        return "CODE_ADVISORY";
+    }
+
+    private Usage usage(JsonNode response) {
+        JsonNode usage = response == null ? null : response.path("usage");
+        if (usage == null || usage.isMissingNode() || !usage.isObject()) {
+            return Usage.unavailable();
+        }
+        int prompt = usage.path("prompt_tokens").asInt(0);
+        int completion = usage.path("completion_tokens").asInt(0);
+        int total = usage.path("total_tokens").asInt(prompt + completion);
+        return new Usage(true, prompt, completion, total);
+    }
+
+    private List<String> usageWarnings(
+            Usage usage,
+            int promptChars,
+            ResolvedModel resolved
+    ) {
+        List<String> warnings = new ArrayList<>();
+        if (!usage.available()) {
+            warnings.add(LLM_USAGE_NOT_RETURNED_BY_PROVIDER);
+            if (resolved != null && resolved.budgetTrackingEnabled()) {
+                warnings.add(WEEKLY_BUDGET_USAGE_ESTIMATION_UNAVAILABLE);
+            }
+        }
+        if (promptChars > 10_000) {
+            warnings.add(LARGE_PROMPT_COST_RISK);
+        }
+        return warnings;
+    }
+
+    private String env(String name) {
+        if (!hasText(name)) {
+            return "";
+        }
+        String value = System.getenv(name);
+        return value == null ? "" : value;
+    }
+
     private AiGenerationResponse failedResponse(
             long startedAt,
             String errorCategory,
             String errorMessage
     ) {
-        return failedResponse(startedAt, errorCategory, errorMessage, List.of());
+        return failedResponse(
+                startedAt,
+                errorCategory,
+                errorMessage,
+                List.of(),
+                resolveModel("CODE_ADVISORY", "", "")
+        );
+    }
+
+    private AiGenerationResponse failedResponse(
+            long startedAt,
+            String errorCategory,
+            String errorMessage,
+            ResolvedModel resolved
+    ) {
+        return failedResponse(
+                startedAt,
+                errorCategory,
+                errorMessage,
+                List.of(),
+                resolved
+        );
     }
 
     private AiGenerationResponse failedResponse(
@@ -617,9 +1008,27 @@ public class CompanyLlmProviderClient implements AiProviderClient {
                 errorCategory,
                 errorMessage,
                 warnings,
+                resolveModel("CODE_ADVISORY", "", "")
+        );
+    }
+
+    private AiGenerationResponse failedResponse(
+            long startedAt,
+            String errorCategory,
+            String errorMessage,
+            List<String> warnings,
+            ResolvedModel resolved
+    ) {
+        return failedResponse(
+                startedAt,
+                errorCategory,
+                errorMessage,
+                warnings,
                 parseErrorCategoryFrom(errorCategory),
                 "",
-                0
+                0,
+                Map.of(),
+                resolved
         );
     }
 
@@ -640,7 +1049,31 @@ public class CompanyLlmProviderClient implements AiProviderClient {
                 parseErrorCategory,
                 outputPreview,
                 effectiveOutputTokenLimit,
-                Map.of()
+                Map.of(),
+                resolveModel("CODE_ADVISORY", "", "")
+        );
+    }
+
+    private AiGenerationResponse failedResponse(
+            long startedAt,
+            String errorCategory,
+            String errorMessage,
+            List<String> warnings,
+            String parseErrorCategory,
+            String outputPreview,
+            int effectiveOutputTokenLimit,
+            ResolvedModel resolved
+    ) {
+        return failedResponse(
+                startedAt,
+                errorCategory,
+                errorMessage,
+                warnings,
+                parseErrorCategory,
+                outputPreview,
+                effectiveOutputTokenLimit,
+                Map.of(),
+                resolved
         );
     }
 
@@ -654,6 +1087,30 @@ public class CompanyLlmProviderClient implements AiProviderClient {
             int effectiveOutputTokenLimit,
             Map<String, Object> responseShape
     ) {
+        return failedResponse(
+                startedAt,
+                errorCategory,
+                errorMessage,
+                warnings,
+                parseErrorCategory,
+                outputPreview,
+                effectiveOutputTokenLimit,
+                responseShape,
+                resolveModel("CODE_ADVISORY", "", "")
+        );
+    }
+
+    private AiGenerationResponse failedResponse(
+            long startedAt,
+            String errorCategory,
+            String errorMessage,
+            List<String> warnings,
+            String parseErrorCategory,
+            String outputPreview,
+            int effectiveOutputTokenLimit,
+            Map<String, Object> responseShape,
+            ResolvedModel resolved
+    ) {
         Map<String, Object> safeShape = new LinkedHashMap<>(
                 responseShape == null ? Map.of() : responseShape
         );
@@ -662,8 +1119,8 @@ public class CompanyLlmProviderClient implements AiProviderClient {
         }
         return new AiGenerationResponse(
                 false,
-                PROVIDER,
-                model(),
+                resolved.provider(),
+                resolved.modelName(),
                 null,
                 "error",
                 System.currentTimeMillis() - startedAt,
@@ -676,6 +1133,18 @@ public class CompanyLlmProviderClient implements AiProviderClient {
                 parseErrorCategory,
                 safeOutputPreview(outputPreview),
                 Math.max(0, effectiveOutputTokenLimit),
+                resolved.profile(),
+                resolved.modelName(),
+                resolved.timeoutSeconds(),
+                resolved.maxPromptChars(),
+                resolved.maxOutputTokens(),
+                resolved.budgetTrackingEnabled(),
+                resolved.budgetPeriod(),
+                resolved.weeklyBudgetUsd(),
+                false,
+                0,
+                0,
+                0,
                 safeShape
         );
     }
@@ -700,13 +1169,16 @@ public class CompanyLlmProviderClient implements AiProviderClient {
             Integer httpStatus,
             long startedAt,
             String sanitizedError,
-            List<String> warnings
+            List<String> warnings,
+            ResolvedModel resolved,
+            Usage usage
     ) {
+        Usage safeUsage = usage == null ? Usage.unavailable() : usage;
         return new AiConnectivityResult(
                 success,
                 enabled,
-                PROVIDER,
-                model(),
+                resolved.provider(),
+                resolved.modelName(),
                 modelConfigured,
                 tokenConfigured,
                 baseUrlConfigured,
@@ -715,6 +1187,18 @@ public class CompanyLlmProviderClient implements AiProviderClient {
                 httpStatus,
                 System.currentTimeMillis() - startedAt,
                 sanitizedError,
+                resolved.profile(),
+                resolved.modelName(),
+                resolved.timeoutSeconds(),
+                resolved.maxPromptChars(),
+                resolved.maxOutputTokens(),
+                resolved.budgetTrackingEnabled(),
+                resolved.budgetPeriod(),
+                resolved.weeklyBudgetUsd(),
+                safeUsage.available(),
+                safeUsage.promptTokens(),
+                safeUsage.completionTokens(),
+                safeUsage.totalTokens(),
                 warnings
         );
     }
@@ -808,6 +1292,13 @@ public class CompanyLlmProviderClient implements AiProviderClient {
         } catch (NumberFormatException ignored) {
             return 0L;
         }
+    }
+
+    private String metadataString(AiGenerationRequest request, String key) {
+        if (request == null || request.metadata() == null) {
+            return "";
+        }
+        return firstNonBlank(request.metadata().get(key), "");
     }
 
     private List<String> mergeWarnings(
@@ -1038,6 +1529,35 @@ public class CompanyLlmProviderClient implements AiProviderClient {
             }
         }
         return "";
+    }
+
+    private record ResolvedModel(
+            String provider,
+            String profile,
+            String modelName,
+            int timeoutSeconds,
+            long timeoutMs,
+            int maxPromptChars,
+            int maxOutputTokens,
+            String baseUrl,
+            String endpoint,
+            String token,
+            String authType,
+            boolean budgetTrackingEnabled,
+            String budgetPeriod,
+            double weeklyBudgetUsd
+    ) {
+    }
+
+    private record Usage(
+            boolean available,
+            int promptTokens,
+            int completionTokens,
+            int totalTokens
+    ) {
+        private static Usage unavailable() {
+            return new Usage(false, 0, 0, 0);
+        }
     }
 
     private static class EmptyCompanyLlmResponseException
