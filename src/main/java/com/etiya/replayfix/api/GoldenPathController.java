@@ -29,9 +29,15 @@ public class GoldenPathController {
     public ResponseEntity<Map<String, Object>> execute(
             @RequestParam String jiraKey,
             @RequestParam String targetKey,
-            @RequestParam(defaultValue = "false") boolean forceNew
+            @RequestParam(defaultValue = "false") boolean forceNew,
+            @RequestParam(defaultValue = "true") boolean includeAiInputBundle
     ) {
-        Map<String, Object> result = orchestrationService.executeGoldenPath(jiraKey, targetKey, forceNew);
+        Map<String, Object> result = orchestrationService.executeGoldenPath(
+                jiraKey,
+                targetKey,
+                forceNew,
+                includeAiInputBundle
+        );
         return ResponseEntity.ok(result);
     }
 }

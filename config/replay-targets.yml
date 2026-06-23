@@ -56,6 +56,181 @@ replayfix:
         branch-prefix: replayfix/
         reviewer-users: []
 
+    bss-monolith:
+      applicationKey: bss-monolith
+
+      argocdProject: project-modernization-test2
+      clusterName: project-test2-eks
+      destinationServer: https://kubernetes.default.svc
+
+      namespaceStrategy: PRE_CREATED_NAMESPACE
+      preCreatedReplayNamespace: project-replay-sandbox
+      replayNamespacePrefix: project-replay
+
+      dbStateMode: TEST2_SHARED_DB
+      stateContinuationRequested: true
+      dbRuntimeMode: TEST2_SHARED
+      dbRuntimeUserMode: EXISTING_TEST2_APP_USER
+      dbTest2WriteAllowed: true
+      dbTest2WriteRequiresApproval: true
+      requiredDbSecretKeys:
+        - BSS_DB_URL
+        - BSS_DB_USER
+        - BSS_DB_PASSWORD
+      requiredMqSecretKeys:
+        - BSS_ACTIVEMQ_URL
+        - BSS_ACTIVEMQ_USER
+        - BSS_ACTIVEMQ_PASSWORD
+      requiredKafkaSecretKeys:
+        - BSS_KAFKA_URL
+      requiredRedisSecretKeys:
+        - BSS_REDIS_URL
+        - BSS_REDIS_PORT
+
+      activeMqMode: DISABLED
+      activeMqConnectionRequired: true
+      activeMqConsumerEnabled: false
+      activeMqProducerEnabled: false
+      kafkaMode: DISABLED
+      kafkaConnectionRequired: false
+      kafkaConsumerEnabled: false
+      kafkaProducerEnabled: false
+      redisMode: TEST2_SHARED
+      redisKeyPrefixRequired: true
+      emailMode: MOCK_SERVER
+      httpExternalMode: MOCK_SERVER
+      mqListenerEnabledConfigKey: BSS_MQ_LISTENER_ENABLED
+      kafkaListenerEnabledConfigKey: BSS_KAFKA_LISTENER_ENABLED
+      redisKeyPrefixConfigKey: BSS_REDIS_KEY_PREFIX
+
+      accessMode: SINGLE_HOST_PATH_BASED
+      replayHostSuffix: replay.fizz12.etiya.com
+      backendServicePort: 8080
+      backendContextPath: /DCE-CommerceBackend
+      customerUiBackendBaseUrlConfigKey: CUSTOMER_UI_BACKEND_BASE_URL
+      backendAllowedOriginsConfigKey: BSS_ALLOWED_ORIGINS
+      requiredCustomerUiConfigKeys:
+        - CUSTOMER_UI_BACKEND_BASE_URL
+      requiredBackendConfigKeys:
+        - BSS_ALLOWED_ORIGINS
+
+      backendArgoCdApplicationName: bss-backend
+      backendSourceRepoUrl: https://bitbucket.company.com/scm/fdi/helm-charts.git
+      backendChartPath: bss-backend
+      backendTargetRevision: test2
+      backendValuesFile: project-test2-values.yaml
+      backendNamespace: project-test-bss-backend
+      backendImageRepository: 583959041857.dkr.ecr.ca-central-1.amazonaws.com/project-test2-bss-backend
+      backendImageTag: backend
+      backendHealthEndpoint: /DCE-CommerceBackend/actuator/health
+
+      customerUiArgoCdApplicationName: frontend-customer-ui
+      customerUiSourceRepoUrl: https://bitbucket.company.com/scm/fdi/helm-charts.git
+      customerUiChartPath: frontend/customer-ui
+      customerUiTargetRevision: HEAD
+      customerUiValuesFile: project-test2-values.yaml
+      customerUiNamespace: project-test-frontend
+      customerUiImageRepository: 583959041857.dkr.ecr.ca-central-1.amazonaws.com/project-test2-frontend-customer-ui
+      customerUiImageTag: test2-20260622-102613
+      customerUiHealthEndpoint: /
+
+      mockServerChartPath: replay/wiremock
+
+      sourceCandidateExtractionEnabled: true
+      sourceCandidateSource: BITBUCKET
+      sourceCandidateExtractionBranch: test2
+      allowedSourceExtensions:
+        - ".java"
+        - ".ts"
+        - ".tsx"
+      maxSourceCandidateFiles: 5
+      maxSnippetChars: 12000
+
+      bitbucket:
+        baseUrl: ${BITBUCKET_BASE_URL:https://bitbucket.company.com}
+        usernameEnv: BITBUCKET_USERNAME
+        tokenEnv: BITBUCKET_TOKEN
+        requestTimeoutSeconds: 30
+        repositories:
+          backend:
+            logicalName: backend
+            projectKey: DCE
+            repositorySlug: backend
+            branch: test2
+            browseUrl: https://bitbucket.company.com/projects/DCE/repos/backend/browse?at=refs%2Fheads%2Ftest2
+            rawPathTemplate: /rest/api/1.0/projects/DCE/repos/backend/raw/{path}?at=refs/heads/test2
+            language: JAVA
+            allowedExtensions:
+              - ".java"
+          customerUi:
+            logicalName: customer-ui
+            projectKey: DCE
+            repositorySlug: customer-ui
+            branch: test2
+            browseUrl: https://bitbucket.company.com/projects/DCE/repos/customer-ui/browse?at=refs%2Fheads%2Ftest2
+            rawPathTemplate: /rest/api/1.0/projects/DCE/repos/customer-ui/raw/{path}?at=refs/heads/test2
+            language: TYPESCRIPT
+            allowedExtensions:
+              - ".ts"
+              - ".tsx"
+
+      externalDependencies:
+        crmAssetAuth:
+          dependencyName: crmAssetAuth
+          dependencyType: HTTP
+          configKey: CRM_ASSET_AUTH_URL
+          mockPath: /mock/crm-asset-auth
+          mockMode: WIREMOCK
+          responseSource: STATIC_TEMPLATE
+
+        email:
+          dependencyName: email
+          dependencyType: EMAIL
+          configKey: BSS_EMAIL_HOST
+          mockPath: /mock/email
+          mockMode: GENERIC_HTTP
+          responseSource: STATIC_TEMPLATE
+
+        activeMq:
+          dependencyName: activeMq
+          dependencyType: ACTIVEMQ
+          configKey: BSS_ACTIVEMQ_URL
+          mockPath: /mock/activemq
+          mockMode: UNKNOWN
+          responseSource: UNKNOWN
+
+        kafka:
+          dependencyName: kafka
+          dependencyType: KAFKA
+          configKey: BSS_KAFKA_URL
+          mockPath: /mock/kafka
+          mockMode: UNKNOWN
+          responseSource: UNKNOWN
+
+        redis:
+          dependencyName: redis
+          dependencyType: REDIS
+          configKey: BSS_REDIS_URL
+          mockPath: /mock/redis
+          mockMode: UNKNOWN
+          responseSource: UNKNOWN
+
+      dbSampleDomains:
+        customer:
+          domain: customer
+          schema: dce
+          tableName: UNKNOWN_CUSTOMER_TABLE
+          keyFields:
+            - customer_id
+          sampleQueryTemplate: "select * from UNKNOWN_CUSTOMER_TABLE where customer_id = :customerId limit 1"
+          expectedMockResponseFields:
+            - customerId
+            - status
+          sanitizationRules:
+            - mask personal data
+            - remove token fields
+            - remove address fields unless required
+
   repository-resolution:
     minimum-score: 30
     max-candidates: 4

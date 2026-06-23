@@ -1,0 +1,92 @@
+package com.etiya.replayfix.api.dto;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
+
+public record ReplayEnvironmentProvisionReadinessResponse(
+        UUID requestId,
+        UUID caseId,
+        String jiraKey,
+        String targetKey,
+        String requestStatus,
+        String readinessStatus,
+        boolean requestApproved,
+        boolean realProvisioningEnabled,
+        boolean dryRunOnly,
+        boolean namespaceConfigured,
+        boolean argocdCredentialsConfigured,
+        boolean argocdProjectConfigured,
+        boolean ingressConfigured,
+        boolean secretStrategyConfigured,
+        boolean dbStrategyConfirmed,
+        boolean mockServerConfigured,
+        boolean cleanupConfigured,
+        boolean runtimeDependenciesSafe,
+        String replayNamespace,
+        String proposedHost,
+        List<String> blockers,
+        List<String> warnings,
+        List<String> runtimeDependencyBlockers,
+        List<String> runtimeDependencyWarnings,
+        List<String> requiredActions,
+        List<String> guardrails,
+        Instant checkedAt
+) {
+    public ReplayEnvironmentProvisionReadinessResponse(
+            UUID requestId,
+            UUID caseId,
+            String jiraKey,
+            String targetKey,
+            String requestStatus,
+            String readinessStatus,
+            boolean requestApproved,
+            boolean realProvisioningEnabled,
+            boolean dryRunOnly,
+            boolean namespaceConfigured,
+            boolean argocdCredentialsConfigured,
+            boolean argocdProjectConfigured,
+            boolean ingressConfigured,
+            boolean secretStrategyConfigured,
+            boolean dbStrategyConfirmed,
+            boolean mockServerConfigured,
+            boolean cleanupConfigured,
+            String replayNamespace,
+            String proposedHost,
+            List<String> blockers,
+            List<String> warnings,
+            List<String> requiredActions,
+            List<String> guardrails,
+            Instant checkedAt
+    ) {
+        this(
+                requestId,
+                caseId,
+                jiraKey,
+                targetKey,
+                requestStatus,
+                readinessStatus,
+                requestApproved,
+                realProvisioningEnabled,
+                dryRunOnly,
+                namespaceConfigured,
+                argocdCredentialsConfigured,
+                argocdProjectConfigured,
+                ingressConfigured,
+                secretStrategyConfigured,
+                dbStrategyConfirmed,
+                mockServerConfigured,
+                cleanupConfigured,
+                blockers == null || blockers.isEmpty(),
+                replayNamespace,
+                proposedHost,
+                blockers,
+                warnings,
+                List.of(),
+                List.of(),
+                requiredActions,
+                guardrails,
+                checkedAt
+        );
+    }
+}

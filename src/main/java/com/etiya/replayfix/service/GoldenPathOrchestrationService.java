@@ -22,6 +22,8 @@ import java.util.*;
 public class GoldenPathOrchestrationService {
 
     private static final Logger log = LoggerFactory.getLogger(GoldenPathOrchestrationService.class);
+    public static final String INCIDENT_VERSION_EVIDENCE_MISSING =
+            "INCIDENT_VERSION_EVIDENCE_MISSING";
 
     private final ReplayCaseService caseService;
     private final ReplayCaseRepository caseRepository;
@@ -65,13 +67,31 @@ public class GoldenPathOrchestrationService {
     }
 
     public Map<String, Object> executeGoldenPath(String jiraKey, String targetKey, boolean forceNew) {
-        log.info("GOLDEN_PATH_START: jiraKey={}, targetKey={}, forceNew={}", jiraKey, targetKey, forceNew);
+        return executeGoldenPath(jiraKey, targetKey, forceNew, true);
+    }
+
+    public Map<String, Object> executeGoldenPath(
+            String jiraKey,
+            String targetKey,
+            boolean forceNew,
+            boolean includeAiInputBundle
+    ) {
+        log.info(
+                "GOLDEN_PATH_START: jiraKey={}, targetKey={}, forceNew={}, includeAiInputBundle={}",
+                jiraKey,
+                targetKey,
+                forceNew,
+                includeAiInputBundle
+        );
         
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("jiraKey", jiraKey);
         result.put("requestedTargetKey", targetKey);
         result.put("timestamp", Instant.now());
         result.put("forceNew", forceNew);
+        result.put("includeAiInputBundle", includeAiInputBundle);
+        List<String> warnings = new ArrayList<>();
+        result.put("warnings", warnings);
         
         Map<String, Object> steps = new LinkedHashMap<>();
         result.put("steps", steps);
@@ -141,7 +161,26 @@ public class GoldenPathOrchestrationService {
             // Step 7-9: Report Loki, Tempo, AI bundle from evidence
             steps.put("7_loki_evidence", reportLokiEvidence(caseId));
             steps.put("8_tempo_evidence", reportTempoEvidence(caseId));
-            steps.put("9_ai_input_bundle", collectAiInputBundle(caseId));
+            if (includeAiInputBundle) {
+                Map<String, Object> aiInputBundleStep =
+                        collectAiInputBundle(caseId);
+                steps.put("9_ai_input_bundle", aiInputBundleStep);
+                mergeStepWarnings(aiInputBundleStep, warnings);
+            } else {
+                Map<String, Object> aiInputBundleSkipped =
+                        new LinkedHashMap<>();
+                aiInputBundleSkipped.put("result", "SKIPPED");
+                aiInputBundleSkipped.put(
+                        "reason",
+                        "includeAiInputBundle=false"
+                );
+                aiInputBundleSkipped.put("bundleCreated", false);
+                steps.put("9_ai_input_bundle", aiInputBundleSkipped);
+                log.info(
+                        "AI_INPUT_BUNDLE_SKIPPED: caseId={} reason=includeAiInputBundle=false",
+                        caseId
+                );
+            }
 
             // Step 10: Generate deterministic RCA (only if incident version exists)
             steps.put("10_deterministic_rca", generateDeterministicRca(caseId));
@@ -151,6 +190,18 @@ public class GoldenPathOrchestrationService {
 
             // Determine overall status based on step results
             String overallStatus = calculateOverallStatus(steps);
+            if (hasMissingIncidentVersion(steps)) {
+                if (!warnings.contains(INCIDENT_VERSION_EVIDENCE_MISSING)) {
+                    warnings.add(INCIDENT_VERSION_EVIDENCE_MISSING);
+                }
+                if (!"FAILED".equals(overallStatus)) {
+                    overallStatus = "NEEDS_EVIDENCE";
+                }
+            }
+            if (warnings.contains(INCIDENT_VERSION_EVIDENCE_MISSING)
+                    && !"FAILED".equals(overallStatus)) {
+                overallStatus = "NEEDS_EVIDENCE";
+            }
             
             result.put("status", overallStatus);
             result.put("synthetic", false);
@@ -629,8 +680,9 @@ public class GoldenPathOrchestrationService {
                         .toList();
                 
                 if (incidentVersion.isEmpty()) {
-                    step.put("result", "PARTIAL_SUCCESS");
+                    step.put("result", "PARTIAL");
                     step.put("reason", "Bundle exists but INCIDENT_VERSION missing");
+                    step.put("warnings", List.of(INCIDENT_VERSION_EVIDENCE_MISSING));
                     step.put("bundleCreated", true);
                     step.put("evidenceId", existingBundle.get(existingBundle.size() - 1).getId());
                     log.warn("AI_INPUT_BUNDLE_MISSING_INCIDENT_VERSION: caseId={}", caseId);
@@ -669,8 +721,9 @@ public class GoldenPathOrchestrationService {
                         .toList();
                 
                 if (incidentVersion.isEmpty()) {
-                    step.put("result", "PARTIAL_SUCCESS");
+                    step.put("result", "PARTIAL");
                     step.put("reason", "Bundle created but INCIDENT_VERSION missing");
+                    step.put("warnings", List.of(INCIDENT_VERSION_EVIDENCE_MISSING));
                     step.put("bundleCreated", true);
                     step.put("evidenceId", bundleEvidence.get(bundleEvidence.size() - 1).getId());
                     log.warn("AI_INPUT_BUNDLE_CREATED_WITHOUT_INCIDENT_VERSION: caseId={}", caseId);
@@ -692,11 +745,20 @@ public class GoldenPathOrchestrationService {
                     .toList();
             
             if (!bundleEvidence.isEmpty()) {
-                step.put("result", "PARTIAL_SUCCESS");
+                step.put("result", "PARTIAL");
                 step.put("reason", "Bundle exists but refresh failed: " + e.getMessage());
                 step.put("bundleCreated", true);
                 step.put("evidenceId", bundleEvidence.get(bundleEvidence.size() - 1).getId());
                 log.warn("AI_INPUT_BUNDLE_REFRESH_FAILED: caseId={}", caseId, e);
+            } else if (isIncidentVersionMissing(e)) {
+                step.put("result", "PARTIAL");
+                step.put("reason", "INCIDENT_VERSION evidence missing; AI input bundle refresh skipped");
+                step.put("warnings", List.of(INCIDENT_VERSION_EVIDENCE_MISSING));
+                step.put("bundleCreated", false);
+                log.warn(
+                        "AI_INPUT_BUNDLE_SKIPPED_MISSING_INCIDENT_VERSION: caseId={}",
+                        caseId
+                );
             } else {
                 step.put("result", "FAILED");
                 step.put("error", e.getMessage());
@@ -1136,7 +1198,6 @@ public class GoldenPathOrchestrationService {
             "2_jira_evidence",
             "3_repository_resolution",
             "4_jenkins_evidence",
-            "5_incident_version",    // Required for source checkout
             "6_context_collection",
             "7_loki_evidence"  // Loki is required for real incident path
         };
@@ -1144,6 +1205,7 @@ public class GoldenPathOrchestrationService {
         // Optional steps (SKIPPED or UNAVAILABLE is acceptable)
         String[] optionalSteps = {
             "8_tempo_evidence",      // Tempo is optional
+            "5_incident_version",    // Missing version should yield needs-evidence, not failure
             "9_ai_input_bundle",     // Can fail if dependencies missing
             "10_deterministic_rca"    // Can be skipped if incident version unavailable
         };
@@ -1180,10 +1242,14 @@ public class GoldenPathOrchestrationService {
                     } else {
                         anyNonMandatoryFailed = true;
                     }
-                } else if ("SKIPPED".equals(result) || "UNAVAILABLE".equals(result)) {
+                } else if ("SKIPPED".equals(result)
+                        || "UNAVAILABLE".equals(result)
+                        || "PARTIAL".equals(result)
+                        || "PARTIAL_SUCCESS".equals(result)) {
                     if (isMandatory) {
                         anyMandatoryFailed = true;
-                    } else if (!isOptional) {
+                    } else if (!isOptional || "PARTIAL".equals(result)
+                            || "PARTIAL_SUCCESS".equals(result)) {
                         anyStepSkipped = true;
                     }
                     // Optional steps can be SKIPPED/UNAVAILABLE without affecting status
@@ -1198,5 +1264,54 @@ public class GoldenPathOrchestrationService {
         } else {
             return "SUCCESS";
         }
+    }
+
+    private void mergeStepWarnings(
+            Map<String, Object> step,
+            List<String> warnings
+    ) {
+        Object stepWarnings = step.get("warnings");
+        if (stepWarnings instanceof Collection<?> collection) {
+            for (Object warning : collection) {
+                if (warning != null && !warnings.contains(warning.toString())) {
+                    warnings.add(warning.toString());
+                }
+            }
+        }
+    }
+
+    private boolean hasMissingIncidentVersion(Map<String, Object> steps) {
+        Object incidentVersionStep = steps.get("5_incident_version");
+        if (stepHasMissingIncidentVersion(incidentVersionStep)) {
+            return true;
+        }
+        Object aiInputBundleStep = steps.get("9_ai_input_bundle");
+        return stepHasMissingIncidentVersion(aiInputBundleStep);
+    }
+
+    private boolean stepHasMissingIncidentVersion(Object step) {
+        if (!(step instanceof Map<?, ?> stepMap)) {
+            return false;
+        }
+        Object warnings = stepMap.get("warnings");
+        if (warnings instanceof Collection<?> collection
+                && collection.contains(INCIDENT_VERSION_EVIDENCE_MISSING)) {
+            return true;
+        }
+        String reason = Objects.toString(stepMap.get("reason"), "");
+        String error = Objects.toString(stepMap.get("error"), "");
+        return reason.contains("INCIDENT_VERSION")
+                || error.contains("INCIDENT_VERSION");
+    }
+
+    private boolean isIncidentVersionMissing(Exception exception) {
+        String message = Objects.toString(exception.getMessage(), "");
+        Throwable cause = exception.getCause();
+        while (cause != null) {
+            message = message + " " + Objects.toString(cause.getMessage(), "");
+            cause = cause.getCause();
+        }
+        return message.contains("Required evidence not found")
+                && message.contains("INCIDENT_VERSION");
     }
 }
