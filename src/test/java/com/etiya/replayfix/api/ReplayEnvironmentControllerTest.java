@@ -76,7 +76,7 @@ class ReplayEnvironmentControllerTest {
                 new ReplayEnvironmentComponentPlan(
                         "BACKEND",
                         "bss-backend",
-                        "bss-backend-replay-fizzms-10228",
+                        "replay-fizzms-10228-backend",
                         "https://bitbucket.example.com/helm.git",
                         "bss-backend",
                         "test2",
@@ -131,7 +131,7 @@ class ReplayEnvironmentControllerTest {
                         "replay-fizzms-10228.example.test",
                         "/",
                         "/DCE-CommerceBackend",
-                        "http://bss-backend-replay-fizzms-10228.replay-fizzms-10228.svc.cluster.local:8080",
+                        "http://replay-fizzms-10228-backend.replay-fizzms-10228.svc.cluster.local:8080",
                         "https://replay-fizzms-10228.example.test/DCE-CommerceBackend",
                         true,
                         false,

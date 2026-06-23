@@ -304,10 +304,6 @@ public class ReplayEnvironmentPlanService {
                         target.getArgocdApplicationName()
                 )
                 : target.getCustomerUiArgoCdApplicationName();
-        String appBase = firstNonBlank(
-                existingApp,
-                backend ? "bss-backend" : "frontend-customer-ui"
-        );
         String sourceRepo = backend
                 ? firstNonBlank(target.getBackendSourceRepoUrl(), target.getCloneUrl())
                 : target.getCustomerUiSourceRepoUrl();
@@ -375,7 +371,7 @@ public class ReplayEnvironmentPlanService {
         return new ReplayEnvironmentComponentPlan(
                 componentType,
                 existingApp,
-                sanitizeKubernetesName(appBase + "-replay-" + replayCase.getJiraKey()),
+                replayApplicationName(replayCase, backend),
                 sourceRepo,
                 chartPath,
                 targetRevision,
@@ -388,6 +384,14 @@ public class ReplayEnvironmentPlanService {
                 configKeysRequired(target),
                 secretKeysRequired(target),
                 List.copyOf(missing)
+        );
+    }
+
+    private String replayApplicationName(ReplayCaseEntity replayCase, boolean backend) {
+        return sanitizeKubernetesName(
+                "replay-" + replayCase.getJiraKey()
+                        + "-"
+                        + (backend ? "backend" : "customer-ui")
         );
     }
 
