@@ -3,6 +3,9 @@ package com.etiya.replayfix.integration;
 import com.etiya.replayfix.config.ReplayFixProperties.Target;
 import com.etiya.replayfix.model.BitbucketConnectionTestResult;
 import com.etiya.replayfix.model.BitbucketRepositoryInfo;
+import com.etiya.replayfix.model.IntegrationModels.BitbucketBranchCheckResult;
+import com.etiya.replayfix.model.IntegrationModels.BitbucketBranchCreateResult;
+import com.etiya.replayfix.model.IntegrationModels.BitbucketMergeResult;
 import com.etiya.replayfix.model.IntegrationModels.PullRequestResult;
 
 import java.util.List;
@@ -13,8 +16,38 @@ public interface BitbucketClient {
 
     BitbucketConnectionTestResult testConnection();
 
+    BitbucketBranchCheckResult branchExists(
+            String projectKey,
+            String repositorySlug,
+            String branchName
+    );
+
+    BitbucketBranchCreateResult createBranch(
+            String projectKey,
+            String repositorySlug,
+            String branchName,
+            String startPoint
+    );
+
+    BitbucketMergeResult mergeBranches(
+            String projectKey,
+            String repositorySlug,
+            String sourceBranch,
+            String targetBranch
+    );
+
     PullRequestResult createPullRequest(
             Target target,
+            String sourceBranch,
+            String destinationBranch,
+            String title,
+            String description,
+            List<String> reviewers
+    );
+
+    PullRequestResult createPullRequest(
+            String projectKey,
+            String repositorySlug,
             String sourceBranch,
             String destinationBranch,
             String title,

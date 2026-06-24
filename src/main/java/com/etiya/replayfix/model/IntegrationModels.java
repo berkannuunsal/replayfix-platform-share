@@ -23,4 +23,11 @@ public final class IntegrationModels {
     public record BuildResult(String status, String buildUrl, int totalTests, int failedTests, String rawJson) {}
     public record GitPublishResult(String branch, String commitSha, Path workspace) {}
     public record PullRequestResult(String id, String url, String title) {}
+    public record JiraIssueCreateResult(boolean success, String issueKey, String issueUrl, int httpStatus,
+                                        List<String> warnings) {}
+    public record BitbucketBranchCheckResult(boolean exists, String branchName, List<String> warnings) {}
+    public record BitbucketBranchCreateResult(boolean created, boolean alreadyExists, String branchName,
+                                              List<String> warnings) {}
+    public record BitbucketMergeResult(boolean attempted, boolean succeeded, boolean conflict,
+                                       List<String> warnings) {}
 }

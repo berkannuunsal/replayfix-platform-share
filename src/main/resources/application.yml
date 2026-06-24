@@ -93,6 +93,19 @@ replayfix:
         timeout-seconds: 45
         max-prompt-chars: 8000
         max-output-tokens: 1200
+  real-actions:
+    enabled: ${REPLAYFIX_REAL_ACTIONS_ENABLED:false}
+    jira-create-enabled: ${REPLAYFIX_JIRA_CREATE_ENABLED:false}
+    bitbucket-branch-create-enabled: ${REPLAYFIX_BITBUCKET_BRANCH_CREATE_ENABLED:false}
+    bitbucket-merge-enabled: ${REPLAYFIX_BITBUCKET_MERGE_ENABLED:false}
+    bitbucket-pr-create-enabled: ${REPLAYFIX_BITBUCKET_PR_CREATE_ENABLED:false}
+    require-confirmation: true
+    require-guardrails-accepted: true
+    draft-pr-title-prefix: "[DRAFT] ReplayFix"
+    default-development-base-branch: master
+    default-environment-target-branch: test2
+    bugfix-branch-prefix: bugfix/
+    integration-branch-prefix: integration/test2/
   notifications:
     webhook:
       enabled: ${REPLAYFIX_NOTIFICATION_WEBHOOK_ENABLED:false}

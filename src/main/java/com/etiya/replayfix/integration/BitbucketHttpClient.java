@@ -4,6 +4,9 @@ import com.etiya.replayfix.config.ReplayFixProperties;
 import com.etiya.replayfix.config.ReplayFixProperties.Target;
 import com.etiya.replayfix.model.BitbucketConnectionTestResult;
 import com.etiya.replayfix.model.BitbucketRepositoryInfo;
+import com.etiya.replayfix.model.IntegrationModels.BitbucketBranchCheckResult;
+import com.etiya.replayfix.model.IntegrationModels.BitbucketBranchCreateResult;
+import com.etiya.replayfix.model.IntegrationModels.BitbucketMergeResult;
 import com.etiya.replayfix.model.IntegrationModels.PullRequestResult;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.http.MediaType;
@@ -171,8 +174,212 @@ public class BitbucketHttpClient implements BitbucketClient {
     }
 
     @Override
+    public BitbucketBranchCheckResult branchExists(
+            String projectKey,
+            String repositorySlug,
+            String branchName
+    ) {
+        var cfg = properties.getIntegrations().getBitbucket();
+        if (!cfg.isEnabled()) {
+            return new BitbucketBranchCheckResult(
+                    false,
+                    branchName,
+                    List.of("Bitbucket integration is disabled")
+            );
+        }
+        try {
+            JsonNode response = webClientBuilder
+                    .baseUrl(cfg.getBaseUrl().replaceAll("/+$", ""))
+                    .build()
+                    .get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/rest/api/1.0/projects/{project}/repos/{repo}/branches")
+                            .queryParam("filterText", branchName)
+                            .queryParam("limit", 100)
+                            .build(projectKey, repositorySlug))
+                    .headers(headers -> headers.addAll(HttpSupport.headers(cfg)))
+                    .accept(MediaType.APPLICATION_JSON)
+                    .retrieve()
+                    .onStatus(
+                            status -> status.isError(),
+                            clientResponse -> clientResponse.bodyToMono(String.class)
+                                    .defaultIfEmpty("")
+                                    .map(body -> new IllegalStateException(
+                                            "Bitbucket branch read failed. HTTP "
+                                                    + clientResponse.statusCode()
+                                                    + " Response: "
+                                                    + truncate(body, 2_000)
+                                    ))
+                    )
+                    .bodyToMono(JsonNode.class)
+                    .block(cfg.getTimeout());
+            boolean exists = false;
+            if (response != null) {
+                for (JsonNode branch : response.path("values")) {
+                    String id = branch.path("id").asText("");
+                    String displayId = branch.path("displayId").asText("");
+                    if (branchName.equals(displayId)
+                            || ("refs/heads/" + branchName).equals(id)) {
+                        exists = true;
+                        break;
+                    }
+                }
+            }
+            return new BitbucketBranchCheckResult(exists, branchName, List.of());
+        } catch (Exception exception) {
+            return new BitbucketBranchCheckResult(
+                    false,
+                    branchName,
+                    List.of(rootCauseMessage(exception))
+            );
+        }
+    }
+
+    @Override
+    public BitbucketBranchCreateResult createBranch(
+            String projectKey,
+            String repositorySlug,
+            String branchName,
+            String startPoint
+    ) {
+        var cfg = properties.getIntegrations().getBitbucket();
+        if (!cfg.isEnabled()) {
+            return new BitbucketBranchCreateResult(
+                    false,
+                    false,
+                    branchName,
+                    List.of("Bitbucket integration is disabled")
+            );
+        }
+        try {
+            Map<String, Object> body = Map.of(
+                    "name", branchName,
+                    "startPoint", startPoint
+            );
+            webClientBuilder
+                    .baseUrl(cfg.getBaseUrl().replaceAll("/+$", ""))
+                    .build()
+                    .post()
+                    .uri("/rest/branch-utils/1.0/projects/{project}/repos/{repo}/branches",
+                            projectKey, repositorySlug)
+                    .headers(headers -> headers.addAll(HttpSupport.headers(cfg)))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(body)
+                    .retrieve()
+                    .onStatus(
+                            status -> status.isError(),
+                            clientResponse -> clientResponse.bodyToMono(String.class)
+                                    .defaultIfEmpty("")
+                                    .map(errorBody -> new IllegalStateException(
+                                            "Bitbucket branch create failed. HTTP "
+                                                    + clientResponse.statusCode()
+                                                    + " Response: "
+                                                    + truncate(errorBody, 2_000)
+                                    ))
+                    )
+                    .toBodilessEntity()
+                    .block(cfg.getTimeout());
+            return new BitbucketBranchCreateResult(
+                    true,
+                    false,
+                    branchName,
+                    List.of()
+            );
+        } catch (Exception exception) {
+            String message = rootCauseMessage(exception);
+            boolean alreadyExists = message.toLowerCase().contains("already");
+            return new BitbucketBranchCreateResult(
+                    false,
+                    alreadyExists,
+                    branchName,
+                    List.of(message)
+            );
+        }
+    }
+
+    @Override
+    public BitbucketMergeResult mergeBranches(
+            String projectKey,
+            String repositorySlug,
+            String sourceBranch,
+            String targetBranch
+    ) {
+        var cfg = properties.getIntegrations().getBitbucket();
+        if (!cfg.isEnabled()) {
+            return new BitbucketMergeResult(
+                    false,
+                    false,
+                    false,
+                    List.of("Bitbucket integration is disabled")
+            );
+        }
+        try {
+            Map<String, Object> body = Map.of(
+                    "fromRef", Map.of("id", "refs/heads/" + sourceBranch),
+                    "toRef", Map.of("id", "refs/heads/" + targetBranch),
+                    "message", "ReplayFix guarded branch merge"
+            );
+            webClientBuilder
+                    .baseUrl(cfg.getBaseUrl().replaceAll("/+$", ""))
+                    .build()
+                    .post()
+                    .uri("/rest/api/1.0/projects/{project}/repos/{repo}/merge",
+                            projectKey, repositorySlug)
+                    .headers(headers -> headers.addAll(HttpSupport.headers(cfg)))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(body)
+                    .retrieve()
+                    .onStatus(
+                            status -> status.isError(),
+                            clientResponse -> clientResponse.bodyToMono(String.class)
+                                    .defaultIfEmpty("")
+                                    .map(errorBody -> new IllegalStateException(
+                                            "Bitbucket branch merge failed. HTTP "
+                                                    + clientResponse.statusCode()
+                                                    + " Response: "
+                                                    + truncate(errorBody, 2_000)
+                                    ))
+                    )
+                    .toBodilessEntity()
+                    .block(cfg.getTimeout());
+            return new BitbucketMergeResult(true, true, false, List.of());
+        } catch (Exception exception) {
+            String message = rootCauseMessage(exception);
+            boolean conflict = message.toLowerCase().contains("conflict");
+            return new BitbucketMergeResult(
+                    true,
+                    false,
+                    conflict,
+                    List.of(message)
+            );
+        }
+    }
+
+    @Override
     public PullRequestResult createPullRequest(
             Target target,
+            String sourceBranch,
+            String destinationBranch,
+            String title,
+            String description,
+            List<String> reviewers
+    ) {
+        var cfg = properties.getIntegrations().getBitbucket();
+        return createPullRequest(
+                cfg.getProjectKey(),
+                target.getRepository(),
+                sourceBranch,
+                destinationBranch,
+                title,
+                description,
+                reviewers
+        );
+    }
+
+    @Override
+    public PullRequestResult createPullRequest(
+            String projectKey,
+            String repositorySlug,
             String sourceBranch,
             String destinationBranch,
             String title,
@@ -199,7 +406,7 @@ public class BitbucketHttpClient implements BitbucketClient {
 
             JsonNode node = webClientBuilder.baseUrl(cfg.getBaseUrl()).build().post()
                     .uri("/2.0/repositories/{workspace}/{repo}/pullrequests",
-                            cfg.getWorkspace(), target.getRepository())
+                            cfg.getWorkspace(), repositorySlug)
                     .headers(h -> h.addAll(HttpSupport.headers(cfg)))
                     .contentType(MediaType.APPLICATION_JSON)
                     .bodyValue(body)
@@ -220,8 +427,8 @@ public class BitbucketHttpClient implements BitbucketClient {
                 reviewerPayload.add(Map.of("user", Map.of("name", reviewer))));
 
         Map<String, Object> repository = Map.of(
-                "slug", target.getRepository(),
-                "project", Map.of("key", cfg.getProjectKey())
+                "slug", repositorySlug,
+                "project", Map.of("key", projectKey)
         );
 
         Map<String, Object> body = Map.of(
@@ -240,7 +447,7 @@ public class BitbucketHttpClient implements BitbucketClient {
 
         JsonNode node = webClientBuilder.baseUrl(cfg.getBaseUrl()).build().post()
                 .uri("/rest/api/1.0/projects/{project}/repos/{repo}/pull-requests",
-                        cfg.getProjectKey(), target.getRepository())
+                        projectKey, repositorySlug)
                 .headers(h -> h.addAll(HttpSupport.headers(cfg)))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(body)

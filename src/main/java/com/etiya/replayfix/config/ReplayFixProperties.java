@@ -24,6 +24,7 @@ public class ReplayFixProperties {
     private Ai ai = new Ai();
     private Llm llm = new Llm();
     private ArgoCd argocd = new ArgoCd();
+    private RealActions realActions = new RealActions();
     private Demo demo = new Demo();
     private DbEvidence dbEvidence = new DbEvidence();
     private Map<String, Target> targets = new LinkedHashMap<>();
@@ -52,6 +53,10 @@ public class ReplayFixProperties {
     }
     public ArgoCd getArgocd() { return argocd; }
     public void setArgocd(ArgoCd value) { this.argocd = value; }
+    public RealActions getRealActions() { return realActions; }
+    public void setRealActions(RealActions value) {
+        this.realActions = value == null ? new RealActions() : value;
+    }
     public Demo getDemo() { return demo; }
     public void setDemo(Demo demo) { this.demo = demo; }
     public DbEvidence getDbEvidence() { return dbEvidence; }
@@ -267,6 +272,49 @@ public class ReplayFixProperties {
         public void setProject(String value) { this.project = value; }
         public boolean isRealProvisioningEnabled() { return realProvisioningEnabled; }
         public void setRealProvisioningEnabled(boolean value) { this.realProvisioningEnabled = value; }
+    }
+
+    public static class RealActions {
+        private boolean enabled;
+        private boolean jiraCreateEnabled;
+        private boolean bitbucketBranchCreateEnabled;
+        private boolean bitbucketMergeEnabled;
+        private boolean bitbucketPrCreateEnabled;
+        private boolean requireConfirmation = true;
+        private boolean requireGuardrailsAccepted = true;
+        private String draftPrTitlePrefix = "[DRAFT] ReplayFix";
+        private String defaultDevelopmentBaseBranch = "master";
+        private String defaultEnvironmentTargetBranch = "test2";
+        private String bugfixBranchPrefix = "bugfix/";
+        private String integrationBranchPrefix = "integration/test2/";
+        private String jiraSubTaskIssueType = "";
+
+        public boolean isEnabled() { return enabled; }
+        public void setEnabled(boolean value) { this.enabled = value; }
+        public boolean isJiraCreateEnabled() { return jiraCreateEnabled; }
+        public void setJiraCreateEnabled(boolean value) { this.jiraCreateEnabled = value; }
+        public boolean isBitbucketBranchCreateEnabled() { return bitbucketBranchCreateEnabled; }
+        public void setBitbucketBranchCreateEnabled(boolean value) { this.bitbucketBranchCreateEnabled = value; }
+        public boolean isBitbucketMergeEnabled() { return bitbucketMergeEnabled; }
+        public void setBitbucketMergeEnabled(boolean value) { this.bitbucketMergeEnabled = value; }
+        public boolean isBitbucketPrCreateEnabled() { return bitbucketPrCreateEnabled; }
+        public void setBitbucketPrCreateEnabled(boolean value) { this.bitbucketPrCreateEnabled = value; }
+        public boolean isRequireConfirmation() { return requireConfirmation; }
+        public void setRequireConfirmation(boolean value) { this.requireConfirmation = value; }
+        public boolean isRequireGuardrailsAccepted() { return requireGuardrailsAccepted; }
+        public void setRequireGuardrailsAccepted(boolean value) { this.requireGuardrailsAccepted = value; }
+        public String getDraftPrTitlePrefix() { return draftPrTitlePrefix; }
+        public void setDraftPrTitlePrefix(String value) { this.draftPrTitlePrefix = value; }
+        public String getDefaultDevelopmentBaseBranch() { return defaultDevelopmentBaseBranch; }
+        public void setDefaultDevelopmentBaseBranch(String value) { this.defaultDevelopmentBaseBranch = value; }
+        public String getDefaultEnvironmentTargetBranch() { return defaultEnvironmentTargetBranch; }
+        public void setDefaultEnvironmentTargetBranch(String value) { this.defaultEnvironmentTargetBranch = value; }
+        public String getBugfixBranchPrefix() { return bugfixBranchPrefix; }
+        public void setBugfixBranchPrefix(String value) { this.bugfixBranchPrefix = value; }
+        public String getIntegrationBranchPrefix() { return integrationBranchPrefix; }
+        public void setIntegrationBranchPrefix(String value) { this.integrationBranchPrefix = value; }
+        public String getJiraSubTaskIssueType() { return jiraSubTaskIssueType; }
+        public void setJiraSubTaskIssueType(String value) { this.jiraSubTaskIssueType = value; }
     }
 
     public static class ReplayComponent {

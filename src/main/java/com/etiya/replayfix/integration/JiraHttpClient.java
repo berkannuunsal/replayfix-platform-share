@@ -3,6 +3,7 @@ package com.etiya.replayfix.integration;
 import com.etiya.replayfix.config.ReplayFixProperties;
 import com.etiya.replayfix.model.IntegrationModels;
 import com.etiya.replayfix.model.IntegrationModels.JiraIssue;
+import com.etiya.replayfix.model.IntegrationModels.JiraIssueCreateResult;
 import com.etiya.replayfix.model.JiraCommentPublishResponse;
 import com.etiya.replayfix.service.JiraAdfTextExtractor;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -108,6 +109,77 @@ public class JiraHttpClient implements JiraClient {
             fields.path("description").toString(),
             extra
         );
+    }
+
+    @Override
+    public JiraIssueCreateResult createIssue(Map<String, Object> payload) {
+        var cfg = properties.getIntegrations().getJira();
+        if (!cfg.isEnabled()) {
+            return new JiraIssueCreateResult(
+                    false,
+                    null,
+                    null,
+                    0,
+                    List.of("Jira integration is disabled")
+            );
+        }
+
+        try {
+            JsonNode response = webClientBuilder
+                    .baseUrl(cfg.getBaseUrl())
+                    .build()
+                    .post()
+                    .uri("/rest/api/3/issue")
+                    .headers(headers -> headers.addAll(HttpSupport.headers(cfg)))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(payload)
+                    .retrieve()
+                    .onStatus(
+                            status -> status.isError(),
+                            clientResponse -> clientResponse
+                                    .bodyToMono(String.class)
+                                    .defaultIfEmpty("")
+                                    .map(body -> new IllegalStateException(
+                                            "Jira issue create failed. HTTP "
+                                                    + clientResponse.statusCode()
+                                                    + " Response: "
+                                                    + truncate(body, 2_000)
+                                    ))
+                    )
+                    .bodyToMono(JsonNode.class)
+                    .block(cfg.getTimeout());
+
+            if (response == null) {
+                return new JiraIssueCreateResult(
+                        false,
+                        null,
+                        null,
+                        0,
+                        List.of("Jira returned null response")
+                );
+            }
+
+            return new JiraIssueCreateResult(
+                    true,
+                    response.path("key").asText(""),
+                    response.path("self").asText(""),
+                    201,
+                    List.of()
+            );
+        } catch (Exception exception) {
+            log.error(
+                    "Failed to create Jira issue: {}",
+                    exception.getMessage()
+            );
+            return new JiraIssueCreateResult(
+                    false,
+                    null,
+                    null,
+                    0,
+                    List.of("Failed to create Jira issue: "
+                            + truncate(exception.getMessage(), 500))
+            );
+        }
     }
 
     @Override
@@ -419,5 +491,14 @@ public class JiraHttpClient implements JiraClient {
                     break;
             }
         }
+    }
+
+    private String truncate(String value, int maxLength) {
+        if (value == null) {
+            return "";
+        }
+        return value.length() <= maxLength
+                ? value
+                : value.substring(0, maxLength);
     }
 }
