@@ -20,9 +20,11 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -107,7 +109,9 @@ public class BitbucketTest2DemoPrService {
         }
 
         BitbucketBranchCheckResult target = targetBranchExists(normalized);
-        if (!target.exists()) {
+        if (lookupFailed(target.warnings())) {
+            blockers.add("BITBUCKET_BRANCH_LOOKUP_FAILED");
+        } else if (!target.exists()) {
             blockers.add("BITBUCKET_TARGET_BRANCH_NOT_FOUND");
         }
         warnings.addAll(target.warnings());
@@ -118,7 +122,9 @@ public class BitbucketTest2DemoPrService {
                         normalized.repositorySlug(),
                         normalized.integrationBranch()
                 );
-        if (integration.exists()
+        if (lookupFailed(integration.warnings())) {
+            blockers.add("BITBUCKET_BRANCH_LOOKUP_FAILED");
+        } else if (integration.exists()
                 && !safeRequest.allowReuseExistingIntegrationBranch()) {
             blockers.add("BITBUCKET_INTEGRATION_BRANCH_ALREADY_EXISTS");
         } else if (integration.exists()) {
@@ -348,6 +354,7 @@ public class BitbucketTest2DemoPrService {
                         .map(this::sanitize)
                         .toList(),
                 unique(nextActions),
+                branchLookupDiagnostics(warnings),
                 Instant.now()
         );
     }
@@ -525,6 +532,58 @@ public class BitbucketTest2DemoPrService {
                 .replaceAll("(?i)secret", "[redacted]")
                 .replaceAll("(?i)apikey", "[redacted]")
                 .replaceAll("(?i)privatekey", "[redacted]");
+    }
+
+    private boolean lookupFailed(List<String> warnings) {
+        return warnings != null
+                && warnings.stream()
+                .anyMatch("BITBUCKET_BRANCH_LOOKUP_FAILED"::equals);
+    }
+
+    private Map<String, Object> branchLookupDiagnostics(List<String> warnings) {
+        if (warnings == null) {
+            return Map.of();
+        }
+        List<Map<String, Object>> diagnostics = warnings.stream()
+                .filter(value -> value != null
+                        && value.startsWith("BRANCH_LOOKUP_DIAGNOSTICS"))
+                .map(this::parseDiagnostic)
+                .filter(value -> !value.isEmpty())
+                .toList();
+        if (diagnostics.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Object> value = new LinkedHashMap<>(diagnostics.get(0));
+        value.put("allDiagnostics", diagnostics);
+        return Map.copyOf(value);
+    }
+
+    private Map<String, Object> parseDiagnostic(String diagnostic) {
+        Map<String, Object> value = new LinkedHashMap<>();
+        String[] parts = diagnostic.split("\\|");
+        for (String part : parts) {
+            if (!part.contains("=")) {
+                continue;
+            }
+            int index = part.indexOf('=');
+            String key = part.substring(0, index);
+            String raw = part.substring(index + 1);
+            switch (key) {
+                case "requested" -> value.put("targetBranchRequested", raw);
+                case "normalized" -> value.put("targetBranchNormalized", raw);
+                case "strategies" -> value.put(
+                        "lookupStrategiesTried",
+                        raw.isBlank() ? List.of() : List.of(raw.split(","))
+                );
+                case "httpStatuses" -> value.put("httpStatuses", raw);
+                case "matchedBranchId" -> value.put("matchedBranchId", raw);
+                case "matchedDisplayId" -> value.put("matchedDisplayId", raw);
+                default -> {
+                    // Ignore unknown diagnostic keys.
+                }
+            }
+        }
+        return Map.copyOf(value);
     }
 
     private String jiraCompact(String jiraKey) {

@@ -9,14 +9,17 @@ import com.etiya.replayfix.model.IntegrationModels.BitbucketBranchCreateResult;
 import com.etiya.replayfix.model.IntegrationModels.BitbucketMergeResult;
 import com.etiya.replayfix.model.IntegrationModels.PullRequestResult;
 import com.fasterxml.jackson.databind.JsonNode;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Component
 public class BitbucketHttpClient implements BitbucketClient {
@@ -187,8 +190,120 @@ public class BitbucketHttpClient implements BitbucketClient {
                     List.of("Bitbucket integration is disabled")
             );
         }
+        String normalized = normalizeBranchName(branchName);
+        BranchLookupDiagnostics diagnostics =
+                new BranchLookupDiagnostics(branchName, normalized);
+        for (String candidate : directCandidates(branchName)) {
+            BranchLookupAttempt attempt = directBranch(
+                    projectKey,
+                    repositorySlug,
+                    candidate,
+                    diagnostics
+            );
+            if (attempt.failed()) {
+                return new BitbucketBranchCheckResult(
+                        false,
+                        branchName,
+                        List.of(
+                                "BITBUCKET_BRANCH_LOOKUP_FAILED",
+                                diagnostics.warning()
+                        )
+                );
+            }
+            if (attempt.branch() != null
+                    && branchMatches(attempt.branch(), normalized)) {
+                diagnostics.match(attempt.branch());
+                return new BitbucketBranchCheckResult(
+                        true,
+                        normalized,
+                        List.of(diagnostics.warning())
+                );
+            }
+        }
+        BranchLookupAttempt filtered = filteredBranches(
+                projectKey,
+                repositorySlug,
+                normalized,
+                diagnostics
+        );
+        if (filtered.failed()) {
+            return new BitbucketBranchCheckResult(
+                    false,
+                    branchName,
+                    List.of(
+                            "BITBUCKET_BRANCH_LOOKUP_FAILED",
+                            diagnostics.warning()
+                    )
+            );
+        }
+        if (filtered.branches() != null) {
+            for (JsonNode branch : filtered.branches()) {
+                if (branchMatches(branch, normalized)) {
+                    diagnostics.match(branch);
+                    return new BitbucketBranchCheckResult(
+                            true,
+                            normalized,
+                            List.of(diagnostics.warning())
+                    );
+                }
+            }
+        }
+        return new BitbucketBranchCheckResult(
+                false,
+                normalized,
+                List.of(diagnostics.warning())
+        );
+    }
+
+    BranchLookupAttempt directBranch(
+            String projectKey,
+            String repositorySlug,
+            String branchName,
+            BranchLookupDiagnostics diagnostics
+    ) {
+        var cfg = properties.getIntegrations().getBitbucket();
+        diagnostics.strategy("direct:" + branchName);
         try {
-            JsonNode response = webClientBuilder
+            return webClientBuilder
+                    .baseUrl(cfg.getBaseUrl().replaceAll("/+$", ""))
+                    .build()
+                    .get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/rest/api/1.0/projects/{project}/repos/{repo}/branches")
+                            .pathSegment(branchName)
+                            .build(projectKey, repositorySlug))
+                    .headers(headers -> headers.addAll(HttpSupport.headers(cfg)))
+                    .accept(MediaType.APPLICATION_JSON)
+                    .exchangeToMono(response -> response.bodyToMono(JsonNode.class)
+                            .defaultIfEmpty(com.fasterxml.jackson.databind.node.NullNode.getInstance())
+                            .map(body -> {
+                                HttpStatusCode status = response.statusCode();
+                                diagnostics.status(status.value());
+                                if (status.value() == 404) {
+                                    return new BranchLookupAttempt(false, null, null);
+                                }
+                                if (status.isError()) {
+                                    return new BranchLookupAttempt(true, null, null);
+                                }
+                                return new BranchLookupAttempt(false, body, null);
+                            }))
+                    .block(cfg.getTimeout());
+        } catch (Exception exception) {
+            diagnostics.status(0);
+            return new BranchLookupAttempt(true, null, null);
+        }
+    }
+
+    BranchLookupAttempt filteredBranches(
+            String projectKey,
+            String repositorySlug,
+            String branchName,
+            BranchLookupDiagnostics diagnostics
+    ) {
+        var cfg = properties.getIntegrations().getBitbucket();
+        diagnostics.strategy("filterText:" + branchName);
+        try {
+            return webClientBuilder
                     .baseUrl(cfg.getBaseUrl().replaceAll("/+$", ""))
                     .build()
                     .get()
@@ -199,40 +314,54 @@ public class BitbucketHttpClient implements BitbucketClient {
                             .build(projectKey, repositorySlug))
                     .headers(headers -> headers.addAll(HttpSupport.headers(cfg)))
                     .accept(MediaType.APPLICATION_JSON)
-                    .retrieve()
-                    .onStatus(
-                            status -> status.isError(),
-                            clientResponse -> clientResponse.bodyToMono(String.class)
-                                    .defaultIfEmpty("")
-                                    .map(body -> new IllegalStateException(
-                                            "Bitbucket branch read failed. HTTP "
-                                                    + clientResponse.statusCode()
-                                                    + " Response: "
-                                                    + truncate(body, 2_000)
-                                    ))
-                    )
-                    .bodyToMono(JsonNode.class)
+                    .exchangeToMono(response -> response.bodyToMono(JsonNode.class)
+                            .defaultIfEmpty(com.fasterxml.jackson.databind.node.NullNode.getInstance())
+                            .map(body -> {
+                                HttpStatusCode status = response.statusCode();
+                                diagnostics.status(status.value());
+                                if (status.isError()) {
+                                    return new BranchLookupAttempt(true, null, null);
+                                }
+                                List<JsonNode> branches = new ArrayList<>();
+                                for (JsonNode branch : body.path("values")) {
+                                    branches.add(branch);
+                                }
+                                return new BranchLookupAttempt(false, null, branches);
+                            }))
                     .block(cfg.getTimeout());
-            boolean exists = false;
-            if (response != null) {
-                for (JsonNode branch : response.path("values")) {
-                    String id = branch.path("id").asText("");
-                    String displayId = branch.path("displayId").asText("");
-                    if (branchName.equals(displayId)
-                            || ("refs/heads/" + branchName).equals(id)) {
-                        exists = true;
-                        break;
-                    }
-                }
-            }
-            return new BitbucketBranchCheckResult(exists, branchName, List.of());
         } catch (Exception exception) {
-            return new BitbucketBranchCheckResult(
-                    false,
-                    branchName,
-                    List.of(rootCauseMessage(exception))
-            );
+            diagnostics.status(0);
+            return new BranchLookupAttempt(true, null, null);
         }
+    }
+
+    boolean branchMatches(JsonNode branch, String normalizedRequested) {
+        String id = normalizeBranchName(branch.path("id").asText(""));
+        String displayId = normalizeBranchName(branch.path("displayId").asText(""));
+        return normalizedRequested.equals(id)
+                || normalizedRequested.equals(displayId);
+    }
+
+    String normalizeBranchName(String branchName) {
+        if (branchName == null) {
+            return "";
+        }
+        String value = branchName.trim();
+        return value.startsWith("refs/heads/")
+                ? value.substring("refs/heads/".length())
+                : value;
+    }
+
+    private List<String> directCandidates(String branchName) {
+        String normalized = normalizeBranchName(branchName);
+        Set<String> values = new LinkedHashSet<>();
+        if (branchName != null && !branchName.isBlank()) {
+            values.add(branchName.trim());
+        }
+        if (!normalized.isBlank()) {
+            values.add("refs/heads/" + normalized);
+        }
+        return List.copyOf(values);
     }
 
     @Override
@@ -461,6 +590,52 @@ public class BitbucketHttpClient implements BitbucketClient {
                 node.path("links").path("self").path(0).path("href").asText(),
                 title
         );
+    }
+
+    record BranchLookupAttempt(
+            boolean failed,
+            JsonNode branch,
+            List<JsonNode> branches
+    ) {
+    }
+
+    static final class BranchLookupDiagnostics {
+        private final String requested;
+        private final String normalized;
+        private final List<String> strategies = new ArrayList<>();
+        private final List<Integer> statuses = new ArrayList<>();
+        private String matchedBranchId = "";
+        private String matchedDisplayId = "";
+
+        BranchLookupDiagnostics(String requested, String normalized) {
+            this.requested = requested == null ? "" : requested;
+            this.normalized = normalized == null ? "" : normalized;
+        }
+
+        void strategy(String value) {
+            if (value != null && !value.isBlank()) {
+                strategies.add(value);
+            }
+        }
+
+        void status(int value) {
+            statuses.add(value);
+        }
+
+        void match(JsonNode branch) {
+            matchedBranchId = branch.path("id").asText("");
+            matchedDisplayId = branch.path("displayId").asText("");
+        }
+
+        String warning() {
+            return "BRANCH_LOOKUP_DIAGNOSTICS"
+                    + "|requested=" + requested
+                    + "|normalized=" + normalized
+                    + "|strategies=" + String.join(",", strategies)
+                    + "|httpStatuses=" + statuses
+                    + "|matchedBranchId=" + matchedBranchId
+                    + "|matchedDisplayId=" + matchedDisplayId;
+        }
     }
 
     private String findCloneUrl(JsonNode repository) {
