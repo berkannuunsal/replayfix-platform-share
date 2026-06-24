@@ -1,0 +1,136 @@
+replayfix:
+  components:
+    backend:
+      componentKey: backend
+      displayName: BSS Backend
+      componentType: SPRING_BOOT_BACKEND
+      repositoryProject: DCE
+      repositorySlug: backend
+      defaultBranch: test2
+      gitOpsRepo: https://bitbucket.company.com/scm/fdi/helm-charts.git
+      helmChartPath: bss-backend
+      valuesPath: project-test2-values.yaml
+      imageRepository: 583959041857.dkr.ecr.ca-central-1.amazonaws.com/project-test2-bss-backend
+      defaultNamespace: project-test-bss-backend
+      healthPath: /DCE-CommerceBackend/actuator/health
+      servicePort: 8080
+      ownerTeam: Backend
+      dependencyModes:
+        - REPLAY_COPY
+        - TEST2_SHARED
+      allowReplay: true
+      allowLoadTest: false
+      requiresApproval: true
+
+    mco-backend:
+      componentKey: mco-backend
+      displayName: MCO Backend
+      componentType: SPRING_BOOT_BACKEND
+      repositoryProject: DCE
+      repositorySlug: mco-backend
+      defaultBranch: test2
+      gitOpsRepo: https://bitbucket.company.com/scm/fdi/helm-charts.git
+      helmChartPath: mco-backend
+      valuesPath: project-test2-values.yaml
+      imageRepository: UNKNOWN_MCO_BACKEND_IMAGE_REPOSITORY
+      defaultNamespace: project-test-mco-backend
+      healthPath: /actuator/health
+      servicePort: 8080
+      ownerTeam: MCO
+      dependencyModes:
+        - REPLAY_COPY
+        - TEST2_SHARED
+        - FUTURE_PHASE
+      allowReplay: true
+      allowLoadTest: false
+      requiresApproval: true
+
+    serdoo-ui:
+      componentKey: serdoo-ui
+      displayName: Serdoo UI
+      componentType: ANGULAR_FRONTEND
+      repositoryProject: DCE
+      repositorySlug: serdoo-ui
+      defaultBranch: test2
+      gitOpsRepo: https://bitbucket.company.com/scm/fdi/helm-charts.git
+      helmChartPath: frontend/serdoo-ui
+      valuesPath: project-test2-values.yaml
+      imageRepository: UNKNOWN_SERDOO_UI_IMAGE_REPOSITORY
+      defaultNamespace: project-test-frontend
+      healthPath: /
+      servicePort: 80
+      ownerTeam: Frontend
+      dependencyModes:
+        - REPLAY_COPY
+        - TEST2_SHARED
+        - FUTURE_PHASE
+      allowReplay: true
+      allowLoadTest: false
+      requiresApproval: true
+
+    csr-ui:
+      componentKey: csr-ui
+      displayName: CSR UI
+      componentType: ANGULAR_FRONTEND
+      repositoryProject: DCE
+      repositorySlug: csr-ui
+      defaultBranch: test2
+      gitOpsRepo: https://bitbucket.company.com/scm/fdi/helm-charts.git
+      helmChartPath: frontend/csr-ui
+      valuesPath: project-test2-values.yaml
+      imageRepository: UNKNOWN_CSR_UI_IMAGE_REPOSITORY
+      defaultNamespace: project-test-frontend
+      healthPath: /
+      servicePort: 80
+      ownerTeam: Frontend
+      dependencyModes:
+        - REPLAY_COPY
+        - TEST2_SHARED
+        - FUTURE_PHASE
+      allowReplay: true
+      allowLoadTest: false
+      requiresApproval: true
+
+    wso2:
+      componentKey: wso2
+      displayName: WSO2 API Gateway
+      componentType: WSO2_API
+      repositoryProject: FDI
+      repositorySlug: helm-charts
+      defaultBranch: test2
+      gitOpsRepo: https://bitbucket.company.com/scm/fdi/helm-charts.git
+      helmChartPath: wso2
+      valuesPath: project-test2-values.yaml
+      imageRepository: UNKNOWN_WSO2_IMAGE_REPOSITORY
+      defaultNamespace: project-test-wso2
+      healthPath: /services/Version
+      servicePort: 9443
+      ownerTeam: Infra
+      dependencyModes:
+        - TEST2_SHARED
+        - FUTURE_PHASE
+      allowReplay: true
+      allowLoadTest: false
+      requiresApproval: true
+
+    mocks:
+      componentKey: mocks
+      displayName: Replay Mocks
+      componentType: MOCK_SERVICE
+      repositoryProject: FDI
+      repositorySlug: helm-charts
+      defaultBranch: test2
+      gitOpsRepo: https://bitbucket.company.com/scm/fdi/helm-charts.git
+      helmChartPath: replay/wiremock
+      valuesPath: project-test2-values.yaml
+      imageRepository: wiremock/wiremock
+      defaultNamespace: project-replay-sandbox
+      healthPath: /__admin/health
+      servicePort: 8080
+      ownerTeam: ReplayFix
+      dependencyModes:
+        - MOCK
+        - REPLAY_COPY
+      allowReplay: true
+      allowLoadTest: false
+      requiresApproval: true

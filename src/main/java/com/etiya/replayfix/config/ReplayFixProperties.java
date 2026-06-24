@@ -27,6 +27,7 @@ public class ReplayFixProperties {
     private Demo demo = new Demo();
     private DbEvidence dbEvidence = new DbEvidence();
     private Map<String, Target> targets = new LinkedHashMap<>();
+    private Map<String, ReplayComponent> components = new LinkedHashMap<>();
     private Map<String, LogParser> logParsers = new LinkedHashMap<>();
 
     public Mode getMode() { return mode; }
@@ -57,6 +58,10 @@ public class ReplayFixProperties {
     public void setDbEvidence(DbEvidence value) { this.dbEvidence = value; }
     public Map<String, Target> getTargets() { return targets; }
     public void setTargets(Map<String, Target> targets) { this.targets = targets; }
+    public Map<String, ReplayComponent> getComponents() { return components; }
+    public void setComponents(Map<String, ReplayComponent> value) {
+        this.components = value == null ? new LinkedHashMap<>() : value;
+    }
     public Map<String, LogParser> getLogParsers() { return logParsers; }
     public void setLogParsers(Map<String, LogParser> logParsers) { this.logParsers = logParsers; }
 
@@ -262,6 +267,66 @@ public class ReplayFixProperties {
         public void setProject(String value) { this.project = value; }
         public boolean isRealProvisioningEnabled() { return realProvisioningEnabled; }
         public void setRealProvisioningEnabled(boolean value) { this.realProvisioningEnabled = value; }
+    }
+
+    public static class ReplayComponent {
+        private String componentKey = "";
+        private String displayName = "";
+        private String componentType = "UNKNOWN";
+        private String repositoryProject = "";
+        private String repositorySlug = "";
+        private String defaultBranch = "";
+        private String gitOpsRepo = "";
+        private String helmChartPath = "";
+        private String valuesPath = "";
+        private String imageRepository = "";
+        private String defaultNamespace = "";
+        private String healthPath = "";
+        private int servicePort;
+        private String ownerTeam = "";
+        private List<String> dependencyModes = new ArrayList<>();
+        private boolean allowReplay;
+        private boolean allowLoadTest;
+        private boolean requiresApproval = true;
+
+        public String getComponentKey() { return componentKey; }
+        public void setComponentKey(String value) { this.componentKey = value; }
+        public String getDisplayName() { return displayName; }
+        public void setDisplayName(String value) { this.displayName = value; }
+        public String getComponentType() { return componentType; }
+        public void setComponentType(String value) { this.componentType = value; }
+        public String getRepositoryProject() { return repositoryProject; }
+        public void setRepositoryProject(String value) { this.repositoryProject = value; }
+        public String getRepositorySlug() { return repositorySlug; }
+        public void setRepositorySlug(String value) { this.repositorySlug = value; }
+        public String getDefaultBranch() { return defaultBranch; }
+        public void setDefaultBranch(String value) { this.defaultBranch = value; }
+        public String getGitOpsRepo() { return gitOpsRepo; }
+        public void setGitOpsRepo(String value) { this.gitOpsRepo = value; }
+        public String getHelmChartPath() { return helmChartPath; }
+        public void setHelmChartPath(String value) { this.helmChartPath = value; }
+        public String getValuesPath() { return valuesPath; }
+        public void setValuesPath(String value) { this.valuesPath = value; }
+        public String getImageRepository() { return imageRepository; }
+        public void setImageRepository(String value) { this.imageRepository = value; }
+        public String getDefaultNamespace() { return defaultNamespace; }
+        public void setDefaultNamespace(String value) { this.defaultNamespace = value; }
+        public String getHealthPath() { return healthPath; }
+        public void setHealthPath(String value) { this.healthPath = value; }
+        public int getServicePort() { return servicePort; }
+        public void setServicePort(int value) { this.servicePort = value; }
+        public String getOwnerTeam() { return ownerTeam; }
+        public void setOwnerTeam(String value) { this.ownerTeam = value; }
+        public List<String> getDependencyModes() { return dependencyModes; }
+        public void setDependencyModes(List<String> value) {
+            this.dependencyModes = value == null ? new ArrayList<>() : value;
+        }
+        public boolean isAllowReplay() { return allowReplay; }
+        public void setAllowReplay(boolean value) { this.allowReplay = value; }
+        public boolean isAllowLoadTest() { return allowLoadTest; }
+        public void setAllowLoadTest(boolean value) { this.allowLoadTest = value; }
+        public boolean isRequiresApproval() { return requiresApproval; }
+        public void setRequiresApproval(boolean value) { this.requiresApproval = value; }
     }
 
     public static class Llm {
