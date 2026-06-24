@@ -154,8 +154,8 @@ public class RovoSnapshotPublisherService {
         }
 
         // Deterministic RCA
+        content.add(heading(4, "Deterministik RCA"));
         if (snapshot.deterministicRca() != null) {
-            content.add(heading(4, "Deterministik RCA"));
             ArrayNode rcaItems = objectMapper.createArrayNode();
             rcaItems.add(bulletItem("Sınıflandırma: " + snapshot.deterministicRca().classification()));
             rcaItems.add(bulletItem("Güven: " + String.format("%.2f", snapshot.deterministicRca().confidence())));
@@ -172,6 +172,10 @@ public class RovoSnapshotPublisherService {
                 rcaItems.add(bulletItem("Önerilen aksiyonlar: " + 
                     String.join(", ", snapshot.deterministicRca().recommendedActions())));
             }
+            content.add(bulletList(rcaItems));
+        } else {
+            ArrayNode rcaItems = objectMapper.createArrayNode();
+            rcaItems.add(bulletItem("Deterministik RCA kaniti yok"));
             content.add(bulletList(rcaItems));
         }
 
