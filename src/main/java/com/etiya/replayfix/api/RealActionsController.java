@@ -2,6 +2,8 @@ package com.etiya.replayfix.api;
 
 import com.etiya.replayfix.api.dto.BitbucketBranchFlowRequest;
 import com.etiya.replayfix.api.dto.BitbucketBranchFlowResponse;
+import com.etiya.replayfix.api.dto.BitbucketBackendDemoPrRequest;
+import com.etiya.replayfix.api.dto.BitbucketBackendDemoPrResponse;
 import com.etiya.replayfix.api.dto.BitbucketPullRequestRequest;
 import com.etiya.replayfix.api.dto.BitbucketPullRequestResponse;
 import com.etiya.replayfix.api.dto.BitbucketTest2DemoPrRequest;
@@ -11,6 +13,7 @@ import com.etiya.replayfix.api.dto.BitbucketWorkspacePushResponse;
 import com.etiya.replayfix.api.dto.JiraTestTaskRequest;
 import com.etiya.replayfix.api.dto.JiraTestTaskResponse;
 import com.etiya.replayfix.api.dto.RealActionsSummaryResponse;
+import com.etiya.replayfix.service.BitbucketBackendDemoPrService;
 import com.etiya.replayfix.service.BitbucketBranchFlowService;
 import com.etiya.replayfix.service.BitbucketPullRequestRealActionService;
 import com.etiya.replayfix.service.BitbucketTest2DemoPrService;
@@ -35,6 +38,7 @@ public class RealActionsController {
     private final BitbucketPullRequestRealActionService pullRequestService;
     private final BitbucketWorkspacePushService workspacePushService;
     private final BitbucketTest2DemoPrService test2DemoPrService;
+    private final BitbucketBackendDemoPrService backendDemoPrService;
     private final RealActionsSummaryService summaryService;
 
     public RealActionsController(
@@ -43,6 +47,7 @@ public class RealActionsController {
             BitbucketPullRequestRealActionService pullRequestService,
             BitbucketWorkspacePushService workspacePushService,
             BitbucketTest2DemoPrService test2DemoPrService,
+            BitbucketBackendDemoPrService backendDemoPrService,
             RealActionsSummaryService summaryService
     ) {
         this.jiraRealActionService = jiraRealActionService;
@@ -50,6 +55,7 @@ public class RealActionsController {
         this.pullRequestService = pullRequestService;
         this.workspacePushService = workspacePushService;
         this.test2DemoPrService = test2DemoPrService;
+        this.backendDemoPrService = backendDemoPrService;
         this.summaryService = summaryService;
     }
 
@@ -131,6 +137,22 @@ public class RealActionsController {
             @RequestBody BitbucketTest2DemoPrRequest request
     ) {
         return test2DemoPrService.create(caseId, request);
+    }
+
+    @PostMapping("/cases/{caseId}/bitbucket/backend-demo-pr/preview")
+    public BitbucketBackendDemoPrResponse backendDemoPrPreview(
+            @PathVariable UUID caseId,
+            @RequestBody(required = false) BitbucketBackendDemoPrRequest request
+    ) {
+        return backendDemoPrService.preview(caseId, request);
+    }
+
+    @PostMapping("/cases/{caseId}/bitbucket/backend-demo-pr/create")
+    public BitbucketBackendDemoPrResponse backendDemoPrCreate(
+            @PathVariable UUID caseId,
+            @RequestBody BitbucketBackendDemoPrRequest request
+    ) {
+        return backendDemoPrService.create(caseId, request);
     }
 
     @GetMapping("/cases/{caseId}/real-actions/summary")

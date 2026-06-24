@@ -290,6 +290,140 @@ class BitbucketTest2DemoPrServiceTest {
     }
 
     @Test
+    void integrationBranchLookupFailureDoesNotBlockCreateAttempt() {
+        enableRealActions();
+        when(bitbucketClient.branchExists("DCE", "backend", "test2"))
+                .thenReturn(new BitbucketBranchCheckResult(
+                        true,
+                        "test2",
+                        List.of("BRANCH_LOOKUP_DIAGNOSTICS|requested=test2|normalized=test2|strategies=direct:test2,filterText:test2|httpStatuses=[404, 200]|matchedBranchId=refs/heads/test2|matchedDisplayId=test2")
+                ));
+        when(bitbucketClient.branchExists("DCE", "backend",
+                "integration/test2/FIZZMS-10228"))
+                .thenReturn(new BitbucketBranchCheckResult(
+                        false,
+                        "integration/test2/FIZZMS-10228",
+                        List.of(
+                                "BITBUCKET_BRANCH_LOOKUP_FAILED",
+                                "BRANCH_LOOKUP_DIAGNOSTICS|requested=integration/test2/FIZZMS-10228|normalized=integration/test2/FIZZMS-10228|strategies=direct:integration/test2/FIZZMS-10228,direct:refs/heads/integration/test2/FIZZMS-10228,filterText:integration/test2/FIZZMS-10228|httpStatuses=[404, 0, 500]|matchedBranchId=|matchedDisplayId="
+                        )
+                ));
+        when(bitbucketClient.createBranch(
+                "DCE",
+                "backend",
+                "integration/test2/FIZZMS-10228",
+                "test2"
+        )).thenReturn(new BitbucketBranchCreateResult(
+                true,
+                false,
+                "integration/test2/FIZZMS-10228",
+                List.of()
+        ));
+        when(gitOperations.commitAndPushIntegrationBranch(
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any()
+        )).thenReturn(new Test2DemoPrGitOperations.Test2DemoPrGitResult(
+                true,
+                "abc123",
+                "",
+                ""
+        ));
+        when(bitbucketClient.createPullRequest(
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any()
+        )).thenReturn(new PullRequestResult(
+                "42",
+                "https://bitbucket/pr/42",
+                "[DRAFT] ReplayFix FIZZMS-10228 demo regression test"
+        ));
+
+        BitbucketTest2DemoPrResponse response =
+                service.create(caseId, request(true, true));
+
+        assertThat(response.created()).isTrue();
+        assertThat(response.blockers())
+                .doesNotContain("BITBUCKET_BRANCH_LOOKUP_FAILED");
+        assertThat(response.warnings())
+                .contains("BITBUCKET_INTEGRATION_BRANCH_LOOKUP_UNCERTAIN_CREATE_ATTEMPT_ALLOWED");
+        verify(bitbucketClient).createBranch(
+                "DCE",
+                "backend",
+                "integration/test2/FIZZMS-10228",
+                "test2"
+        );
+    }
+
+    @Test
+    void targetBranchLookupFailureBlocksCreate() {
+        enableRealActions();
+        when(bitbucketClient.branchExists("DCE", "backend", "test2"))
+                .thenReturn(new BitbucketBranchCheckResult(
+                        false,
+                        "test2",
+                        List.of("BITBUCKET_BRANCH_LOOKUP_FAILED")
+                ));
+        when(bitbucketClient.branchExists("DCE", "backend", "refs/heads/test2"))
+                .thenReturn(new BitbucketBranchCheckResult(
+                        false,
+                        "refs/heads/test2",
+                        List.of("BITBUCKET_BRANCH_LOOKUP_FAILED")
+                ));
+
+        BitbucketTest2DemoPrResponse response =
+                service.create(caseId, request(true, true));
+
+        assertThat(response.created()).isFalse();
+        assertThat(response.blockers())
+                .contains("BITBUCKET_BRANCH_LOOKUP_FAILED");
+        verify(bitbucketClient, never()).createBranch(any(), any(), any(), any());
+        verify(gitOperations, never()).commitAndPushIntegrationBranch(
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any()
+        );
+    }
+
+    @Test
+    void targetBranchTrulyAbsentReturnsTargetBranchNotFound() {
+        enableRealActions();
+        when(bitbucketClient.branchExists("DCE", "backend", "test2"))
+                .thenReturn(new BitbucketBranchCheckResult(
+                        false,
+                        "test2",
+                        List.of("BRANCH_LOOKUP_DIAGNOSTICS|requested=test2|normalized=test2|strategies=direct:test2,direct:refs/heads/test2,filterText:test2|httpStatuses=[404, 404, 200]|matchedBranchId=|matchedDisplayId=")
+                ));
+        when(bitbucketClient.branchExists("DCE", "backend", "refs/heads/test2"))
+                .thenReturn(new BitbucketBranchCheckResult(
+                        false,
+                        "test2",
+                        List.of()
+                ));
+
+        BitbucketTest2DemoPrResponse response =
+                service.create(caseId, request(true, true));
+
+        assertThat(response.created()).isFalse();
+        assertThat(response.blockers())
+                .contains("BITBUCKET_TARGET_BRANCH_NOT_FOUND")
+                .doesNotContain("BITBUCKET_BRANCH_LOOKUP_FAILED");
+        verify(bitbucketClient, never()).createBranch(any(), any(), any(), any());
+    }
+
+    @Test
     void existingIntegrationBranchRequiresReuseFlag() {
         enableRealActions();
         BitbucketTest2DemoPrRequest noReuse =

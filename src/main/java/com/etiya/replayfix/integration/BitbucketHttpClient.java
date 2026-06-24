@@ -201,14 +201,7 @@ public class BitbucketHttpClient implements BitbucketClient {
                     diagnostics
             );
             if (attempt.failed()) {
-                return new BitbucketBranchCheckResult(
-                        false,
-                        branchName,
-                        List.of(
-                                "BITBUCKET_BRANCH_LOOKUP_FAILED",
-                                diagnostics.warning()
-                        )
-                );
+                continue;
             }
             if (attempt.branch() != null
                     && branchMatches(attempt.branch(), normalized)) {

@@ -2,6 +2,7 @@ package com.etiya.replayfix.api;
 
 import com.etiya.replayfix.api.dto.BitbucketBranchFlowRequest;
 import com.etiya.replayfix.api.dto.BitbucketBranchFlowResponse;
+import com.etiya.replayfix.api.dto.BitbucketBackendDemoPrResponse;
 import com.etiya.replayfix.api.dto.BitbucketPullRequestRequest;
 import com.etiya.replayfix.api.dto.BitbucketPullRequestResponse;
 import com.etiya.replayfix.api.dto.BitbucketTest2DemoPrResponse;
@@ -9,6 +10,7 @@ import com.etiya.replayfix.api.dto.BitbucketWorkspacePushResponse;
 import com.etiya.replayfix.api.dto.JiraTestTaskRequest;
 import com.etiya.replayfix.api.dto.JiraTestTaskResponse;
 import com.etiya.replayfix.api.dto.RealActionsSummaryResponse;
+import com.etiya.replayfix.service.BitbucketBackendDemoPrService;
 import com.etiya.replayfix.service.BitbucketBranchFlowService;
 import com.etiya.replayfix.service.BitbucketPullRequestRealActionService;
 import com.etiya.replayfix.service.BitbucketTest2DemoPrService;
@@ -49,6 +51,8 @@ class RealActionsControllerTest {
                 mock(BitbucketWorkspacePushService.class);
         BitbucketTest2DemoPrService test2DemoPrService =
                 mock(BitbucketTest2DemoPrService.class);
+        BitbucketBackendDemoPrService backendDemoPrService =
+                mock(BitbucketBackendDemoPrService.class);
         RealActionsSummaryService summaryService =
                 mock(RealActionsSummaryService.class);
         when(jiraService.preview(eq(caseId), any()))
@@ -61,6 +65,8 @@ class RealActionsControllerTest {
                 .thenReturn(workspacePushResponse(caseId));
         when(test2DemoPrService.preview(eq(caseId), any()))
                 .thenReturn(test2DemoPrResponse(caseId));
+        when(backendDemoPrService.preview(eq(caseId), any()))
+                .thenReturn(backendDemoPrResponse(caseId));
         when(summaryService.summary(caseId)).thenReturn(summary(caseId));
         MockMvc mockMvc = MockMvcBuilders
                 .standaloneSetup(new RealActionsController(
@@ -69,6 +75,7 @@ class RealActionsControllerTest {
                         prService,
                         workspacePushService,
                         test2DemoPrService,
+                        backendDemoPrService,
                         summaryService
                 ))
                 .build();
@@ -115,6 +122,17 @@ class RealActionsControllerTest {
                         .value("integration/test2/FIZZMS-10228"))
                 .andExpect(jsonPath("$.previewOnly").value(true));
 
+        mockMvc.perform(post(
+                        "/api/v1/cases/{caseId}/bitbucket/backend-demo-pr/preview",
+                        caseId
+                ).contentType("application/json").content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.bugfixBranch")
+                        .value("bugfix/project-10228"))
+                .andExpect(jsonPath("$.integrationBranch")
+                        .value("Integration/test2/project-10228"))
+                .andExpect(jsonPath("$.previewOnly").value(true));
+
         mockMvc.perform(get(
                         "/api/v1/cases/{caseId}/real-actions/summary",
                         caseId
@@ -139,6 +157,7 @@ class RealActionsControllerTest {
                         mock(BitbucketPullRequestRealActionService.class),
                         mock(BitbucketWorkspacePushService.class),
                         mock(BitbucketTest2DemoPrService.class),
+                        mock(BitbucketBackendDemoPrService.class),
                         mock(RealActionsSummaryService.class)
                 ))
                 .build();
@@ -256,6 +275,32 @@ class RealActionsControllerTest {
                 "[DRAFT] ReplayFix FIZZMS-10228 demo regression test",
                 List.of(),
                 List.of(),
+                List.of(),
+                Instant.now()
+        );
+    }
+
+    private BitbucketBackendDemoPrResponse backendDemoPrResponse(UUID caseId) {
+        return new BitbucketBackendDemoPrResponse(
+                caseId,
+                "project-10228",
+                "Fix agent category access regression demo",
+                false,
+                true,
+                "master",
+                "test2",
+                "bugfix/project-10228",
+                "Integration/test2/project-10228",
+                "ControllerBackend/src/test/java/com/company/replayfix/generated/project10228ReplayFixDemoRegressionTest.java",
+                "project-10228: Fix agent category access regression demo",
+                "",
+                "",
+                "",
+                "",
+                "[DRAFT] ReplayFix project-10228 demo regression test",
+                List.of(),
+                List.of(),
+                Map.of(),
                 List.of(),
                 Instant.now()
         );

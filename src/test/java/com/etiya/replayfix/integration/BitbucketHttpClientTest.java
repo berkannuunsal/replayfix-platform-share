@@ -135,6 +135,80 @@ class BitbucketHttpClientTest {
     }
 
     @Test
+    void branchLookupFallsBackToFilterTextWhenDirectLookupErrors() {
+        handler(exchange -> {
+            rawPaths.add(exchange.getRequestURI().getRawPath());
+            if (exchange.getRequestURI().getRawQuery() != null
+                    && exchange.getRequestURI().getRawQuery().contains("filterText=test2")) {
+                json(exchange, 200, branches(branch(
+                        "refs/heads/test2",
+                        "test2"
+                )));
+                return;
+            }
+            json(exchange, 500, "{\"message\":\"direct lookup failed\"}");
+        });
+
+        BitbucketBranchCheckResult result =
+                client.branchExists("DCE", "backend", "test2");
+
+        assertThat(result.exists()).isTrue();
+        assertThat(result.branchName()).isEqualTo("test2");
+        assertThat(result.warnings())
+                .anyMatch(value -> value.contains("filterText:test2"))
+                .anyMatch(value -> value.contains("matchedBranchId=refs/heads/test2"))
+                .noneMatch("BITBUCKET_BRANCH_LOOKUP_FAILED"::equals);
+    }
+
+    @Test
+    void branchLookupFallsBackToFilterTextWhenDirectLookupThrows() {
+        handler(exchange -> {
+            rawPaths.add(exchange.getRequestURI().getRawPath());
+            if (exchange.getRequestURI().getRawQuery() != null
+                    && exchange.getRequestURI().getRawQuery().contains("filterText=test2")) {
+                json(exchange, 200, branches(branch(
+                        "refs/heads/test2",
+                        "test2"
+                )));
+                return;
+            }
+            exchange.close();
+        });
+
+        BitbucketBranchCheckResult result =
+                client.branchExists("DCE", "backend", "test2");
+
+        assertThat(result.exists()).isTrue();
+        assertThat(result.warnings())
+                .anyMatch(value -> value.contains("filterText:test2"))
+                .anyMatch(value -> value.contains("httpStatuses=[0, 0, 200]"))
+                .anyMatch(value -> value.contains("matchedDisplayId=test2"));
+    }
+
+    @Test
+    void branchLookupReturnsNotFoundWhenFallbackDoesNotMatch() {
+        handler(exchange -> {
+            if (exchange.getRequestURI().getRawQuery() != null
+                    && exchange.getRequestURI().getRawQuery().contains("filterText=missing")) {
+                json(exchange, 200, branches(branch(
+                        "refs/heads/other",
+                        "other"
+                )));
+                return;
+            }
+            json(exchange, 404, "{}");
+        });
+
+        BitbucketBranchCheckResult result =
+                client.branchExists("DCE", "backend", "missing");
+
+        assertThat(result.exists()).isFalse();
+        assertThat(result.warnings())
+                .anyMatch(value -> value.contains("filterText:missing"))
+                .noneMatch("BITBUCKET_BRANCH_LOOKUP_FAILED"::equals);
+    }
+
+    @Test
     void branchLookupFailureReturnsSafeWarning() {
         handler(exchange -> json(exchange, 500, "{\"message\":\"failure\"}"));
 

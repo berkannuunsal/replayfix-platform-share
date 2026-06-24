@@ -1,7 +1,7 @@
 package com.etiya.replayfix.service;
 
-import com.etiya.replayfix.api.dto.BitbucketTest2DemoPrRequest;
-import com.etiya.replayfix.api.dto.BitbucketTest2DemoPrResponse;
+import com.etiya.replayfix.api.dto.BitbucketBackendDemoPrRequest;
+import com.etiya.replayfix.api.dto.BitbucketBackendDemoPrResponse;
 import com.etiya.replayfix.config.ReplayFixProperties;
 import com.etiya.replayfix.domain.EvidenceEntity;
 import com.etiya.replayfix.domain.EvidenceType;
@@ -28,23 +28,23 @@ import java.util.Map;
 import java.util.UUID;
 
 @Service
-public class BitbucketTest2DemoPrService {
+public class BitbucketBackendDemoPrService {
 
     private static final String SOURCE =
-            "replayfix-real-action-bitbucket-test2-demo-pr";
+            "replayfix-real-action-bitbucket-backend-demo-pr";
 
     private final ReplayCaseRepository caseRepository;
     private final EvidenceRepository evidenceRepository;
     private final BitbucketClient bitbucketClient;
-    private final Test2DemoPrGitOperations gitOperations;
+    private final BackendDemoPrGitOperations gitOperations;
     private final ReplayFixProperties properties;
     private final ObjectMapper objectMapper;
 
-    public BitbucketTest2DemoPrService(
+    public BitbucketBackendDemoPrService(
             ReplayCaseRepository caseRepository,
             EvidenceRepository evidenceRepository,
             BitbucketClient bitbucketClient,
-            Test2DemoPrGitOperations gitOperations,
+            BackendDemoPrGitOperations gitOperations,
             ReplayFixProperties properties,
             ObjectMapper objectMapper
     ) {
@@ -57,40 +57,47 @@ public class BitbucketTest2DemoPrService {
     }
 
     @Transactional(readOnly = true)
-    public BitbucketTest2DemoPrResponse preview(
+    public BitbucketBackendDemoPrResponse preview(
             UUID caseId,
-            BitbucketTest2DemoPrRequest request
+            BitbucketBackendDemoPrRequest request
     ) {
         ReplayCaseEntity replayCase = caseEntity(caseId);
-        NormalizedDemoPr normalized = normalize(replayCase, request);
-        List<String> blockers = validateNaming(normalized);
+        NormalizedBackendDemoPr normalized = normalize(replayCase, request);
+        List<String> blockers = new ArrayList<>(validateNaming(normalized));
         List<String> warnings = new ArrayList<>();
+        if (blockers.isEmpty()) {
+            BranchChecks checks = checkBranches(normalized, safeRequest(request), warnings);
+            blockers.addAll(checks.blockers());
+        }
         warnings.add("PREVIEW_ONLY_NO_BRANCH_CREATED");
         warnings.add("PREVIEW_ONLY_NO_FILE_WRITTEN");
+        warnings.add("PREVIEW_ONLY_NO_COMMIT");
+        warnings.add("PREVIEW_ONLY_NO_PUSH");
         warnings.add("PREVIEW_ONLY_NO_PR_CREATED");
         return response(
                 replayCase,
                 normalized,
-                true,
                 false,
+                true,
                 "",
                 "",
                 "",
-                blockers,
-                warnings,
+                "",
+                unique(blockers),
+                unique(warnings),
                 nextActions(blockers)
         );
     }
 
     @Transactional
-    public BitbucketTest2DemoPrResponse create(
+    public BitbucketBackendDemoPrResponse create(
             UUID caseId,
-            BitbucketTest2DemoPrRequest request
+            BitbucketBackendDemoPrRequest request
     ) {
         ReplayCaseEntity replayCase = caseEntity(caseId);
-        BitbucketTest2DemoPrRequest safeRequest = safeRequest(request);
+        BitbucketBackendDemoPrRequest safeRequest = safeRequest(request);
         validateCreate(safeRequest);
-        NormalizedDemoPr normalized = normalize(replayCase, safeRequest);
+        NormalizedBackendDemoPr normalized = normalize(replayCase, safeRequest);
         List<String> blockers = new ArrayList<>(validateNaming(normalized));
         List<String> warnings = new ArrayList<>();
         if (!blockers.isEmpty()) {
@@ -102,19 +109,15 @@ public class BitbucketTest2DemoPrService {
                     "",
                     "",
                     "",
+                    "",
                     blockers,
                     warnings,
                     nextActions(blockers)
             );
         }
 
-        BitbucketBranchCheckResult target = targetBranchExists(normalized);
-        if (lookupFailed(target.warnings())) {
-            blockers.add("BITBUCKET_BRANCH_LOOKUP_FAILED");
-        } else if (!target.exists()) {
-            blockers.add("BITBUCKET_TARGET_BRANCH_NOT_FOUND");
-        }
-        warnings.addAll(target.warnings());
+        BranchChecks checks = checkBranches(normalized, safeRequest, warnings);
+        blockers.addAll(checks.blockers());
         if (!blockers.isEmpty()) {
             return response(
                     replayCase,
@@ -124,57 +127,47 @@ public class BitbucketTest2DemoPrService {
                     "",
                     "",
                     "",
-                    blockers,
-                    warnings,
+                    "",
+                    unique(blockers),
+                    unique(warnings),
                     nextActions(blockers)
             );
         }
 
-        BitbucketBranchCheckResult integration =
-                bitbucketClient.branchExists(
-                        normalized.projectKey(),
-                        normalized.repositorySlug(),
-                        normalized.integrationBranch()
-                );
-        boolean integrationLookupFailed = lookupFailed(integration.warnings());
-        if (integrationLookupFailed) {
-            warnings.add("BITBUCKET_INTEGRATION_BRANCH_LOOKUP_UNCERTAIN_CREATE_ATTEMPT_ALLOWED");
-        } else if (integration.exists()
-                && !safeRequest.allowReuseExistingIntegrationBranch()) {
-            blockers.add("BITBUCKET_INTEGRATION_BRANCH_ALREADY_EXISTS");
-        } else if (integration.exists()) {
-            warnings.add("BITBUCKET_INTEGRATION_BRANCH_ALREADY_EXISTS_REUSED");
-        }
-        warnings.addAll(integration.warnings());
-        if (!blockers.isEmpty()) {
-            return response(
-                    replayCase,
-                    normalized,
-                    false,
-                    false,
-                    "",
-                    "",
-                    "",
-                    blockers,
-                    warnings,
-                    nextActions(blockers)
+        boolean bugfixExists = checks.bugfixExists();
+        boolean integrationExists = checks.integrationExists();
+        if (!bugfixExists) {
+            BitbucketBranchCreateResult created = bitbucketClient.createBranch(
+                    normalized.projectKey(),
+                    normalized.repositorySlug(),
+                    normalized.bugfixBranch(),
+                    normalized.sourceBaseBranch()
             );
-        }
-
-        if (!integration.exists() || integrationLookupFailed) {
-            BitbucketBranchCreateResult created =
-                    bitbucketClient.createBranch(
-                            normalized.projectKey(),
-                            normalized.repositorySlug(),
-                            normalized.integrationBranch(),
-                            normalized.targetBranch()
-                    );
             warnings.addAll(created.warnings());
             if (created.alreadyExists()
-                    && !safeRequest.allowReuseExistingIntegrationBranch()) {
+                    && !safeRequest.allowReuseExistingBranches()) {
+                blockers.add("BITBUCKET_BUGFIX_BRANCH_ALREADY_EXISTS");
+            } else if (created.alreadyExists()) {
+                warnings.add("BITBUCKET_BUGFIX_BRANCH_ALREADY_EXISTS_REUSED");
+                bugfixExists = true;
+            } else if (!created.created()) {
+                blockers.add("BITBUCKET_BUGFIX_BRANCH_CREATE_FAILED");
+            }
+        }
+        if (!integrationExists) {
+            BitbucketBranchCreateResult created = bitbucketClient.createBranch(
+                    normalized.projectKey(),
+                    normalized.repositorySlug(),
+                    normalized.integrationBranch(),
+                    normalized.targetBaseBranch()
+            );
+            warnings.addAll(created.warnings());
+            if (created.alreadyExists()
+                    && !safeRequest.allowReuseExistingBranches()) {
                 blockers.add("BITBUCKET_INTEGRATION_BRANCH_ALREADY_EXISTS");
             } else if (created.alreadyExists()) {
                 warnings.add("BITBUCKET_INTEGRATION_BRANCH_ALREADY_EXISTS_REUSED");
+                integrationExists = true;
             } else if (!created.created()) {
                 blockers.add("BITBUCKET_INTEGRATION_BRANCH_CREATE_FAILED");
             }
@@ -188,28 +181,35 @@ public class BitbucketTest2DemoPrService {
                     "",
                     "",
                     "",
-                    blockers,
-                    warnings,
+                    "",
+                    unique(blockers),
+                    unique(warnings),
                     nextActions(blockers)
             );
         }
 
-        Test2DemoPrGitOperations.Test2DemoPrGitResult pushed =
-                gitOperations.commitAndPushIntegrationBranch(
+        BackendDemoPrGitOperations.BackendDemoPrGitResult pushed =
+                gitOperations.commitPushAndPrepareIntegrationBranch(
                         normalized.projectKey(),
                         normalized.repositorySlug(),
-                        normalized.targetBranch(),
+                        normalized.sourceBaseBranch(),
+                        normalized.targetBaseBranch(),
+                        normalized.bugfixBranch(),
                         normalized.integrationBranch(),
+                        bugfixExists,
+                        integrationExists,
                         normalized.generatedFilePath(),
-                        generatedTestContent(normalized.jiraKey()),
-                        "ReplayFix: "
-                                + normalized.jiraKey()
-                                + " demo regression test"
+                        generatedTestContent(normalized.defectNo()),
+                        normalized.commitMessage()
                 );
         warnings.addAll(nonBlank(pushed.warning()));
-        if (!isBlank(pushed.error())) {
-            blockers.add("BITBUCKET_TEST2_DEMO_PR_PUSH_FAILED");
+        if (pushed.mergeConflict()) {
+            blockers.add("BITBUCKET_MERGE_CONFLICT_REQUIRES_HUMAN");
+        } else if (!isBlank(pushed.error())) {
+            blockers.add("BITBUCKET_BACKEND_DEMO_PR_PUSH_FAILED");
             warnings.add(pushed.error());
+        } else if (!pushed.pushed()) {
+            blockers.add("BITBUCKET_BACKEND_DEMO_PR_PUSH_FAILED");
         }
         if (!blockers.isEmpty()) {
             return response(
@@ -217,11 +217,12 @@ public class BitbucketTest2DemoPrService {
                     normalized,
                     false,
                     false,
-                    pushed.commitSha(),
+                    pushed.bugfixCommitSha(),
+                    pushed.integrationCommitSha(),
                     "",
                     "",
-                    blockers,
-                    warnings,
+                    unique(blockers),
+                    unique(warnings),
                     nextActions(blockers)
             );
         }
@@ -230,21 +231,22 @@ public class BitbucketTest2DemoPrService {
                 normalized.projectKey(),
                 normalized.repositorySlug(),
                 normalized.integrationBranch(),
-                normalized.targetBranch(),
+                normalized.targetBaseBranch(),
                 normalized.title(),
                 prDescription(replayCase, normalized),
                 List.of()
         );
-        BitbucketTest2DemoPrResponse response = response(
+        BitbucketBackendDemoPrResponse response = response(
                 replayCase,
                 normalized,
-                false,
                 true,
-                pushed.commitSha(),
+                false,
+                pushed.bugfixCommitSha(),
+                pushed.integrationCommitSha(),
                 nullToBlank(pr.id()),
                 nullToBlank(pr.url()),
                 List.of(),
-                warnings,
+                unique(warnings),
                 List.of("Review draft PR. Do not merge until human validation completes.")
         );
         replayCase.setGeneratedBranch(normalized.integrationBranch());
@@ -254,7 +256,69 @@ public class BitbucketTest2DemoPrService {
         return response;
     }
 
-    private void validateCreate(BitbucketTest2DemoPrRequest request) {
+    private BranchChecks checkBranches(
+            NormalizedBackendDemoPr request,
+            BitbucketBackendDemoPrRequest originalRequest,
+            List<String> warnings
+    ) {
+        List<String> blockers = new ArrayList<>();
+        BitbucketBackendDemoPrRequest safeRequest = safeRequest(originalRequest);
+
+        BitbucketBranchCheckResult source = bitbucketClient.branchExists(
+                request.projectKey(),
+                request.repositorySlug(),
+                request.sourceBaseBranch()
+        );
+        warnings.addAll(source.warnings());
+        if (lookupFailed(source.warnings())) {
+            blockers.add("BITBUCKET_BRANCH_LOOKUP_FAILED");
+        } else if (!source.exists()) {
+            blockers.add("BITBUCKET_SOURCE_BRANCH_NOT_FOUND");
+        }
+
+        BitbucketBranchCheckResult target = bitbucketClient.branchExists(
+                request.projectKey(),
+                request.repositorySlug(),
+                request.targetBaseBranch()
+        );
+        warnings.addAll(target.warnings());
+        if (lookupFailed(target.warnings())) {
+            blockers.add("BITBUCKET_BRANCH_LOOKUP_FAILED");
+        } else if (!target.exists()) {
+            blockers.add("BITBUCKET_TARGET_BRANCH_NOT_FOUND");
+        }
+
+        BitbucketBranchCheckResult bugfix = bitbucketClient.branchExists(
+                request.projectKey(),
+                request.repositorySlug(),
+                request.bugfixBranch()
+        );
+        warnings.addAll(bugfix.warnings());
+        if (bugfix.exists() && !safeRequest.allowReuseExistingBranches()) {
+            blockers.add("BITBUCKET_BUGFIX_BRANCH_ALREADY_EXISTS");
+        } else if (bugfix.exists()) {
+            warnings.add("BITBUCKET_BUGFIX_BRANCH_ALREADY_EXISTS_REUSED");
+        }
+
+        BitbucketBranchCheckResult integration = bitbucketClient.branchExists(
+                request.projectKey(),
+                request.repositorySlug(),
+                request.integrationBranch()
+        );
+        warnings.addAll(integration.warnings());
+        if (integration.exists() && !safeRequest.allowReuseExistingBranches()) {
+            blockers.add("BITBUCKET_INTEGRATION_BRANCH_ALREADY_EXISTS");
+        } else if (integration.exists()) {
+            warnings.add("BITBUCKET_INTEGRATION_BRANCH_ALREADY_EXISTS_REUSED");
+        }
+        return new BranchChecks(
+                unique(blockers),
+                bugfix.exists(),
+                integration.exists()
+        );
+    }
+
+    private void validateCreate(BitbucketBackendDemoPrRequest request) {
         List<String> errors = new ArrayList<>();
         if (isBlank(request.requestedBy())) {
             errors.add("REQUESTED_BY_REQUIRED");
@@ -287,19 +351,34 @@ public class BitbucketTest2DemoPrService {
         }
     }
 
-    private List<String> validateNaming(NormalizedDemoPr request) {
+    private List<String> validateNaming(NormalizedBackendDemoPr request) {
         List<String> blockers = new ArrayList<>();
-        if (!"test2".equals(request.targetBranch())) {
-            blockers.add("BITBUCKET_TEST2_TARGET_REQUIRED");
+        if (isBlank(request.projectKey())) {
+            blockers.add("BITBUCKET_PROJECT_KEY_REQUIRED");
         }
-        if (!request.integrationBranch().startsWith(
-                properties.getRealActions().getIntegrationBranchPrefix())) {
+        if (isBlank(request.repositorySlug())) {
+            blockers.add("BITBUCKET_REPOSITORY_SLUG_REQUIRED");
+        }
+        if (isBlank(request.defectSummary())) {
+            blockers.add("DEFECT_SUMMARY_REQUIRED");
+        }
+        if (!request.bugfixBranch().startsWith(
+                properties.getRealActions().getBugfixBranchPrefix())) {
+            blockers.add("BITBUCKET_BUGFIX_BRANCH_NAME_INVALID");
+        }
+        if (!isIntegrationBranch(request.integrationBranch())) {
             blockers.add("BITBUCKET_INTEGRATION_BRANCH_NAME_INVALID");
         }
-        if (properties.getRealActions().getProtectedBranches().stream()
-                .anyMatch(branch -> branch.equalsIgnoreCase(
-                        request.integrationBranch()
-                ))) {
+        if (isProtectedBranch(request.bugfixBranch())
+                || isProtectedBranch(request.integrationBranch())) {
+            blockers.add("PROTECTED_BRANCH_WRITE_BLOCKED");
+        }
+        if (isProtectedBranch(request.sourceBaseBranch())
+                && request.sourceBaseBranch().equals(request.bugfixBranch())) {
+            blockers.add("PROTECTED_BRANCH_PUSH_BLOCKED");
+        }
+        if (isProtectedBranch(request.targetBaseBranch())
+                && request.targetBaseBranch().equals(request.integrationBranch())) {
             blockers.add("PROTECTED_BRANCH_PUSH_BLOCKED");
         }
         if (!request.generatedFilePath().contains("/src/test/java/")
@@ -309,127 +388,101 @@ public class BitbucketTest2DemoPrService {
         return unique(blockers);
     }
 
-    private BitbucketBranchCheckResult targetBranchExists(
-            NormalizedDemoPr request
-    ) {
-        BitbucketBranchCheckResult direct = bitbucketClient.branchExists(
-                request.projectKey(),
-                request.repositorySlug(),
-                request.targetBranch()
-        );
-        if (direct.exists()) {
-            return direct;
-        }
-        BitbucketBranchCheckResult ref = bitbucketClient.branchExists(
-                request.projectKey(),
-                request.repositorySlug(),
-                "refs/heads/" + request.targetBranch()
-        );
-        if (ref.exists()) {
-            List<String> warnings = new ArrayList<>(direct.warnings());
-            warnings.addAll(ref.warnings());
-            return new BitbucketBranchCheckResult(
-                    true,
-                    request.targetBranch(),
-                    unique(warnings)
-            );
-        }
-        List<String> warnings = new ArrayList<>(direct.warnings());
-        warnings.addAll(ref.warnings());
-        return new BitbucketBranchCheckResult(
-                false,
-                request.targetBranch(),
-                unique(warnings)
-        );
-    }
-
-    private BitbucketTest2DemoPrResponse response(
+    private BitbucketBackendDemoPrResponse response(
             ReplayCaseEntity replayCase,
-            NormalizedDemoPr request,
-            boolean previewOnly,
+            NormalizedBackendDemoPr request,
             boolean created,
-            String commitSha,
+            boolean previewOnly,
+            String bugfixCommitSha,
+            String integrationCommitSha,
             String pullRequestId,
             String pullRequestUrl,
             List<String> blockers,
             List<String> warnings,
             List<String> nextActions
     ) {
-        return new BitbucketTest2DemoPrResponse(
+        return new BitbucketBackendDemoPrResponse(
                 replayCase.getId(),
-                request.jiraKey(),
-                previewOnly,
+                request.defectNo(),
+                request.defectSummary(),
                 created,
-                request.projectKey(),
-                request.repositorySlug(),
-                request.targetBranch(),
+                previewOnly,
+                request.sourceBaseBranch(),
+                request.targetBaseBranch(),
+                request.bugfixBranch(),
                 request.integrationBranch(),
                 request.generatedFilePath(),
-                commitSha,
-                pullRequestId,
-                pullRequestUrl,
+                request.commitMessage(),
+                nullToBlank(bugfixCommitSha),
+                nullToBlank(integrationCommitSha),
+                nullToBlank(pullRequestId),
+                nullToBlank(pullRequestUrl),
                 request.title(),
                 unique(blockers),
                 unique(warnings).stream()
                         .map(this::sanitize)
                         .toList(),
-                unique(nextActions),
                 branchLookupDiagnostics(warnings),
+                unique(nextActions),
                 Instant.now()
         );
     }
 
-    private NormalizedDemoPr normalize(
+    private NormalizedBackendDemoPr normalize(
             ReplayCaseEntity replayCase,
-            BitbucketTest2DemoPrRequest request
+            BitbucketBackendDemoPrRequest request
     ) {
-        BitbucketTest2DemoPrRequest safe = safeRequest(request);
-        String jiraKey = firstNonBlank(safe.jiraKey(), replayCase.getJiraKey());
-        String targetBranch = normalizeBranch(firstNonBlank(
-                safe.targetBranch(),
+        BitbucketBackendDemoPrRequest safe = safeRequest(request);
+        String defectNo = firstNonBlank(safe.defectNo(), replayCase.getJiraKey());
+        String sourceBase = firstNonBlank(
+                safe.sourceBaseBranch(),
+                properties.getRealActions().getDefaultDevelopmentBaseBranch()
+        );
+        String targetBase = firstNonBlank(
+                safe.targetBaseBranch(),
                 properties.getRealActions().getDefaultEnvironmentTargetBranch()
-        ));
-        String integrationBranch = firstNonBlank(
-                safe.integrationBranch(),
-                properties.getRealActions().getIntegrationBranchPrefix()
-                        + jiraKey
         );
         String titlePrefix = firstNonBlank(
                 safe.titlePrefix(),
                 properties.getRealActions().getDraftPrTitlePrefix()
         );
-        String title = titlePrefix + " " + jiraKey + " demo regression test";
+        String title = titlePrefix + " " + defectNo + " demo regression test";
         if (!title.startsWith("[DRAFT]")) {
             title = "[DRAFT] " + title;
         }
         if (!title.contains("ReplayFix")) {
             title = title.replace("[DRAFT]", "[DRAFT] ReplayFix");
         }
-        return new NormalizedDemoPr(
+        String defectSummary = nullToBlank(safe.defectSummary());
+        return new NormalizedBackendDemoPr(
                 firstNonBlank(safe.projectKey(), "DCE"),
                 firstNonBlank(safe.repositorySlug(), "backend"),
-                jiraKey,
-                targetBranch,
-                integrationBranch,
-                generatedTestRelativePath(jiraKey),
+                defectNo,
+                defectSummary,
+                sourceBase,
+                targetBase,
+                firstNonBlank(
+                        safe.bugfixBranch(),
+                        properties.getRealActions().getBugfixBranchPrefix() + defectNo
+                ),
+                firstNonBlank(
+                        safe.integrationBranch(),
+                        "Integration/test2/" + defectNo
+                ),
+                generatedTestRelativePath(defectNo),
+                defectNo + ": " + defectSummary,
                 title
         );
     }
 
-    private String normalizeBranch(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.startsWith("refs/heads/")
-                ? value.substring("refs/heads/".length())
-                : value;
-    }
-
-    private BitbucketTest2DemoPrRequest safeRequest(
-            BitbucketTest2DemoPrRequest request
+    private BitbucketBackendDemoPrRequest safeRequest(
+            BitbucketBackendDemoPrRequest request
     ) {
         return request == null
-                ? new BitbucketTest2DemoPrRequest(
+                ? new BitbucketBackendDemoPrRequest(
+                        "",
+                        "",
+                        "",
                         "",
                         "",
                         "",
@@ -445,14 +498,14 @@ public class BitbucketTest2DemoPrService {
                 : request;
     }
 
-    private String generatedTestRelativePath(String jiraKey) {
+    private String generatedTestRelativePath(String defectNo) {
         return "ControllerBackend/src/test/java/com/company/replayfix/generated/"
-                + jiraCompact(jiraKey)
+                + compact(defectNo)
                 + "ReplayFixDemoRegressionTest.java";
     }
 
-    private String generatedTestContent(String jiraKey) {
-        String safeJira = firstNonBlank(jiraKey, "UNKNOWN");
+    private String generatedTestContent(String defectNo) {
+        String safeDefect = firstNonBlank(defectNo, "UNKNOWN");
         return """
                 package com.company.replayfix.generated;
 
@@ -470,30 +523,33 @@ public class BitbucketTest2DemoPrService {
                     }
                 }
                 """.formatted(
-                jiraCompact(safeJira),
-                jiraCompact(safeJira),
-                safeJira
+                compact(safeDefect),
+                compact(safeDefect),
+                safeDefect
         );
     }
 
     private String prDescription(
             ReplayCaseEntity replayCase,
-            NormalizedDemoPr request
+            NormalizedBackendDemoPr request
     ) {
         return sanitize(String.join(
                 "\n",
                 "ReplayFix Draft Demo PR",
                 "",
-                "Source Jira:",
-                "- " + request.jiraKey(),
+                "Defect:",
+                "- " + request.defectNo() + ": " + request.defectSummary(),
                 "",
                 "ReplayFix Case:",
                 "- " + replayCase.getId(),
                 "",
                 "Branch Flow:",
-                "- source branch: " + request.integrationBranch(),
-                "- target branch: " + request.targetBranch(),
-                "- created from: " + request.targetBranch(),
+                "- source base: " + request.sourceBaseBranch(),
+                "- bugfix branch: " + request.bugfixBranch(),
+                "- target base: " + request.targetBaseBranch(),
+                "- integration branch: " + request.integrationBranch(),
+                "- PR: " + request.integrationBranch()
+                        + " -> " + request.targetBaseBranch(),
                 "",
                 "Generated file:",
                 "- " + request.generatedFilePath(),
@@ -501,7 +557,9 @@ public class BitbucketTest2DemoPrService {
                 "Guardrails:",
                 "- Test-only change",
                 "- No production source modification",
-                "- No auto-merge",
+                "- No direct protected branch push",
+                "- Bugfix-to-integration merge/cherry-pick only",
+                "- No PR merge",
                 "- No Jenkins trigger",
                 "- Human review required"
         ));
@@ -509,9 +567,19 @@ public class BitbucketTest2DemoPrService {
 
     private List<String> nextActions(List<String> blockers) {
         if (blockers != null && !blockers.isEmpty()) {
-            return List.of("Resolve test2 demo PR blockers before creating a draft PR.");
+            return List.of("Resolve backend demo PR blockers before creating a draft PR.");
         }
-        return List.of("Review draft PR. Do not merge until validation completes.");
+        return List.of("Review draft PR. Do not merge until human validation completes.");
+    }
+
+    private void saveEvidence(UUID caseId, BitbucketBackendDemoPrResponse response) {
+        EvidenceEntity entity = new EvidenceEntity();
+        entity.setCaseId(caseId);
+        entity.setEvidenceType(EvidenceType.PULL_REQUEST);
+        entity.setSource(SOURCE);
+        entity.setSanitized(true);
+        entity.setContentText(toJson(response));
+        evidenceRepository.save(entity);
     }
 
     private ReplayCaseEntity caseEntity(UUID caseId) {
@@ -522,36 +590,12 @@ public class BitbucketTest2DemoPrService {
                 ));
     }
 
-    private void saveEvidence(UUID caseId, BitbucketTest2DemoPrResponse response) {
-        EvidenceEntity entity = new EvidenceEntity();
-        entity.setCaseId(caseId);
-        entity.setEvidenceType(EvidenceType.PULL_REQUEST);
-        entity.setSource(SOURCE);
-        entity.setSanitized(true);
-        entity.setContentText(toJson(response));
-        evidenceRepository.save(entity);
-    }
-
     private String toJson(Object value) {
         try {
             return objectMapper.writeValueAsString(value);
         } catch (Exception exception) {
             return "{}";
         }
-    }
-
-    private String sanitize(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value
-                .replaceAll("(?i)authorization", "[redacted]")
-                .replaceAll("(?i)cookie", "[redacted]")
-                .replaceAll("(?i)password", "[redacted]")
-                .replaceAll("(?i)token", "[redacted]")
-                .replaceAll("(?i)secret", "[redacted]")
-                .replaceAll("(?i)apikey", "[redacted]")
-                .replaceAll("(?i)privatekey", "[redacted]");
     }
 
     private boolean lookupFailed(List<String> warnings) {
@@ -589,8 +633,8 @@ public class BitbucketTest2DemoPrService {
             String key = part.substring(0, index);
             String raw = part.substring(index + 1);
             switch (key) {
-                case "requested" -> value.put("targetBranchRequested", raw);
-                case "normalized" -> value.put("targetBranchNormalized", raw);
+                case "requested" -> value.put("branchRequested", raw);
+                case "normalized" -> value.put("branchNormalized", raw);
                 case "strategies" -> value.put(
                         "lookupStrategiesTried",
                         raw.isBlank() ? List.of() : List.of(raw.split(","))
@@ -606,8 +650,36 @@ public class BitbucketTest2DemoPrService {
         return Map.copyOf(value);
     }
 
-    private String jiraCompact(String jiraKey) {
-        return firstNonBlank(jiraKey, "case")
+    private boolean isIntegrationBranch(String value) {
+        String normalized = nullToBlank(value).toLowerCase(Locale.ROOT);
+        String configured = nullToBlank(properties.getRealActions()
+                .getIntegrationBranchPrefix()).toLowerCase(Locale.ROOT);
+        return normalized.startsWith(configured)
+                || normalized.startsWith("integration/test2/");
+    }
+
+    private boolean isProtectedBranch(String value) {
+        String normalized = nullToBlank(value);
+        return properties.getRealActions().getProtectedBranches().stream()
+                .anyMatch(branch -> branch.equalsIgnoreCase(normalized));
+    }
+
+    private String sanitize(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value
+                .replaceAll("(?i)authorization", "[redacted]")
+                .replaceAll("(?i)cookie", "[redacted]")
+                .replaceAll("(?i)password", "[redacted]")
+                .replaceAll("(?i)token", "[redacted]")
+                .replaceAll("(?i)secret", "[redacted]")
+                .replaceAll("(?i)apikey", "[redacted]")
+                .replaceAll("(?i)privatekey", "[redacted]");
+    }
+
+    private String compact(String value) {
+        return firstNonBlank(value, "case")
                 .replaceAll("[^A-Za-z0-9]", "");
     }
 
@@ -643,14 +715,25 @@ public class BitbucketTest2DemoPrService {
         return value == null || value.isBlank();
     }
 
-    private record NormalizedDemoPr(
+    private record NormalizedBackendDemoPr(
             String projectKey,
             String repositorySlug,
-            String jiraKey,
-            String targetBranch,
+            String defectNo,
+            String defectSummary,
+            String sourceBaseBranch,
+            String targetBaseBranch,
+            String bugfixBranch,
             String integrationBranch,
             String generatedFilePath,
+            String commitMessage,
             String title
+    ) {
+    }
+
+    private record BranchChecks(
+            List<String> blockers,
+            boolean bugfixExists,
+            boolean integrationExists
     ) {
     }
 }
