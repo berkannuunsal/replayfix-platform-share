@@ -280,6 +280,7 @@ public class ReplayFixProperties {
         private boolean bitbucketBranchCreateEnabled;
         private boolean bitbucketMergeEnabled;
         private boolean bitbucketPrCreateEnabled;
+        private boolean bitbucketPushEnabled;
         private boolean requireConfirmation = true;
         private boolean requireGuardrailsAccepted = true;
         private String draftPrTitlePrefix = "[DRAFT] ReplayFix";
@@ -287,6 +288,9 @@ public class ReplayFixProperties {
         private String defaultEnvironmentTargetBranch = "test2";
         private String bugfixBranchPrefix = "bugfix/";
         private String integrationBranchPrefix = "integration/test2/";
+        private List<String> protectedBranches = new ArrayList<>(
+                List.of("master", "test1", "test2", "preprod", "prod")
+        );
         private String jiraSubTaskIssueType = "";
 
         public boolean isEnabled() { return enabled; }
@@ -299,6 +303,8 @@ public class ReplayFixProperties {
         public void setBitbucketMergeEnabled(boolean value) { this.bitbucketMergeEnabled = value; }
         public boolean isBitbucketPrCreateEnabled() { return bitbucketPrCreateEnabled; }
         public void setBitbucketPrCreateEnabled(boolean value) { this.bitbucketPrCreateEnabled = value; }
+        public boolean isBitbucketPushEnabled() { return bitbucketPushEnabled; }
+        public void setBitbucketPushEnabled(boolean value) { this.bitbucketPushEnabled = value; }
         public boolean isRequireConfirmation() { return requireConfirmation; }
         public void setRequireConfirmation(boolean value) { this.requireConfirmation = value; }
         public boolean isRequireGuardrailsAccepted() { return requireGuardrailsAccepted; }
@@ -313,6 +319,12 @@ public class ReplayFixProperties {
         public void setBugfixBranchPrefix(String value) { this.bugfixBranchPrefix = value; }
         public String getIntegrationBranchPrefix() { return integrationBranchPrefix; }
         public void setIntegrationBranchPrefix(String value) { this.integrationBranchPrefix = value; }
+        public List<String> getProtectedBranches() { return protectedBranches; }
+        public void setProtectedBranches(List<String> value) {
+            this.protectedBranches = value == null
+                    ? new ArrayList<>()
+                    : value;
+        }
         public String getJiraSubTaskIssueType() { return jiraSubTaskIssueType; }
         public void setJiraSubTaskIssueType(String value) { this.jiraSubTaskIssueType = value; }
     }

@@ -4,11 +4,13 @@ import com.etiya.replayfix.api.dto.BitbucketBranchFlowRequest;
 import com.etiya.replayfix.api.dto.BitbucketBranchFlowResponse;
 import com.etiya.replayfix.api.dto.BitbucketPullRequestRequest;
 import com.etiya.replayfix.api.dto.BitbucketPullRequestResponse;
+import com.etiya.replayfix.api.dto.BitbucketWorkspacePushResponse;
 import com.etiya.replayfix.api.dto.JiraTestTaskRequest;
 import com.etiya.replayfix.api.dto.JiraTestTaskResponse;
 import com.etiya.replayfix.api.dto.RealActionsSummaryResponse;
 import com.etiya.replayfix.service.BitbucketBranchFlowService;
 import com.etiya.replayfix.service.BitbucketPullRequestRealActionService;
+import com.etiya.replayfix.service.BitbucketWorkspacePushService;
 import com.etiya.replayfix.service.JiraRealActionService;
 import com.etiya.replayfix.service.RealActionsSummaryService;
 import org.junit.jupiter.api.Test;
@@ -41,6 +43,8 @@ class RealActionsControllerTest {
                 mock(BitbucketBranchFlowService.class);
         BitbucketPullRequestRealActionService prService =
                 mock(BitbucketPullRequestRealActionService.class);
+        BitbucketWorkspacePushService workspacePushService =
+                mock(BitbucketWorkspacePushService.class);
         RealActionsSummaryService summaryService =
                 mock(RealActionsSummaryService.class);
         when(jiraService.preview(eq(caseId), any()))
@@ -49,12 +53,15 @@ class RealActionsControllerTest {
                 .thenReturn(branchResponse(caseId));
         when(prService.preview(eq(caseId), any()))
                 .thenReturn(prResponse(caseId));
+        when(workspacePushService.preview(eq(caseId), any()))
+                .thenReturn(workspacePushResponse(caseId));
         when(summaryService.summary(caseId)).thenReturn(summary(caseId));
         MockMvc mockMvc = MockMvcBuilders
                 .standaloneSetup(new RealActionsController(
                         jiraService,
                         branchService,
                         prService,
+                        workspacePushService,
                         summaryService
                 ))
                 .build();
@@ -83,6 +90,15 @@ class RealActionsControllerTest {
                 .andExpect(jsonPath("$.title")
                         .value("[DRAFT] ReplayFix FIZZMS-10228"));
 
+        mockMvc.perform(post(
+                        "/api/v1/cases/{caseId}/bitbucket/workspace-push/preview",
+                        caseId
+                ).contentType("application/json").content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.bugfixBranch")
+                        .value("bugfix/FIZZMS-10228"))
+                .andExpect(jsonPath("$.previewOnly").value(true));
+
         mockMvc.perform(get(
                         "/api/v1/cases/{caseId}/real-actions/summary",
                         caseId
@@ -105,6 +121,7 @@ class RealActionsControllerTest {
                         jiraService,
                         mock(BitbucketBranchFlowService.class),
                         mock(BitbucketPullRequestRealActionService.class),
+                        mock(BitbucketWorkspacePushService.class),
                         mock(RealActionsSummaryService.class)
                 ))
                 .build();
@@ -175,6 +192,29 @@ class RealActionsControllerTest {
                 "[DRAFT] ReplayFix FIZZMS-10228",
                 "safe",
                 Map.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                Instant.now()
+        );
+    }
+
+    private BitbucketWorkspacePushResponse workspacePushResponse(UUID caseId) {
+        return new BitbucketWorkspacePushResponse(
+                caseId,
+                "FIZZMS-10228",
+                true,
+                false,
+                "DCE",
+                "backend",
+                "bugfix/FIZZMS-10228",
+                "integration/test2/FIZZMS-10228",
+                "",
+                false,
+                false,
+                false,
+                false,
+                false,
                 List.of(),
                 List.of(),
                 List.of(),

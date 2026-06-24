@@ -357,6 +357,7 @@ class ApprovedPatternInformedTestWriteServiceTest {
             PatternInformedTestSourceCandidate candidate
     ) throws Exception {
         EvidenceEntity candidateEvidence = new EvidenceEntity();
+        candidateEvidence.setId(candidateEvidenceId);
         candidateEvidence.setCaseId(caseId);
         candidateEvidence.setEvidenceType(EvidenceType.GENERATED_TEST);
         candidateEvidence.setSource("pattern-informed-test-source-candidate");
@@ -378,6 +379,7 @@ class ApprovedPatternInformedTestWriteServiceTest {
         );
 
         EvidenceEntity candidateEvidence = new EvidenceEntity();
+        candidateEvidence.setId(candidateEvidenceId);
         candidateEvidence.setCaseId(caseId);
         candidateEvidence.setEvidenceType(EvidenceType.GENERATED_TEST);
         candidateEvidence.setSource("pattern-informed-test-source-candidate");

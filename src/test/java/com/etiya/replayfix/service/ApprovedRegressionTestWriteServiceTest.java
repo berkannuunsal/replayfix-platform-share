@@ -383,6 +383,7 @@ class ApprovedRegressionTestWriteServiceTest {
             );
 
             EvidenceEntity entity = new EvidenceEntity();
+            entity.setId(evidenceId);
             entity.setCaseId(caseId);
             entity.setEvidenceType(EvidenceType.GENERATED_TEST);
             entity.setSource("regression-test-plan");

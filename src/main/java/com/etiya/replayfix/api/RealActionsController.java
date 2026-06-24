@@ -4,11 +4,14 @@ import com.etiya.replayfix.api.dto.BitbucketBranchFlowRequest;
 import com.etiya.replayfix.api.dto.BitbucketBranchFlowResponse;
 import com.etiya.replayfix.api.dto.BitbucketPullRequestRequest;
 import com.etiya.replayfix.api.dto.BitbucketPullRequestResponse;
+import com.etiya.replayfix.api.dto.BitbucketWorkspacePushRequest;
+import com.etiya.replayfix.api.dto.BitbucketWorkspacePushResponse;
 import com.etiya.replayfix.api.dto.JiraTestTaskRequest;
 import com.etiya.replayfix.api.dto.JiraTestTaskResponse;
 import com.etiya.replayfix.api.dto.RealActionsSummaryResponse;
 import com.etiya.replayfix.service.BitbucketBranchFlowService;
 import com.etiya.replayfix.service.BitbucketPullRequestRealActionService;
+import com.etiya.replayfix.service.BitbucketWorkspacePushService;
 import com.etiya.replayfix.service.JiraRealActionService;
 import com.etiya.replayfix.service.RealActionsSummaryService;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,17 +30,20 @@ public class RealActionsController {
     private final JiraRealActionService jiraRealActionService;
     private final BitbucketBranchFlowService branchFlowService;
     private final BitbucketPullRequestRealActionService pullRequestService;
+    private final BitbucketWorkspacePushService workspacePushService;
     private final RealActionsSummaryService summaryService;
 
     public RealActionsController(
             JiraRealActionService jiraRealActionService,
             BitbucketBranchFlowService branchFlowService,
             BitbucketPullRequestRealActionService pullRequestService,
+            BitbucketWorkspacePushService workspacePushService,
             RealActionsSummaryService summaryService
     ) {
         this.jiraRealActionService = jiraRealActionService;
         this.branchFlowService = branchFlowService;
         this.pullRequestService = pullRequestService;
+        this.workspacePushService = workspacePushService;
         this.summaryService = summaryService;
     }
 
@@ -87,6 +93,22 @@ public class RealActionsController {
             @RequestBody BitbucketPullRequestRequest request
     ) {
         return pullRequestService.create(caseId, request);
+    }
+
+    @PostMapping("/cases/{caseId}/bitbucket/workspace-push/preview")
+    public BitbucketWorkspacePushResponse workspacePushPreview(
+            @PathVariable UUID caseId,
+            @RequestBody(required = false) BitbucketWorkspacePushRequest request
+    ) {
+        return workspacePushService.preview(caseId, request);
+    }
+
+    @PostMapping("/cases/{caseId}/bitbucket/workspace-push/execute")
+    public BitbucketWorkspacePushResponse workspacePushExecute(
+            @PathVariable UUID caseId,
+            @RequestBody BitbucketWorkspacePushRequest request
+    ) {
+        return workspacePushService.execute(caseId, request);
     }
 
     @GetMapping("/cases/{caseId}/real-actions/summary")
