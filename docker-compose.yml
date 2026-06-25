@@ -1,32 +1,32 @@
 services:
-  replayfix-db:
+  replaylab-db:
     image: postgres:15-alpine
     environment:
-      POSTGRES_DB: replayfix
-      POSTGRES_USER: replayfix
-      POSTGRES_PASSWORD: replayfix
+      POSTGRES_DB: replaylab
+      POSTGRES_USER: replaylab
+      POSTGRES_PASSWORD: replaylab
     ports:
       - "5433:5432"
     healthcheck:
       test:
         - CMD-SHELL
-        - pg_isready -U replayfix -d replayfix
+        - pg_isready -U replaylab -d replaylab
       interval: 5s
       timeout: 5s
       retries: 20
     volumes:
-      - replayfix-db-data:/var/lib/postgresql/data
+      - replaylab-db-data:/var/lib/postgresql/data
 
-  replayfix:
+  replaylab:
     build: .
     depends_on:
-      replayfix-db:
+      replaylab-db:
         condition: service_healthy
     environment:
-      REPLAYFIX_DB_URL: jdbc:postgresql://replayfix-db:5432/replayfix
-      REPLAYFIX_DB_USERNAME: replayfix
-      REPLAYFIX_DB_PASSWORD: replayfix
-      REPLAYFIX_MODE: DRY_RUN
+      REPLAYLAB_DB_URL: jdbc:postgresql://replaylab-db:5432/replaylab
+      REPLAYLAB_DB_USERNAME: replaylab
+      REPLAYLAB_DB_PASSWORD: replaylab
+      REPLAYLAB_MODE: DRY_RUN
     ports:
       - "8088:8088"
     volumes:
@@ -35,4 +35,4 @@ services:
       - ./work:/app/work
 
 volumes:
-  replayfix-db-data:
+  replaylab-db-data:

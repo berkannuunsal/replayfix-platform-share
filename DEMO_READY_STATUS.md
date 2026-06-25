@@ -17,8 +17,8 @@
 
 3. **Branch Strategy** ✅
    - Target: test2
-   - Format: bugfix/{jiraKey}-replayfix
-   - Example: bugfix/FIZZMS-8346-replayfix
+   - Format: bugfix/{jiraKey}-replaylab
+   - Example: bugfix/FIZZMS-8346-replaylab
 
 4. **Approval Types** ✅
    - HUMAN_APPROVAL_FIX_PROPOSAL
@@ -35,7 +35,7 @@
 
 ```powershell
 # 1. Start application (if not running)
-# In IntelliJ: Run ReplayFixApplication
+# In IntelliJ: Run ReplayLabApplication
 
 # 2. Check database for existing cases
 # Run SQL queries from console_golden_path.sql
@@ -88,7 +88,7 @@ Invoke-RestMethod `
     ConvertTo-Json -Depth 10
 
 # 7. Open dashboard
-Start-Process "http://localhost:8088/replayfix/?caseId=$caseId"
+Start-Process "http://localhost:8088/replaylab/?caseId=$caseId"
 ```
 
 ## 📊 Demo Deliverables
@@ -138,7 +138,7 @@ Start-Process "http://localhost:8088/replayfix/?caseId=$caseId"
         "ROVO_RCA": 1
       },
       "missingEvidence": [],
-      "dashboardUrl": "/replayfix/?caseId=..."
+      "dashboardUrl": "/replaylab/?caseId=..."
     }
   }
 }
@@ -174,7 +174,7 @@ Start-Process "http://localhost:8088/replayfix/?caseId=$caseId"
 ## 🎯 Demo Script
 
 ### Introduction (2 min)
-"ReplayFix Golden Path v2 demonstrates end-to-end incident analysis with Rovo AI integration. Today we'll show Phase 1: Real evidence collection and Rovo integration contracts."
+"ReplayLab Golden Path v2 demonstrates end-to-end incident analysis with Rovo AI integration. Today we'll show Phase 1: Real evidence collection and Rovo integration contracts."
 
 ### Evidence Collection Demo (3 min)
 1. Show Golden Path execution
@@ -204,8 +204,8 @@ Start-Process "http://localhost:8088/replayfix/?caseId=$caseId"
    ```
 
 2. **Application Start** ✅
-   - Run ReplayFixApplication in IntelliJ
-   - Wait for "Started ReplayFixApplication"
+   - Run ReplayLabApplication in IntelliJ
+   - Wait for "Started ReplayLabApplication"
 
 3. **Execute Test Sequence** ✅
    - Run PowerShell commands above
@@ -223,13 +223,13 @@ Q: "Is this using real production data?"
 A: "Yes, all evidence is collected from real systems - Jira, Jenkins, Loki, Bitbucket. No synthetic or demo data."
 
 Q: "How does Rovo integration work?"
-A: "ReplayFix provides two REST endpoints. Rovo Forge Action calls GET to retrieve context, performs AI analysis, then calls POST to submit results. We store Rovo's RCA as evidence for downstream use."
+A: "ReplayLab provides two REST endpoints. Rovo Forge Action calls GET to retrieve context, performs AI analysis, then calls POST to submit results. We store Rovo's RCA as evidence for downstream use."
 
 Q: "What about the fix workflow?"
 A: "Phase 2 will add method commit history analysis and automated fix generation with two-stage human approval. Branch will be created from test2, tests must pass, and PR will be draft only - no automatic merge or deployment."
 
 Q: "What branch are you targeting?"
-A: "All analysis and fixes target the test2 branch. Fix branches follow the format bugfix/FIZZMS-8346-replayfix."
+A: "All analysis and fixes target the test2 branch. Fix branches follow the format bugfix/FIZZMS-8346-replaylab."
 
 Q: "Is this safe for production?"
 A: "Current implementation is READ-ONLY. Future fix workflow will have human approvals at every critical step, and will never auto-merge or auto-deploy."

@@ -381,7 +381,7 @@ Write-Host "Commit SHA: $($response.steps.'4_jenkins_evidence'.commitSha)"
 ### Test 2: Image Job Disabled
 ```yaml
 # application.yml
-replayfix:
+replaylab:
   integrations:
     jenkins:
       applications:
@@ -502,7 +502,7 @@ Write-Host "Bundle Created: $($response.steps.'8_ai_input_bundle'.bundleCreated)
 # Or: mvn clean compile -DskipTests
 
 # Run application
-# In IntelliJ: Run → Run 'ReplayFixApplication'
+# In IntelliJ: Run → Run 'ReplayLabApplication'
 
 # Execute Golden Path
 $response = Invoke-RestMethod `

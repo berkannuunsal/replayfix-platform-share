@@ -4,7 +4,7 @@
 
 **Target:** FIZZMS-8346 (or NTF build 309 backup)
 **Branch:** test2
-**Fix Branch:** bugfix/FIZZMS-8346-replayfix
+**Fix Branch:** bugfix/FIZZMS-8346-replaylab
 
 ## Prerequisites
 
@@ -214,7 +214,7 @@ Write-Host "Draft PR Created: $($finalStatus.pullRequestUrl)"
 ```json
 {
   "stage": "COMPLETED",
-  "branchName": "bugfix/FIZZMS-8346-replayfix",
+  "branchName": "bugfix/FIZZMS-8346-replaylab",
   "sourceCommitSha": "origin/test2 HEAD",
   "fixCommitSha": "xyz789...",
   "testResults": {
@@ -226,9 +226,9 @@ Write-Host "Draft PR Created: $($finalStatus.pullRequestUrl)"
   "pullRequest": {
     "url": "https://bitbucket.etiya.com/projects/ETIYA/repos/fizz-marketplace/pull-requests/123",
     "status": "DRAFT",
-    "sourceBranch": "bugfix/FIZZMS-8346-replayfix",
+    "sourceBranch": "bugfix/FIZZMS-8346-replaylab",
     "targetBranch": "test2",
-    "author": "replayfix-bot",
+    "author": "replaylab-bot",
     "created": "2026-06-17T09:00:00Z"
   },
   "approvals": [
@@ -293,7 +293,7 @@ Write-Host "Draft PR Created: $($finalStatus.pullRequestUrl)"
 - [ ] Fix proposal requested
 - [ ] Human approval received
 - [ ] Branch created from origin/test2 HEAD
-- [ ] Branch name: bugfix/FIZZMS-8346-replayfix
+- [ ] Branch name: bugfix/FIZZMS-8346-replaylab
 - [ ] Regression test generated
 - [ ] Minimum fix applied
 - [ ] Compilation successful
@@ -355,7 +355,7 @@ WHERE case_id = '<case-uuid>'
 
 ### Current Implementation (Phase 1)
 1. **Real Evidence Collection**
-   - "ReplayFix collects real evidence from production incident"
+   - "ReplayLab collects real evidence from production incident"
    - "Jira, Loki, Jenkins, Bitbucket all queried with real credentials"
    - "No synthetic or demo data"
 

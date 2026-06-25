@@ -104,6 +104,20 @@ Copy-Item .env.example .env
 docker compose up --build
 ```
 
+## API Dokümantasyonu (Swagger / OpenAPI)
+
+Uygulama çalışırken tüm REST endpoint'lerini aşağıdaki adreslerden inceleyebilirsiniz:
+
+| Kaynak | URL |
+|---|---|
+| Swagger UI | [http://localhost:8088/swagger-ui.html](http://localhost:8088/swagger-ui.html) |
+| OpenAPI JSON | [http://localhost:8088/v3/api-docs](http://localhost:8088/v3/api-docs) |
+| OpenAPI YAML | [http://localhost:8088/v3/api-docs.yaml](http://localhost:8088/v3/api-docs.yaml) |
+
+Swagger UI üzerinden doğrudan request gönderebilir, request/response şemalarını görebilir ve endpoint'leri test edebilirsiniz.
+
+> **Not:** Swagger UI yalnızca uygulama çalışırken erişilebilir. Endpoint'ler alfabetik sıralıdır.
+
 ## API kullanımı
 
 ### Case oluşturma

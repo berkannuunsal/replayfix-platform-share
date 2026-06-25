@@ -6,7 +6,7 @@ Golden Path v2 adds Rovo integration, method commit history analysis, and automa
 ## Branch Strategy
 - **Target Branch**: `test2`
 - **Fix Branch Format**: `bugfix/{jiraKey}-{short-description}`
-- **Example**: `bugfix/FIZZMS-8346-replayfix`
+- **Example**: `bugfix/FIZZMS-8346-replaylab`
 - **PR Target**: `test2` (DRAFT mode)
 - **NO MERGE, NO DEPLOY**
 
@@ -43,7 +43,7 @@ Golden Path v2 adds Rovo integration, method commit history analysis, and automa
 BranchStrategy strategy = BranchStrategy.defaultStrategy("FIZZMS-8346");
 // Returns:
 // - targetBranch: "test2"
-// - fixBranchName: "bugfix/FIZZMS-8346-replayfix"
+// - fixBranchName: "bugfix/FIZZMS-8346-replaylab"
 // - fetchBeforeCreate: true
 // - useExactTargetHead: true
 ```
@@ -290,7 +290,7 @@ public class FixGenerationWorkflowService {
     
     private String buildPrDescription(UUID caseId) {
         return """
-            ## ReplayFix Automated Fix
+            ## ReplayLab Automated Fix
             
             **Jira Issue**: %s
             **Case ID**: %s
@@ -407,7 +407,7 @@ POST /api/v1/cases/{caseId}/fix-workflow/approve-pr/{approvalId2}
 GET /api/v1/cases/{caseId}/fix-workflow/status
 {
   "stage": "COMPLETED",
-  "branchName": "replayfix/FIZZMS-8346-auth-token-fix",
+  "branchName": "replaylab/FIZZMS-8346-auth-token-fix",
   "pullRequestUrl": "https://bitbucket.../pull-requests/123",
   "pullRequestStatus": "DRAFT",
   "approvals": [

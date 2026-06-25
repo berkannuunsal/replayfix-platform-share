@@ -392,7 +392,7 @@ Recommendation: This case has strong evidence quality. Suitable for demo.
 
 **EvidenceQuality.java** ⭐
 ```
-src/main/java/com/etiya/replayfix/model/EvidenceQuality.java
+src/main/java/com/etiya/replaylab/model/EvidenceQuality.java
 ```
 - Evidence quality assessment model
 - Captures all quality metrics

@@ -315,7 +315,7 @@ mvn clean compile -DskipTests
 mvn test
 
 # Run application
-# In IntelliJ: Run → Run 'ReplayFixApplication'
+# In IntelliJ: Run → Run 'ReplayLabApplication'
 
 # Execute Golden Path
 $response = Invoke-RestMethod `

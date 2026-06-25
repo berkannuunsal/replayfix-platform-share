@@ -2,24 +2,24 @@
 
 ## Overview
 
-Implements bidirectional integration between ReplayFix and Rovo Incident Commander:
-1. **ReplayFix → Jira**: Publish Evidence Snapshot as Jira comment
+Implements bidirectional integration between ReplayLab and Rovo Incident Commander:
+1. **ReplayLab → Jira**: Publish Evidence Snapshot as Jira comment
 2. **Rovo → Jira**: Rovo Incident Commander enriches snapshot with knowledge-based RCA
-3. **Jira → ReplayFix**: Import Rovo RCA analysis back into ReplayFix
+3. **Jira → ReplayLab**: Import Rovo RCA analysis back into ReplayLab
 
 ## Goal
 
 Enable Rovo Incident Commander to:
-- Read compact ReplayFix evidence snapshot from Jira issue
+- Read compact ReplayLab evidence snapshot from Jira issue
 - Enrich it using Jira history and Confluence/EtiyaWiki knowledge
 - Write structured RCA comment back to Jira
-- ReplayFix imports and displays Rovo RCA on dashboard
+- ReplayLab imports and displays Rovo RCA on dashboard
 
 ## Architecture
 
 ```
 ┌─────────────┐                  ┌──────────┐                  ┌──────────────┐
-│  ReplayFix  │ ──publish──────> │   Jira   │ <──reads──────── │ Rovo Incident│
+│  ReplayLab  │ ──publish──────> │   Jira   │ <──reads──────── │ Rovo Incident│
 │             │                  │  Issue   │                  │  Commander   │
 │   Golden    │                  │          │                  │              │
 │    Path     │                  │ Comment: │                  │  Enrichment  │
@@ -34,10 +34,10 @@ Enable Rovo Incident Commander to:
 
 ### Step 1: Evidence Snapshot Model
 
-**File:** `ReplayFixEvidenceSnapshot.java`
+**File:** `ReplayLabEvidenceSnapshot.java`
 
 ```java
-public record ReplayFixEvidenceSnapshot(
+public record ReplayLabEvidenceSnapshot(
     String schemaVersion,        // "1.0"
     UUID caseId,
     String jiraKey,
@@ -146,7 +146,7 @@ record GuardrailsInfo(
 
 **Example Usage:**
 ```java
-ReplayFixEvidenceSnapshot snapshot = snapshotService.buildSnapshot(caseId);
+ReplayLabEvidenceSnapshot snapshot = snapshotService.buildSnapshot(caseId);
 ```
 
 ### Step 3: REST Endpoints
@@ -155,7 +155,7 @@ ReplayFixEvidenceSnapshot snapshot = snapshotService.buildSnapshot(caseId);
 
 **GET /api/v1/cases/{caseId}/rovo/evidence-snapshot**
 
-Returns full ReplayFix Evidence Snapshot JSON.
+Returns full ReplayLab Evidence Snapshot JSON.
 
 **Request:**
 ```powershell
@@ -238,7 +238,7 @@ $result = Invoke-RestMethod `
 **Comment Structure:**
 
 ```
-h3. ReplayFix Evidence Snapshot v1.0
+h3. ReplayLab Evidence Snapshot v1.0
 
 *Case:* ddf5caed-bad7-4eca-b791-5a47869121b0
 *Jira:* FIZZMS-10228
@@ -266,13 +266,13 @@ h3. ReplayFix Evidence Snapshot v1.0
 
 ----
 {noformat}
-REPLAYFIX_EVIDENCE_SNAPSHOT_V1
+REPLAYLAB_EVIDENCE_SNAPSHOT_V1
 {
   "schemaVersion": "1.0",
   "caseId": "ddf5caed-bad7-4eca-b791-5a47869121b0",
   ...full JSON...
 }
-REPLAYFIX_EVIDENCE_SNAPSHOT_END
+REPLAYLAB_EVIDENCE_SNAPSHOT_END
 {noformat}
 ```
 
@@ -330,9 +330,9 @@ public record RovoRcaAnalysis(
 1. Fetch Jira issue
 2. Search for block:
    ```
-   REPLAYFIX_ROVO_RCA_V1
+   REPLAYLAB_ROVO_RCA_V1
    { ...JSON... }
-   REPLAYFIX_ROVO_RCA_END
+   REPLAYLAB_ROVO_RCA_END
    ```
 3. Parse JSON as `RovoRcaAnalysis`
 4. Persist as:
@@ -342,8 +342,8 @@ public record RovoRcaAnalysis(
 **Pattern Matching:**
 ```java
 Pattern RCA_BLOCK_PATTERN = Pattern.compile(
-    "REPLAYFIX_ROVO_RCA_V1\\s*\\n(.+?)\\n" +
-    "REPLAYFIX_ROVO_RCA_END",
+    "REPLAYLAB_ROVO_RCA_V1\\s*\\n(.+?)\\n" +
+    "REPLAYLAB_ROVO_RCA_END",
     Pattern.DOTALL
 );
 ```
@@ -436,14 +436,14 @@ Write-Host "Comment length: $($publish.commentLength)"
 ### 3. Rovo Processes (External)
 
 **Rovo Incident Commander:**
-1. Monitors Jira for `REPLAYFIX_EVIDENCE_SNAPSHOT_V1` comments
+1. Monitors Jira for `REPLAYLAB_EVIDENCE_SNAPSHOT_V1` comments
 2. Reads snapshot JSON
 3. Enriches with:
    - Historical Jira issues
    - Confluence knowledge base
    - EtiyaWiki documentation
 4. Generates RCA analysis
-5. Posts comment with `REPLAYFIX_ROVO_RCA_V1` block
+5. Posts comment with `REPLAYLAB_ROVO_RCA_V1` block
 
 ### 4. Import Rovo RCA
 
@@ -462,14 +462,14 @@ Write-Host "Root Cause: $($import.probableRootCause)"
 
 ```powershell
 # Navigate to dashboard
-Start-Process "http://localhost:8088/replayfix/?caseId=$caseId"
+Start-Process "http://localhost:8088/replaylab/?caseId=$caseId"
 ```
 
 ## Files Created/Modified
 
 ### New Files
 
-1. ✅ **ReplayFixEvidenceSnapshot.java**
+1. ✅ **ReplayLabEvidenceSnapshot.java**
    - Evidence snapshot model with all sub-records
    - Schema version 1.0
 
@@ -528,7 +528,7 @@ Start-Process "http://localhost:8088/replayfix/?caseId=$caseId"
 ```java
 @Test
 void testBuildSnapshot() {
-    ReplayFixEvidenceSnapshot snapshot = snapshotService.buildSnapshot(caseId);
+    ReplayLabEvidenceSnapshot snapshot = snapshotService.buildSnapshot(caseId);
     
     assertEquals("1.0", snapshot.schemaVersion());
     assertEquals("FIZZMS-10228", snapshot.jiraKey());
@@ -542,7 +542,7 @@ void testBuildSnapshot() {
 ```java
 @Test
 void testSnapshotDoesNotContainSecrets() {
-    ReplayFixEvidenceSnapshot snapshot = snapshotService.buildSnapshot(caseId);
+    ReplayLabEvidenceSnapshot snapshot = snapshotService.buildSnapshot(caseId);
     String json = objectMapper.writeValueAsString(snapshot);
     
     assertFalse(json.contains("password"));
@@ -558,9 +558,9 @@ void testSnapshotDoesNotContainSecrets() {
 void testJiraCommentFormat() {
     String comment = publisherService.buildJiraComment(snapshot);
     
-    assertTrue(comment.contains("REPLAYFIX_EVIDENCE_SNAPSHOT_V1"));
-    assertTrue(comment.contains("REPLAYFIX_EVIDENCE_SNAPSHOT_END"));
-    assertTrue(comment.contains("h3. ReplayFix Evidence Snapshot"));
+    assertTrue(comment.contains("REPLAYLAB_EVIDENCE_SNAPSHOT_V1"));
+    assertTrue(comment.contains("REPLAYLAB_EVIDENCE_SNAPSHOT_END"));
+    assertTrue(comment.contains("h3. ReplayLab Evidence Snapshot"));
 }
 ```
 
@@ -568,7 +568,7 @@ void testJiraCommentFormat() {
 ```java
 @Test
 void testRovoRcaParsing() {
-    String comment = "...\nREPLAYFIX_ROVO_RCA_V1\n{\"schemaVersion\":\"1.0\"...}\nREPLAYFIX_ROVO_RCA_END\n...";
+    String comment = "...\nREPLAYLAB_ROVO_RCA_V1\n{\"schemaVersion\":\"1.0\"...}\nREPLAYLAB_ROVO_RCA_END\n...";
     String json = importerService.extractRovoRcaFromComments(comment);
     
     assertNotNull(json);
@@ -676,4 +676,4 @@ mvn test
 
 **Result:**
 Complete Rovo RCA roundtrip:
-`ReplayFix Evidence Snapshot → Jira comment → Rovo RCA comment → ReplayFix ROVO_RCA evidence`
+`ReplayLab Evidence Snapshot → Jira comment → Rovo RCA comment → ReplayLab ROVO_RCA evidence`

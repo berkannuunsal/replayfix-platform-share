@@ -34,7 +34,7 @@ source=jenkins-validated-ai-bundle
 
 **Expected vs Actual:**
 - ❌ Looking for: `AI_INPUT_BUNDLE` / `jenkins-validated-ai-bundle`
-- ✅ Should look for: `AI_INPUT_BUNDLE` / `replayfix-ai-bundle-builder`
+- ✅ Should look for: `AI_INPUT_BUNDLE` / `replaylab-ai-bundle-builder`
 
 ### 3. Summary Missing Evidence Inconsistency ❌
 
@@ -78,20 +78,20 @@ private static final String OUTPUT_SOURCE = "jenkins-validated-ai-bundle";
 private static final String BUNDLE_VERSION = "jenkins-validated-v1";
 
 // After ✅
-private static final String OUTPUT_SOURCE = "replayfix-ai-bundle-builder";
-private static final String BUNDLE_VERSION = "replayfix-ai-bundle-v1";
+private static final String OUTPUT_SOURCE = "replaylab-ai-bundle-builder";
+private static final String BUNDLE_VERSION = "replaylab-ai-bundle-v1";
 ```
 
 **Replaced JenkinsIncidentVersionValidation with JenkinsCaseEvidence:**
 
 ```java
 // Before ❌
-import com.etiya.replayfix.model.JenkinsIncidentVersionValidation;
+import com.etiya.replaylab.model.JenkinsIncidentVersionValidation;
 JenkinsIncidentVersionValidation validation = parse(jenkinsValidation, ...);
 String jenkinsCommitSha = validation.jenkinsCommitSha();
 
 // After ✅
-import com.etiya.replayfix.model.JenkinsCaseEvidence;
+import com.etiya.replaylab.model.JenkinsCaseEvidence;
 JenkinsCaseEvidence jenkinsEvidence = parse(jenkinsContext, ...);
 String jenkinsCommitSha = jenkinsEvidence.build() != null 
     ? jenkinsEvidence.build().commitSha() 
@@ -119,7 +119,7 @@ private static final String REPORT_SOURCE = "deterministic-root-cause-jenkins-va
 private static final String VALIDATION_SOURCE = "jenkins-incident-version-validator";
 
 // After ✅
-private static final String BUNDLE_SOURCE = "replayfix-ai-bundle-builder";
+private static final String BUNDLE_SOURCE = "replaylab-ai-bundle-builder";
 private static final String LEGACY_BUNDLE_SOURCE = "jenkins-validated-ai-bundle";
 private static final String REPORT_SOURCE = "deterministic-root-cause";
 ```
@@ -165,7 +165,7 @@ List<EvidenceEntity> existingBundle = evidenceRepository.findByCaseId(caseId).st
 // After ✅
 List<EvidenceEntity> existingBundle = evidenceRepository.findByCaseId(caseId).stream()
     .filter(ev -> ev.getEvidenceType() == EvidenceType.AI_INPUT_BUNDLE)
-    .filter(ev -> "replayfix-ai-bundle-builder".equals(ev.getSource()) ||
+    .filter(ev -> "replaylab-ai-bundle-builder".equals(ev.getSource()) ||
                  "jenkins-validated-ai-bundle".equals(ev.getSource()))
     .toList();
 ```
@@ -223,7 +223,7 @@ summary.put("missingEvidence", missingEvidence);
 - Used by: AI_INPUT_BUNDLE, source checkout
 
 ### AI_INPUT_BUNDLE
-✅ **Canonical Producer:** `replayfix-ai-bundle-builder`
+✅ **Canonical Producer:** `replaylab-ai-bundle-builder`
 - Produced by: `AiInputBundleRefreshService`
 - Contains: `AiEvidenceBundle` with all evidence sections
 - Legacy source: `jenkins-validated-ai-bundle` (backward compatible)
@@ -239,8 +239,8 @@ summary.put("missingEvidence", missingEvidence);
 
 ### 1. AiInputBundleRefreshService.java ⭐ MAJOR UPDATE
 **Changes:**
-- OUTPUT_SOURCE: `jenkins-validated-ai-bundle` → `replayfix-ai-bundle-builder`
-- BUNDLE_VERSION: `jenkins-validated-v1` → `replayfix-ai-bundle-v1`
+- OUTPUT_SOURCE: `jenkins-validated-ai-bundle` → `replaylab-ai-bundle-builder`
+- BUNDLE_VERSION: `jenkins-validated-v1` → `replaylab-ai-bundle-v1`
 - Import: `JenkinsIncidentVersionValidation` → `JenkinsCaseEvidence`
 - Removed: Hard-coded `jenkinsValidation` evidence lookup
 - Updated: Use `jenkinsContext` from `jenkins-evidence-collector`
@@ -251,7 +251,7 @@ summary.put("missingEvidence", missingEvidence);
 
 ### 2. DeterministicRootCauseRefreshService.java
 **Changes:**
-- BUNDLE_SOURCE: `jenkins-validated-ai-bundle` → `replayfix-ai-bundle-builder`
+- BUNDLE_SOURCE: `jenkins-validated-ai-bundle` → `replaylab-ai-bundle-builder`
 - Added: LEGACY_BUNDLE_SOURCE for backward compatibility
 - REPORT_SOURCE: `deterministic-root-cause-jenkins-validated` → `deterministic-root-cause`
 - Removed: VALIDATION_SOURCE (no longer needed)
@@ -273,7 +273,7 @@ summary.put("missingEvidence", missingEvidence);
 - ✅ New cases will use canonical sources
 
 ### Migration Path:
-1. **Immediate:** All new AI bundles use `replayfix-ai-bundle-builder`
+1. **Immediate:** All new AI bundles use `replaylab-ai-bundle-builder`
 2. **Backward Compatible:** Deterministic RCA accepts both old and new bundle sources
 3. **No Breaking Changes:** Existing evidence remains valid
 
@@ -288,7 +288,7 @@ summary.put("missingEvidence", missingEvidence);
     "result": "SUCCESS",
     "bundleCreated": true,
     "evidenceId": "uuid",
-    "source": "replayfix-ai-bundle-builder"
+    "source": "replaylab-ai-bundle-builder"
   }
 }
 ```
@@ -300,7 +300,7 @@ WHERE case_id = 'ddf5caed-bad7-4eca-b791-5a47869121b0'
 AND evidence_type = 'AI_INPUT_BUNDLE';
 
 -- Result:
--- AI_INPUT_BUNDLE | replayfix-ai-bundle-builder
+-- AI_INPUT_BUNDLE | replaylab-ai-bundle-builder
 ```
 
 ### Step 10: DETERMINISTIC_ROOT_CAUSE
@@ -393,7 +393,7 @@ AND evidence_type = 'AI_INPUT_BUNDLE'
 ORDER BY created_at DESC
 LIMIT 1;
 
--- Expected: AI_INPUT_BUNDLE | replayfix-ai-bundle-builder
+-- Expected: AI_INPUT_BUNDLE | replaylab-ai-bundle-builder
 ```
 
 ### Test 3: RCA Consumes AI Bundle
@@ -453,7 +453,7 @@ INFO: Bundle refreshed with Jenkins source context. jenkinsCommit=7b65a116..., i
 
 **Fixes:**
 1. ✅ AI_INPUT_BUNDLE now uses `jenkins-evidence-collector` for JENKINS_BUILD_CONTEXT
-2. ✅ AI_INPUT_BUNDLE output changed to `replayfix-ai-bundle-builder`
+2. ✅ AI_INPUT_BUNDLE output changed to `replaylab-ai-bundle-builder`
 3. ✅ DETERMINISTIC_RCA accepts both canonical and legacy bundle sources
 4. ✅ Summary includes failed mandatory final steps
 5. ✅ Backward compatibility maintained for existing evidence

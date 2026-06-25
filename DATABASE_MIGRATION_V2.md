@@ -32,9 +32,9 @@ When Flyway is enabled (default), migration runs automatically on startup:
 
 ```bash
 # Set database connection
-export REPLAYFIX_DB_URL=jdbc:postgresql://localhost:5433/replayfix
-export REPLAYFIX_DB_USERNAME=replayfix
-export REPLAYFIX_DB_PASSWORD=replayfix
+export REPLAYLAB_DB_URL=jdbc:postgresql://localhost:5433/replaylab
+export REPLAYLAB_DB_USERNAME=replaylab
+export REPLAYLAB_DB_PASSWORD=replaylab
 
 # Start application - migration runs automatically
 ./mvnw spring-boot:run
@@ -45,7 +45,7 @@ export REPLAYFIX_DB_PASSWORD=replayfix
 If you need to run migration manually:
 
 ```bash
-psql -h localhost -p 5433 -U replayfix -d replayfix -f src/main/resources/db/migration/V2__create_webhook_workflow_tables.sql
+psql -h localhost -p 5433 -U replaylab -d replaylab -f src/main/resources/db/migration/V2__create_webhook_workflow_tables.sql
 ```
 
 ### Verify Migration
@@ -80,7 +80,7 @@ ORDER BY tablename;
 ⚠️ **WARNING: This will delete all webhook and workflow data!**
 
 ```bash
-psql -h localhost -p 5433 -U replayfix -d replayfix -f src/main/resources/db/migration/ROLLBACK_V2.sql
+psql -h localhost -p 5433 -U replaylab -d replaylab -f src/main/resources/db/migration/ROLLBACK_V2.sql
 ```
 
 After rollback, you must manually delete the Flyway history entry:
@@ -207,8 +207,8 @@ If tables exist, either:
 Ensure PostgreSQL user has necessary permissions:
 
 ```sql
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO replayfix;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO replayfix;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO replaylab;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO replaylab;
 ```
 
 ### Flyway Checksum Mismatch

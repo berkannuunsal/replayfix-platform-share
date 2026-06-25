@@ -72,7 +72,7 @@ private Map<String, Object> collectAiInputBundle(UUID caseId) {
 ```
 
 **Key Points:**
-- ✅ Created when `REPLAYFIX_AI_ENABLED=false`
+- ✅ Created when `REPLAYLAB_AI_ENABLED=false`
 - ✅ No external LLM call
 - ✅ Internal normalized evidence bundle
 - ✅ Required for deterministic RCA
@@ -272,7 +272,7 @@ Write-Host "Overall: $($response.status)"
 
 ### Test Case 2: AI Bundle Created Without AI Provider
 ```sql
--- Check AI_INPUT_BUNDLE exists even with REPLAYFIX_AI_ENABLED=false
+-- Check AI_INPUT_BUNDLE exists even with REPLAYLAB_AI_ENABLED=false
 SELECT 
     id,
     evidence_type,
@@ -397,7 +397,7 @@ GOLDEN_PATH_COMPLETE: jiraKey=FIZZMS-8346, status=SUCCESS, caseId=...
 - No synthetic evidence
 
 ✅ **AI Input Bundle**
-- Created with `REPLAYFIX_AI_ENABLED=false`
+- Created with `REPLAYLAB_AI_ENABLED=false`
 - No external LLM call
 - Source = `jenkins-validated-ai-bundle`
 
@@ -432,7 +432,7 @@ GOLDEN_PATH_COMPLETE: jiraKey=FIZZMS-8346, status=SUCCESS, caseId=...
 # In IntelliJ: Build → Rebuild Project
 
 # Run application
-# In IntelliJ: Run → Run 'ReplayFixApplication'
+# In IntelliJ: Run → Run 'ReplayLabApplication'
 
 # Execute Golden Path
 $response = Invoke-RestMethod `

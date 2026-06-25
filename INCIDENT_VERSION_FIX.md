@@ -448,7 +448,7 @@ WHERE case_id = '76c53ef4-cb07-4029-9263-4be95197c2cd'
 # Or: mvn clean compile -DskipTests
 
 # Run application
-# In IntelliJ: Run → Run 'ReplayFixApplication'
+# In IntelliJ: Run → Run 'ReplayLabApplication'
 
 # Execute Golden Path
 $response = Invoke-RestMethod `

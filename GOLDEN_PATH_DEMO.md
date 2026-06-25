@@ -113,7 +113,7 @@ Invoke-RestMethod -Uri "http://localhost:8088/api/v1/cases/$caseId/evidence" -Me
         "ROOT_CAUSE_ANALYSIS": 1
       },
       "synthetic": false,
-      "dashboardUrl": "/replayfix/?caseId=uuid",
+      "dashboardUrl": "/replaylab/?caseId=uuid",
       "missingEvidence": []
     }
   }

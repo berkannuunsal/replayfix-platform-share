@@ -4,7 +4,7 @@
 
 1. Set environment variables:
 ```bash
-export REPLAYFIX_JIRA_WEBHOOK_ENABLED=true
+export REPLAYLAB_JIRA_WEBHOOK_ENABLED=true
 export JIRA_WEBHOOK_SECRET=LOCAL_TEST_SECRET
 ```
 
@@ -21,7 +21,7 @@ export JIRA_WEBHOOK_SECRET=LOCAL_TEST_SECRET
 curl -s -X POST \
   "http://localhost:8088/api/v1/webhooks/jira" \
   -H "Content-Type: application/json" \
-  -H "X-ReplayFix-Webhook-Secret: LOCAL_TEST_SECRET" \
+  -H "X-ReplayLab-Webhook-Secret: LOCAL_TEST_SECRET" \
   -H "X-Atlassian-Webhook-Identifier: local-test-001" \
   --data-binary @jira-webhook-sample.json \
   -o jira-webhook-result.json
@@ -124,7 +124,7 @@ Expected: HTTP 403 Forbidden
 curl -X POST \
   "http://localhost:8088/api/v1/webhooks/jira" \
   -H "Content-Type: application/json" \
-  -H "X-ReplayFix-Webhook-Secret: WRONG_SECRET" \
+  -H "X-ReplayLab-Webhook-Secret: WRONG_SECRET" \
   --data-binary @jira-webhook-sample.json
 ```
 
@@ -139,7 +139,7 @@ dd if=/dev/zero of=large-payload.json bs=1M count=2
 curl -X POST \
   "http://localhost:8088/api/v1/webhooks/jira" \
   -H "Content-Type: application/json" \
-  -H "X-ReplayFix-Webhook-Secret: LOCAL_TEST_SECRET" \
+  -H "X-ReplayLab-Webhook-Secret: LOCAL_TEST_SECRET" \
   --data-binary @large-payload.json
 ```
 
@@ -150,13 +150,13 @@ Expected: HTTP 403 Forbidden
 ### Disable Webhook
 
 ```bash
-export REPLAYFIX_JIRA_WEBHOOK_ENABLED=false
+export REPLAYLAB_JIRA_WEBHOOK_ENABLED=false
 # Restart application
 
 curl -X POST \
   "http://localhost:8088/api/v1/webhooks/jira" \
   -H "Content-Type: application/json" \
-  -H "X-ReplayFix-Webhook-Secret: LOCAL_TEST_SECRET" \
+  -H "X-ReplayLab-Webhook-Secret: LOCAL_TEST_SECRET" \
   --data-binary @jira-webhook-sample.json
 ```
 
@@ -165,14 +165,14 @@ Expected: HTTP 403 with "Jira webhook is disabled"
 ### Test Project Allowlist
 
 ```bash
-export REPLAYFIX_JIRA_WEBHOOK_ALLOWED_PROJECTS=FIZZMS,OTHERPROJECT
+export REPLAYLAB_JIRA_WEBHOOK_ALLOWED_PROJECTS=FIZZMS,OTHERPROJECT
 # Restart application and test
 ```
 
 ### Test Issue Type Allowlist
 
 ```bash
-export REPLAYFIX_JIRA_WEBHOOK_ALLOWED_ISSUE_TYPES=Bug,Defect
+export REPLAYLAB_JIRA_WEBHOOK_ALLOWED_ISSUE_TYPES=Bug,Defect
 # Restart application and test
 ```
 

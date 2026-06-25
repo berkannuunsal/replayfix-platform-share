@@ -9,7 +9,7 @@ Golden Path Jenkins step was failing with "Repository resolution evidence not fo
 Created dedicated service for collecting repository resolution evidence:
 - Uses existing `BitbucketClient` to fetch repository list
 - Uses existing `RepositoryResolverService` for resolution logic
-- Validates `targetKey` against `ReplayFixProperties` configuration
+- Validates `targetKey` against `ReplayLabProperties` configuration
 - **Exact match priority**: If `targetKey` matches configured repository slug → 100% confidence
 - **Fallback to resolver**: If no exact match, uses resolver service with Jira signals
 - **Sanitized output**: Removes credentials from clone URLs
@@ -140,7 +140,7 @@ targets:
     build-command: mvn -B clean test
     git:
       source-branch: test2  # Used in evidence
-      branch-prefix: replayfix/
+      branch-prefix: replaylab/
 ```
 
 ## Testing
