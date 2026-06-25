@@ -3,18 +3,24 @@ package com.etiya.replayfix.api;
 import com.etiya.replayfix.api.dto.BitbucketBranchFlowRequest;
 import com.etiya.replayfix.api.dto.BitbucketBranchFlowResponse;
 import com.etiya.replayfix.api.dto.BitbucketBackendDemoPrResponse;
+import com.etiya.replayfix.api.dto.BitbucketDefectPrFlowResponse;
 import com.etiya.replayfix.api.dto.BitbucketPullRequestRequest;
 import com.etiya.replayfix.api.dto.BitbucketPullRequestResponse;
+import com.etiya.replayfix.api.dto.BitbucketSingleFileDefectPrFlowResponse;
 import com.etiya.replayfix.api.dto.BitbucketTest2DemoPrResponse;
 import com.etiya.replayfix.api.dto.BitbucketWorkspacePushResponse;
+import com.etiya.replayfix.api.dto.DefectPrTargetedChangeResponse;
 import com.etiya.replayfix.api.dto.JiraTestTaskRequest;
 import com.etiya.replayfix.api.dto.JiraTestTaskResponse;
 import com.etiya.replayfix.api.dto.RealActionsSummaryResponse;
 import com.etiya.replayfix.service.BitbucketBackendDemoPrService;
 import com.etiya.replayfix.service.BitbucketBranchFlowService;
+import com.etiya.replayfix.service.BitbucketDefectPrFlowService;
 import com.etiya.replayfix.service.BitbucketPullRequestRealActionService;
+import com.etiya.replayfix.service.BitbucketSingleFileDefectPrFlowService;
 import com.etiya.replayfix.service.BitbucketTest2DemoPrService;
 import com.etiya.replayfix.service.BitbucketWorkspacePushService;
+import com.etiya.replayfix.service.DefectPrTargetedChangeService;
 import com.etiya.replayfix.service.JiraRealActionService;
 import com.etiya.replayfix.service.RealActionsSummaryService;
 import org.junit.jupiter.api.Test;
@@ -53,6 +59,12 @@ class RealActionsControllerTest {
                 mock(BitbucketTest2DemoPrService.class);
         BitbucketBackendDemoPrService backendDemoPrService =
                 mock(BitbucketBackendDemoPrService.class);
+        BitbucketDefectPrFlowService defectPrFlowService =
+                mock(BitbucketDefectPrFlowService.class);
+        BitbucketSingleFileDefectPrFlowService singleFileDefectPrFlowService =
+                mock(BitbucketSingleFileDefectPrFlowService.class);
+        DefectPrTargetedChangeService targetedChangeService =
+                mock(DefectPrTargetedChangeService.class);
         RealActionsSummaryService summaryService =
                 mock(RealActionsSummaryService.class);
         when(jiraService.preview(eq(caseId), any()))
@@ -67,6 +79,12 @@ class RealActionsControllerTest {
                 .thenReturn(test2DemoPrResponse(caseId));
         when(backendDemoPrService.preview(eq(caseId), any()))
                 .thenReturn(backendDemoPrResponse(caseId));
+        when(defectPrFlowService.preview(eq(caseId), any()))
+                .thenReturn(defectPrFlowResponse(caseId));
+        when(singleFileDefectPrFlowService.preview(eq(caseId), any()))
+                .thenReturn(singleFileDefectPrFlowResponse(caseId));
+        when(targetedChangeService.preview(eq(caseId), any()))
+                .thenReturn(targetedChangeResponse(caseId));
         when(summaryService.summary(caseId)).thenReturn(summary(caseId));
         MockMvc mockMvc = MockMvcBuilders
                 .standaloneSetup(new RealActionsController(
@@ -76,6 +94,9 @@ class RealActionsControllerTest {
                         workspacePushService,
                         test2DemoPrService,
                         backendDemoPrService,
+                        defectPrFlowService,
+                        singleFileDefectPrFlowService,
+                        targetedChangeService,
                         summaryService
                 ))
                 .build();
@@ -111,6 +132,36 @@ class RealActionsControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.bugfixBranch")
                         .value("bugfix/FIZZMS-10228"))
+                .andExpect(jsonPath("$.previewOnly").value(true));
+
+        mockMvc.perform(post(
+                        "/api/v1/cases/{caseId}/bitbucket/defect-pr-flow/preview",
+                        caseId
+                ).contentType("application/json").content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.bugfixBranch")
+                        .value("bugfix/FIZZMS-10228"))
+                .andExpect(jsonPath("$.integrationBranch")
+                        .value("Integration/test2/FIZZMS-10228"))
+                .andExpect(jsonPath("$.previewOnly").value(true));
+
+        mockMvc.perform(post(
+                        "/api/v1/cases/{caseId}/bitbucket/defect-pr-flow/targeted-change/preview",
+                        caseId
+                ).contentType("application/json").content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.filePath")
+                        .value("ControllerBackend/src/test/java/com/etiya/replayfix/generated/FIZZMS10228RegressionTest.java"))
+                .andExpect(jsonPath("$.appliedRegressionTest").value(true))
+                .andExpect(jsonPath("$.previewOnly").value(true));
+
+        mockMvc.perform(post(
+                        "/api/v1/cases/{caseId}/bitbucket/defect-pr-flow/single-file/preview",
+                        caseId
+                ).contentType("application/json").content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.filePath")
+                        .value("ControllerBackend/src/test/java/com/etiya/replayfix/generated/FIZZMS10228RegressionTest.java"))
                 .andExpect(jsonPath("$.previewOnly").value(true));
 
         mockMvc.perform(post(
@@ -158,6 +209,9 @@ class RealActionsControllerTest {
                         mock(BitbucketWorkspacePushService.class),
                         mock(BitbucketTest2DemoPrService.class),
                         mock(BitbucketBackendDemoPrService.class),
+                        mock(BitbucketDefectPrFlowService.class),
+                        mock(BitbucketSingleFileDefectPrFlowService.class),
+                        mock(DefectPrTargetedChangeService.class),
                         mock(RealActionsSummaryService.class)
                 ))
                 .build();
@@ -268,11 +322,11 @@ class RealActionsControllerTest {
                 "backend",
                 "test2",
                 "integration/test2/FIZZMS-10228",
-                "ControllerBackend/src/test/java/com/company/replayfix/generated/FIZZMS10228ReplayFixDemoRegressionTest.java",
+                "ControllerBackend/src/test/java/com/company/replayfix/generated/FIZZMS10228RegressionTest.java",
                 "",
                 "",
                 "",
-                "[DRAFT] ReplayFix FIZZMS-10228 demo regression test",
+                "[DRAFT] ReplayFix FIZZMS-10228 fix proposal",
                 List.of(),
                 List.of(),
                 List.of(),
@@ -297,7 +351,92 @@ class RealActionsControllerTest {
                 "",
                 "",
                 "",
-                "[DRAFT] ReplayFix project-10228 demo regression test",
+                "[DRAFT] ReplayFix project-10228 fix proposal",
+                List.of(),
+                List.of(),
+                Map.of(),
+                List.of(),
+                Instant.now()
+        );
+    }
+
+    private BitbucketDefectPrFlowResponse defectPrFlowResponse(UUID caseId) {
+        return new BitbucketDefectPrFlowResponse(
+                caseId,
+                "FIZZMS-10228",
+                "safe summary",
+                false,
+                true,
+                "master",
+                "Integration/test2/FIZZMS-6686",
+                "bugfix/FIZZMS-10228",
+                "Integration/test2/FIZZMS-10228",
+                "FIZZMS-10228: safe summary",
+                "",
+                "",
+                "",
+                "",
+                "[DRAFT] ReplayFix FIZZMS-10228 fix proposal",
+                false,
+                true,
+                false,
+                List.of(),
+                List.of(),
+                List.of(),
+                Map.of(),
+                List.of(),
+                Instant.now()
+        );
+    }
+
+    private BitbucketSingleFileDefectPrFlowResponse singleFileDefectPrFlowResponse(UUID caseId) {
+        return new BitbucketSingleFileDefectPrFlowResponse(
+                caseId,
+                "FIZZMS-10228",
+                "safe summary",
+                false,
+                true,
+                "master",
+                "Integration/test2/FIZZMS-6686",
+                "bugfix/FIZZMS-10228",
+                "Integration/test2/FIZZMS-10228",
+                "ControllerBackend/src/test/java/com/etiya/replayfix/generated/FIZZMS10228RegressionTest.java",
+                "APPROVED_REGRESSION_TEST",
+                "FIZZMS-10228: safe summary",
+                "",
+                "",
+                "",
+                "",
+                "[DRAFT] ReplayFix FIZZMS-10228 fix proposal",
+                List.of(),
+                List.of(),
+                List.of(),
+                Instant.now()
+        );
+    }
+
+    private DefectPrTargetedChangeResponse targetedChangeResponse(UUID caseId) {
+        return new DefectPrTargetedChangeResponse(
+                caseId,
+                "FIZZMS-10228",
+                "safe summary",
+                false,
+                true,
+                "master",
+                "Integration/test2/FIZZMS-6686",
+                "bugfix/FIZZMS-10228",
+                "Integration/test2/FIZZMS-10228",
+                "ControllerBackend/src/test/java/com/etiya/replayfix/generated/FIZZMS10228RegressionTest.java",
+                "APPROVED_REGRESSION_TEST",
+                "FIZZMS-10228: safe summary",
+                "",
+                "",
+                "",
+                "",
+                "[DRAFT] ReplayFix FIZZMS-10228 fix proposal",
+                false,
+                true,
+                false,
                 List.of(),
                 List.of(),
                 Map.of(),

@@ -38,6 +38,12 @@ replayfix:
       token: ${BITBUCKET_TOKEN:}
       git-executable: ${BITBUCKET_GIT_EXECUTABLE:git}
       timeout: 60s
+      branch-strategy:
+        source-base-branch: ${REPLAYFIX_BRANCH_SOURCE_BASE:master}
+        bugfix-branch-pattern: ${REPLAYFIX_BUGFIX_BRANCH_PATTERN:bugfix/{defectKey}}
+        integration-branch-pattern: ${REPLAYFIX_INTEGRATION_BRANCH_PATTERN:Integration/{environment}/{defectKey}}
+        environment-targets:
+          test2: ${REPLAYFIX_TEST2_TARGET_BRANCH:Integration/test2/FIZZMS-6686}
 
     confluence:
       enabled: ${CONFLUENCE_ENABLED:false}

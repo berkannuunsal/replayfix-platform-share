@@ -6,12 +6,15 @@ import com.etiya.replayfix.model.BitbucketConnectionTestResult;
 import com.etiya.replayfix.model.BitbucketRepositoryInfo;
 import com.etiya.replayfix.model.IntegrationModels.BitbucketBranchCheckResult;
 import com.etiya.replayfix.model.IntegrationModels.BitbucketBranchCreateResult;
+import com.etiya.replayfix.model.IntegrationModels.BitbucketFileUpdateResult;
 import com.etiya.replayfix.model.IntegrationModels.BitbucketMergeResult;
 import com.etiya.replayfix.model.IntegrationModels.PullRequestResult;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import java.util.ArrayList;
@@ -478,6 +481,139 @@ public class BitbucketHttpClient implements BitbucketClient {
     }
 
     @Override
+    public BitbucketFileUpdateResult updateFile(
+            String projectKey,
+            String repositorySlug,
+            String branchName,
+            String filePath,
+            String content,
+            String commitMessage
+    ) {
+        var cfg = properties.getIntegrations().getBitbucket();
+        if (!cfg.isEnabled()) {
+            return new BitbucketFileUpdateResult(
+                    false,
+                    branchName,
+                    filePath,
+                    "",
+                    List.of("Bitbucket integration is disabled")
+            );
+        }
+        try {
+            String latestCommit = latestCommitForBranch(projectKey, repositorySlug, branchName);
+            MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+            form.add("branch", normalizeBranchName(branchName));
+            form.add("content", content == null ? "" : content);
+            form.add("message", commitMessage == null ? "" : commitMessage);
+            if (!latestCommit.isBlank()) {
+                form.add("sourceCommitId", latestCommit);
+            }
+
+            JsonNode node = webClientBuilder
+                    .baseUrl(cfg.getBaseUrl().replaceAll("/+$", ""))
+                    .build()
+                    .put()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/rest/api/1.0/projects/{project}/repos/{repo}/browse/")
+                            .path(filePath)
+                            .build(projectKey, repositorySlug))
+                    .headers(headers -> headers.addAll(HttpSupport.headers(cfg)))
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .bodyValue(form)
+                    .retrieve()
+                    .onStatus(
+                            status -> status.isError(),
+                            clientResponse -> clientResponse.bodyToMono(String.class)
+                                    .defaultIfEmpty("")
+                                    .map(errorBody -> new IllegalStateException(
+                                            "Bitbucket file update failed. HTTP "
+                                                    + clientResponse.statusCode()
+                                                    + " Response: "
+                                                    + truncate(errorBody, 2_000)
+                                    ))
+                    )
+                    .bodyToMono(JsonNode.class)
+                    .block(cfg.getTimeout());
+
+            String commitSha = "";
+            if (node != null) {
+                commitSha = firstNonBlank(
+                        node.path("commit").path("id").asText(""),
+                        node.path("latestCommit").asText(""),
+                        node.path("id").asText("")
+                );
+            }
+            return new BitbucketFileUpdateResult(
+                    true,
+                    normalizeBranchName(branchName),
+                    filePath,
+                    commitSha,
+                    List.of()
+            );
+        } catch (Exception exception) {
+            return new BitbucketFileUpdateResult(
+                    false,
+                    branchName,
+                    filePath,
+                    "",
+                    List.of(rootCauseMessage(exception))
+            );
+        }
+    }
+
+    @Override
+    public PullRequestResult findOpenPullRequest(
+            String projectKey,
+            String repositorySlug,
+            String sourceBranch,
+            String destinationBranch
+    ) {
+        var cfg = properties.getIntegrations().getBitbucket();
+        if (!cfg.isEnabled()) {
+            return new PullRequestResult("", "", "");
+        }
+        try {
+            JsonNode node = webClientBuilder
+                    .baseUrl(cfg.getBaseUrl().replaceAll("/+$", ""))
+                    .build()
+                    .get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/rest/api/1.0/projects/{project}/repos/{repo}/pull-requests")
+                            .queryParam("state", "OPEN")
+                            .queryParam("limit", 100)
+                            .build(projectKey, repositorySlug))
+                    .headers(headers -> headers.addAll(HttpSupport.headers(cfg)))
+                    .accept(MediaType.APPLICATION_JSON)
+                    .retrieve()
+                    .bodyToMono(JsonNode.class)
+                    .block(cfg.getTimeout());
+            if (node == null) {
+                return new PullRequestResult("", "", "");
+            }
+            String normalizedSource = normalizeBranchName(sourceBranch);
+            String normalizedTarget = normalizeBranchName(destinationBranch);
+            for (JsonNode pullRequest : node.path("values")) {
+                String fromId = normalizeBranchName(pullRequest.path("fromRef").path("id").asText(""));
+                String fromDisplay = normalizeBranchName(pullRequest.path("fromRef").path("displayId").asText(""));
+                String toId = normalizeBranchName(pullRequest.path("toRef").path("id").asText(""));
+                String toDisplay = normalizeBranchName(pullRequest.path("toRef").path("displayId").asText(""));
+                boolean sourceMatches = normalizedSource.equals(fromId) || normalizedSource.equals(fromDisplay);
+                boolean targetMatches = normalizedTarget.equals(toId) || normalizedTarget.equals(toDisplay);
+                if (sourceMatches && targetMatches) {
+                    return new PullRequestResult(
+                            pullRequest.path("id").asText(""),
+                            pullRequest.path("links").path("self").path(0).path("href").asText(""),
+                            pullRequest.path("title").asText("")
+                    );
+                }
+            }
+            return new PullRequestResult("", "", "");
+        } catch (Exception exception) {
+            return new PullRequestResult("", "", "");
+        }
+    }
+
+    @Override
     public PullRequestResult createPullRequest(
             Target target,
             String sourceBranch,
@@ -583,6 +719,46 @@ public class BitbucketHttpClient implements BitbucketClient {
                 node.path("links").path("self").path(0).path("href").asText(),
                 title
         );
+    }
+
+    private String latestCommitForBranch(
+            String projectKey,
+            String repositorySlug,
+            String branchName
+    ) {
+        BranchLookupDiagnostics diagnostics =
+                new BranchLookupDiagnostics(branchName, normalizeBranchName(branchName));
+        BranchLookupAttempt filtered = filteredBranches(
+                projectKey,
+                repositorySlug,
+                normalizeBranchName(branchName),
+                diagnostics
+        );
+        if (filtered.failed() || filtered.branches() == null) {
+            return "";
+        }
+        String normalized = normalizeBranchName(branchName);
+        for (JsonNode branch : filtered.branches()) {
+            if (branchMatches(branch, normalized)) {
+                return firstNonBlank(
+                        branch.path("latestCommit").asText(""),
+                        branch.path("latestChangeset").asText("")
+                );
+            }
+        }
+        return "";
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return "";
+        }
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return "";
     }
 
     record BranchLookupAttempt(

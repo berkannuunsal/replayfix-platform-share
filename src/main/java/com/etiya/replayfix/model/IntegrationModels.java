@@ -30,4 +30,6 @@ public final class IntegrationModels {
                                               List<String> warnings) {}
     public record BitbucketMergeResult(boolean attempted, boolean succeeded, boolean conflict,
                                        List<String> warnings) {}
+    public record BitbucketFileUpdateResult(boolean updated, String branchName, String filePath, String commitSha,
+                                            List<String> warnings) {}
 }

@@ -49,14 +49,16 @@ class BitbucketBackendDemoPrServiceTest {
         bitbucketClient = mock(BitbucketClient.class);
         gitOperations = mock(BackendDemoPrGitOperations.class);
         properties = new ReplayFixProperties();
-        service = new BitbucketBackendDemoPrService(
-                caseRepository,
-                evidenceRepository,
-                bitbucketClient,
-                gitOperations,
-                properties,
-                new ObjectMapper().findAndRegisterModules()
-        );
+        BitbucketDefectPrFlowService defectPrFlowService =
+                new BitbucketDefectPrFlowService(
+                        caseRepository,
+                        evidenceRepository,
+                        bitbucketClient,
+                        gitOperations,
+                        properties,
+                        new ObjectMapper().findAndRegisterModules()
+                );
+        service = new BitbucketBackendDemoPrService(defectPrFlowService);
         when(caseRepository.findById(caseId)).thenReturn(Optional.of(caseEntity()));
     }
 
@@ -185,7 +187,7 @@ class BitbucketBackendDemoPrServiceTest {
                 eq("Integration/test2/project-10228"),
                 eq(false),
                 eq(false),
-                eq("ControllerBackend/src/test/java/com/company/replayfix/generated/project10228ReplayFixDemoRegressionTest.java"),
+                eq("ControllerBackend/src/test/java/com/company/replayfix/generated/project10228ReplayFixRegressionTest.java"),
                 any(),
                 eq("project-10228: Fix agent category access regression demo")
         )).thenReturn(new BackendDemoPrGitOperations.BackendDemoPrGitResult(
@@ -209,7 +211,7 @@ class BitbucketBackendDemoPrServiceTest {
         )).thenReturn(new PullRequestResult(
                 "77",
                 "https://bitbucket/pr/77",
-                "[DRAFT] ReplayFix project-10228 demo regression test"
+                "[DRAFT] ReplayFix project-10228 fix proposal"
         ));
 
         BitbucketBackendDemoPrResponse response =
@@ -220,7 +222,7 @@ class BitbucketBackendDemoPrServiceTest {
         assertThat(response.integrationCommitSha()).isEqualTo("integration456");
         assertThat(response.pullRequestUrl()).isEqualTo("https://bitbucket/pr/77");
         assertThat(response.title())
-                .isEqualTo("[DRAFT] ReplayFix project-10228 demo regression test");
+                .isEqualTo("[DRAFT] ReplayFix project-10228 fix proposal");
         verify(bitbucketClient).createBranch(
                 "DCE",
                 "backend",
@@ -238,7 +240,7 @@ class BitbucketBackendDemoPrServiceTest {
                 eq("backend"),
                 eq("Integration/test2/project-10228"),
                 eq("test2"),
-                eq("[DRAFT] ReplayFix project-10228 demo regression test"),
+                eq("[DRAFT] ReplayFix project-10228 fix proposal"),
                 any(),
                 eq(List.of())
         );

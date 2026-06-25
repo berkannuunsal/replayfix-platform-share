@@ -5,6 +5,7 @@ import com.etiya.replayfix.model.BitbucketConnectionTestResult;
 import com.etiya.replayfix.model.BitbucketRepositoryInfo;
 import com.etiya.replayfix.model.IntegrationModels.BitbucketBranchCheckResult;
 import com.etiya.replayfix.model.IntegrationModels.BitbucketBranchCreateResult;
+import com.etiya.replayfix.model.IntegrationModels.BitbucketFileUpdateResult;
 import com.etiya.replayfix.model.IntegrationModels.BitbucketMergeResult;
 import com.etiya.replayfix.model.IntegrationModels.PullRequestResult;
 
@@ -35,6 +36,24 @@ public interface BitbucketClient {
             String sourceBranch,
             String targetBranch
     );
+
+    BitbucketFileUpdateResult updateFile(
+            String projectKey,
+            String repositorySlug,
+            String branchName,
+            String filePath,
+            String content,
+            String commitMessage
+    );
+
+    default PullRequestResult findOpenPullRequest(
+            String projectKey,
+            String repositorySlug,
+            String sourceBranch,
+            String destinationBranch
+    ) {
+        return new PullRequestResult("", "", "");
+    }
 
     PullRequestResult createPullRequest(
             Target target,

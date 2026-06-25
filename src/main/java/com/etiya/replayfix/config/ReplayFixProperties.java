@@ -210,6 +210,7 @@ public class ReplayFixProperties {
         private String projectKey = "";
         private String workspace = "";
         private String gitExecutable = "git";
+        private BranchStrategy branchStrategy = new BranchStrategy();
 
         public String getProvider() { return provider; }
         public void setProvider(String provider) { this.provider = provider; }
@@ -219,6 +220,10 @@ public class ReplayFixProperties {
         public void setWorkspace(String workspace) { this.workspace = workspace; }
         public String getGitExecutable() { return gitExecutable; }
         public void setGitExecutable(String gitExecutable) { this.gitExecutable = gitExecutable; }
+        public BranchStrategy getBranchStrategy() { return branchStrategy; }
+        public void setBranchStrategy(BranchStrategy value) {
+            this.branchStrategy = value == null ? new BranchStrategy() : value;
+        }
     }
 
     public static class Ai extends Endpoint {
@@ -272,6 +277,24 @@ public class ReplayFixProperties {
         public void setProject(String value) { this.project = value; }
         public boolean isRealProvisioningEnabled() { return realProvisioningEnabled; }
         public void setRealProvisioningEnabled(boolean value) { this.realProvisioningEnabled = value; }
+    }
+
+    public static class BranchStrategy {
+        private String sourceBaseBranch = "master";
+        private String integrationBranchPattern = "Integration/{environment}/{defectKey}";
+        private String bugfixBranchPattern = "bugfix/{defectKey}";
+        private Map<String, String> environmentTargets = new LinkedHashMap<>();
+
+        public String getSourceBaseBranch() { return sourceBaseBranch; }
+        public void setSourceBaseBranch(String value) { this.sourceBaseBranch = value; }
+        public String getIntegrationBranchPattern() { return integrationBranchPattern; }
+        public void setIntegrationBranchPattern(String value) { this.integrationBranchPattern = value; }
+        public String getBugfixBranchPattern() { return bugfixBranchPattern; }
+        public void setBugfixBranchPattern(String value) { this.bugfixBranchPattern = value; }
+        public Map<String, String> getEnvironmentTargets() { return environmentTargets; }
+        public void setEnvironmentTargets(Map<String, String> value) {
+            this.environmentTargets = value == null ? new LinkedHashMap<>() : value;
+        }
     }
 
     public static class RealActions {

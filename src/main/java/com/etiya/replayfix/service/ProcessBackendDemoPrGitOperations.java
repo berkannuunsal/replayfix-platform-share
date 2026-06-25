@@ -4,7 +4,6 @@ import com.etiya.replayfix.config.ReplayFixProperties;
 import org.springframework.stereotype.Component;
 
 import java.net.URI;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -41,18 +40,20 @@ public class ProcessBackendDemoPrGitOperations
             String commitMessage
     ) {
         Path root = null;
+        Path askPassScript = null;
         try {
             String cloneUrl = cloneUrl(projectKey, repositorySlug);
             if (isBlank(cloneUrl)) {
                 return failure("BITBUCKET_CLONE_URL_NOT_CONFIGURED", "");
             }
             root = Files.createTempDirectory("replayfix-backend-demo-pr-");
+            askPassScript = createAskPassScript(root);
             Path repo = root.resolve(repositorySlug);
-            CommandResult clone = run(root, "git", "clone", cloneUrl, repositorySlug);
+            CommandResult clone = run(root, askPassScript, gitExecutable(), "clone", cloneUrl, repositorySlug);
             if (clone.exitCode() != 0) {
                 return failure("BITBUCKET_REPOSITORY_CLONE_FAILED", clone.output());
             }
-            CommandResult fetch = run(repo, "git", "fetch", "origin");
+            CommandResult fetch = run(repo, askPassScript, gitExecutable(), "fetch", "origin");
             if (fetch.exitCode() != 0) {
                 return failure("BITBUCKET_FETCH_FAILED", fetch.output());
             }
@@ -60,7 +61,7 @@ public class ProcessBackendDemoPrGitOperations
                     ? "origin/" + bugfixBranch
                     : "origin/" + sourceBaseBranch;
             CommandResult bugfixCheckout =
-                    run(repo, "git", "checkout", "-B", bugfixBranch, bugfixStart);
+                    run(repo, askPassScript, gitExecutable(), "checkout", "-B", bugfixBranch, bugfixStart);
             if (bugfixCheckout.exitCode() != 0) {
                 return failure("BITBUCKET_BUGFIX_BRANCH_CHECKOUT_FAILED",
                         bugfixCheckout.output());
@@ -71,17 +72,17 @@ public class ProcessBackendDemoPrGitOperations
             }
             Files.createDirectories(generated.getParent());
             Files.writeString(generated, generatedFileContent, StandardCharsets.UTF_8);
-            CommandResult add = run(repo, "git", "add", generatedFilePath);
+            CommandResult add = run(repo, askPassScript, gitExecutable(), "add", generatedFilePath);
             if (add.exitCode() != 0) {
                 return failure("BITBUCKET_DEMO_FILE_ADD_FAILED", add.output());
             }
-            CommandResult commit = run(repo, "git", "commit", "-m", commitMessage);
+            CommandResult commit = run(repo, askPassScript, gitExecutable(), "commit", "-m", commitMessage);
             if (commit.exitCode() != 0
                     && !commit.output().toLowerCase(Locale.ROOT).contains("nothing to commit")) {
                 return failure("BITBUCKET_DEMO_FILE_COMMIT_FAILED", commit.output());
             }
-            String bugfixCommitSha = head(repo);
-            CommandResult pushBugfix = run(repo, "git", "push", "-u", "origin", bugfixBranch);
+            String bugfixCommitSha = head(repo, askPassScript);
+            CommandResult pushBugfix = run(repo, askPassScript, gitExecutable(), "push", "-u", "origin", bugfixBranch);
             if (pushBugfix.exitCode() != 0) {
                 return failure("BITBUCKET_BUGFIX_BRANCH_PUSH_FAILED", pushBugfix.output());
             }
@@ -90,14 +91,15 @@ public class ProcessBackendDemoPrGitOperations
                     ? "origin/" + integrationBranch
                     : "origin/" + targetBaseBranch;
             CommandResult integrationCheckout =
-                    run(repo, "git", "checkout", "-B", integrationBranch, integrationStart);
+                    run(repo, askPassScript, gitExecutable(), "checkout", "-B", integrationBranch, integrationStart);
             if (integrationCheckout.exitCode() != 0) {
                 return failure("BITBUCKET_INTEGRATION_BRANCH_CHECKOUT_FAILED",
                         integrationCheckout.output());
             }
-            CommandResult cherryPick = run(repo, "git", "cherry-pick", bugfixCommitSha);
+            CommandResult cherryPick = run(repo, askPassScript, gitExecutable(), "cherry-pick", "--no-edit", bugfixCommitSha);
             if (cherryPick.exitCode() != 0) {
-                run(repo, "git", "cherry-pick", "--abort");
+                List<String> conflictedFiles = conflictedFiles(repo, askPassScript);
+                run(repo, askPassScript, gitExecutable(), "cherry-pick", "--abort");
                 boolean conflict = cherryPick.output()
                         .toLowerCase(Locale.ROOT)
                         .contains("conflict");
@@ -108,15 +110,16 @@ public class ProcessBackendDemoPrGitOperations
                         conflict,
                         bugfixCommitSha,
                         "",
+                        conflictedFiles,
                         "",
                         conflict
                                 ? "BITBUCKET_MERGE_CONFLICT_REQUIRES_HUMAN"
                                 : "BITBUCKET_BUGFIX_CHERRY_PICK_FAILED:" + cherryPick.output()
                 );
             }
-            String integrationCommitSha = head(repo);
+            String integrationCommitSha = head(repo, askPassScript);
             CommandResult pushIntegration =
-                    run(repo, "git", "push", "-u", "origin", integrationBranch);
+                    run(repo, askPassScript, gitExecutable(), "push", "-u", "origin", integrationBranch);
             if (pushIntegration.exitCode() != 0) {
                 return failure("BITBUCKET_INTEGRATION_BRANCH_PUSH_FAILED",
                         pushIntegration.output());
@@ -137,13 +140,19 @@ public class ProcessBackendDemoPrGitOperations
                     exception.getClass().getSimpleName()
             );
         } finally {
+            deleteAskPass(askPassScript);
             cleanup(root);
         }
     }
 
-    private String head(Path repo) {
-        CommandResult sha = run(repo, "git", "rev-parse", "HEAD");
+    private String head(Path repo, Path askPassScript) {
+        CommandResult sha = run(repo, askPassScript, gitExecutable(), "rev-parse", "HEAD");
         return sha.exitCode() == 0 ? sha.output().trim() : "";
+    }
+
+    private String gitExecutable() {
+        String configured = properties.getIntegrations().getBitbucket().getGitExecutable();
+        return isBlank(configured) ? "git" : configured;
     }
 
     private String cloneUrl(String projectKey, String repositorySlug) {
@@ -160,44 +169,32 @@ public class ProcessBackendDemoPrGitOperations
                 + "/"
                 + repositorySlug
                 + ".git";
-        String username = properties.getIntegrations().getBitbucket().getUsername();
-        String token = properties.getIntegrations().getBitbucket().getToken();
-        if (isBlank(username) || isBlank(token)) {
-            return url;
-        }
-        try {
-            URI uri = URI.create(url);
-            return new URI(
-                    uri.getScheme(),
-                    encode(username) + ":" + encode(token),
-                    uri.getHost(),
-                    uri.getPort(),
-                    uri.getPath(),
-                    uri.getQuery(),
-                    uri.getFragment()
-            ).toString();
-        } catch (Exception exception) {
-            return url;
-        }
+        return sanitize(url);
     }
 
-    private String encode(String value) {
-        return URLEncoder.encode(value, StandardCharsets.UTF_8);
-    }
-
-    private CommandResult run(Path directory, String... command) {
+    private CommandResult run(Path directory, Path askPassScript, String... command) {
         try {
-            Process process = new ProcessBuilder(command)
+            ProcessBuilder builder = new ProcessBuilder(command)
                     .directory(directory.toFile())
-                    .redirectErrorStream(true)
-                    .start();
+                    .redirectErrorStream(true);
+            builder.environment().put("GIT_TERMINAL_PROMPT", "0");
+            builder.environment().put("GIT_EDITOR", "true");
+            builder.environment().put("GIT_MERGE_AUTOEDIT", "no");
+            if (askPassScript != null) {
+                builder.environment().put("GIT_ASKPASS", askPassScript.toString());
+            }
+            builder.environment().put("REPLAYFIX_GIT_USERNAME",
+                    nullToBlank(properties.getIntegrations().getBitbucket().getUsername()));
+            builder.environment().put("REPLAYFIX_GIT_TOKEN",
+                    nullToBlank(properties.getIntegrations().getBitbucket().getToken()));
+            Process process = builder.start();
             boolean finished = process.waitFor(
                     TIMEOUT.toSeconds(),
                     TimeUnit.SECONDS
             );
             if (!finished) {
                 process.destroyForcibly();
-                return new CommandResult(124, "COMMAND_TIMEOUT");
+                return new CommandResult(124, "BITBUCKET_GIT_OPERATION_TIMEOUT");
             }
             String output = new String(
                     process.getInputStream().readAllBytes(),
@@ -217,9 +214,119 @@ public class ProcessBackendDemoPrGitOperations
                 false,
                 "",
                 "",
-                "",
+                credentialDiagnostics(),
                 code + (isBlank(output) ? "" : ":" + sanitize(output))
         );
+    }
+
+    private List<String> conflictedFiles(Path repo, Path askPassScript) {
+        CommandResult result = run(
+                repo,
+                askPassScript,
+                gitExecutable(),
+                "diff",
+                "--name-only",
+                "--diff-filter=U"
+        );
+        if (result.exitCode() != 0 || isBlank(result.output())) {
+            return List.of();
+        }
+        return result.output().lines()
+                .map(String::trim)
+                .filter(value -> !isBlank(value))
+                .map(this::sanitize)
+                .toList();
+    }
+
+    private Path createAskPassScript(Path directory) throws Exception {
+        Files.createDirectories(directory);
+        boolean windows = System.getProperty("os.name", "")
+                .toLowerCase(Locale.ROOT)
+                .contains("win");
+        Path script = Files.createTempFile(
+                directory,
+                "replayfix-git-askpass-",
+                windows ? ".cmd" : ".sh"
+        );
+        if (windows) {
+            Files.writeString(
+                    script,
+                    """
+                            @echo off
+                            echo %1 | findstr /I "Username" >nul
+                            if %errorlevel%==0 (
+                              echo %REPLAYFIX_GIT_USERNAME%
+                            ) else (
+                              echo %REPLAYFIX_GIT_TOKEN%
+                            )
+                            """,
+                    StandardCharsets.UTF_8
+            );
+        } else {
+            Files.writeString(
+                    script,
+                    """
+                            #!/bin/sh
+                            case "$1" in
+                            *Username*|*username*)
+                            printf '%s\\n' "$REPLAYFIX_GIT_USERNAME"
+                            ;;
+                            *)
+                            printf '%s\\n' "$REPLAYFIX_GIT_TOKEN"
+                            ;;
+                            esac
+                            """,
+                    StandardCharsets.UTF_8
+            );
+        }
+        script.toFile().setExecutable(true);
+        return script;
+    }
+
+    private void deleteAskPass(Path askPassScript) {
+        if (askPassScript == null) {
+            return;
+        }
+        try {
+            Files.deleteIfExists(askPassScript);
+        } catch (Exception ignored) {
+            // Best-effort temp cleanup only.
+        }
+    }
+
+    private String credentialDiagnostics() {
+        String baseUrl = properties.getIntegrations().getBitbucket().getBaseUrl();
+        String username = properties.getIntegrations().getBitbucket().getUsername();
+        String token = properties.getIntegrations().getBitbucket().getToken();
+        return "BITBUCKET_GIT_CREDENTIAL_DIAGNOSTICS"
+                + "|bitbucketBaseUrlConfigured=" + !isBlank(baseUrl)
+                + "|bitbucketUsernameConfigured=" + !isBlank(username)
+                + "|bitbucketTokenConfigured=" + !isBlank(token)
+                + "|effectiveUsernameMasked=" + maskUsername(username)
+                + "|gitCloneHost=" + cloneHost(baseUrl)
+                + "|credentialSource=BITBUCKET_USERNAME/BITBUCKET_TOKEN";
+    }
+
+    private String cloneHost(String baseUrl) {
+        if (isBlank(baseUrl)) {
+            return "";
+        }
+        try {
+            return URI.create(baseUrl).getHost();
+        } catch (Exception exception) {
+            return "";
+        }
+    }
+
+    private String maskUsername(String username) {
+        if (isBlank(username)) {
+            return "";
+        }
+        int at = username.indexOf('@');
+        if (at > 0) {
+            return username.charAt(0) + "****" + username.substring(at);
+        }
+        return username.charAt(0) + "****";
     }
 
     private String sanitize(String value) {
@@ -235,6 +342,8 @@ public class ProcessBackendDemoPrGitOperations
             }
         }
         return sanitized
+                .replaceAll("https://[^\\s/@:]+:[^\\s/@]+@", "https://[redacted]@")
+                .replaceAll("https://[^\\s']+@", "https://[redacted]@")
                 .replaceAll("(?i)authorization", "[redacted]")
                 .replaceAll("(?i)cookie", "[redacted]")
                 .replaceAll("(?i)password", "[redacted]")
@@ -264,6 +373,10 @@ public class ProcessBackendDemoPrGitOperations
 
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    private String nullToBlank(String value) {
+        return value == null ? "" : value;
     }
 
     private record CommandResult(int exitCode, String output) {
