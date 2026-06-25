@@ -12,6 +12,8 @@ import com.etiya.replayfix.api.dto.BitbucketWorkspacePushResponse;
 import com.etiya.replayfix.api.dto.DefectPrTargetedChangeResponse;
 import com.etiya.replayfix.api.dto.JiraTestTaskRequest;
 import com.etiya.replayfix.api.dto.JiraTestTaskResponse;
+import com.etiya.replayfix.api.dto.JenkinsValidationResponse;
+import com.etiya.replayfix.api.dto.PrOutcomeSummaryResponse;
 import com.etiya.replayfix.api.dto.PrRuleReviewResponse;
 import com.etiya.replayfix.api.dto.RealActionsSummaryResponse;
 import com.etiya.replayfix.service.BitbucketBackendDemoPrService;
@@ -21,7 +23,9 @@ import com.etiya.replayfix.service.BitbucketPullRequestRealActionService;
 import com.etiya.replayfix.service.BitbucketSingleFileDefectPrFlowService;
 import com.etiya.replayfix.service.BitbucketTest2DemoPrService;
 import com.etiya.replayfix.service.BitbucketWorkspacePushService;
+import com.etiya.replayfix.service.BitbucketPrCommentService;
 import com.etiya.replayfix.service.DefectPrTargetedChangeService;
+import com.etiya.replayfix.service.JenkinsValidationService;
 import com.etiya.replayfix.service.JiraRealActionService;
 import com.etiya.replayfix.service.PrRuleReviewService;
 import com.etiya.replayfix.service.RealActionsSummaryService;
@@ -69,6 +73,10 @@ class RealActionsControllerTest {
                 mock(DefectPrTargetedChangeService.class);
         PrRuleReviewService prRuleReviewService =
                 mock(PrRuleReviewService.class);
+        BitbucketPrCommentService bitbucketPrCommentService =
+                mock(BitbucketPrCommentService.class);
+        JenkinsValidationService jenkinsValidationService =
+                mock(JenkinsValidationService.class);
         RealActionsSummaryService summaryService =
                 mock(RealActionsSummaryService.class);
         when(jiraService.preview(eq(caseId), any()))
@@ -91,6 +99,10 @@ class RealActionsControllerTest {
                 .thenReturn(targetedChangeResponse(caseId));
         when(prRuleReviewService.preview(eq(caseId), any()))
                 .thenReturn(prRuleReviewResponse(caseId));
+        when(bitbucketPrCommentService.preview(eq(caseId), any()))
+                .thenReturn(prOutcomeSummaryResponse(caseId));
+        when(jenkinsValidationService.preview(eq(caseId), any()))
+                .thenReturn(jenkinsValidationResponse(caseId));
         when(summaryService.summary(caseId)).thenReturn(summary(caseId));
         MockMvc mockMvc = MockMvcBuilders
                 .standaloneSetup(new RealActionsController(
@@ -104,6 +116,8 @@ class RealActionsControllerTest {
                         singleFileDefectPrFlowService,
                         targetedChangeService,
                         prRuleReviewService,
+                        bitbucketPrCommentService,
+                        jenkinsValidationService,
                         summaryService
                 ))
                 .build();
@@ -171,6 +185,24 @@ class RealActionsControllerTest {
                 .andExpect(jsonPath("$.repositoryType").value("BACKEND"));
 
         mockMvc.perform(post(
+                        "/api/v1/cases/{caseId}/bitbucket/pr-outcome-summary/preview",
+                        caseId
+                ).contentType("application/json").content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.summaryPreview").value(org.hamcrest.Matchers.containsString("ReplayLab Summary")))
+                .andExpect(jsonPath("$.prCommentCreated").value(false));
+
+        mockMvc.perform(post(
+                        "/api/v1/cases/{caseId}/jenkins/validation/preview",
+                        caseId
+                ).contentType("application/json").content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.jenkinsJobName")
+                        .value("MODERNIZATION.BACKEND_BUILD_12"))
+                .andExpect(jsonPath("$.previewOnly").value(true))
+                .andExpect(jsonPath("$.triggered").value(false));
+
+        mockMvc.perform(post(
                         "/api/v1/cases/{caseId}/bitbucket/defect-pr-flow/single-file/preview",
                         caseId
                 ).contentType("application/json").content("{}"))
@@ -228,6 +260,8 @@ class RealActionsControllerTest {
                         mock(BitbucketSingleFileDefectPrFlowService.class),
                         mock(DefectPrTargetedChangeService.class),
                         mock(PrRuleReviewService.class),
+                        mock(BitbucketPrCommentService.class),
+                        mock(JenkinsValidationService.class),
                         mock(RealActionsSummaryService.class)
                 ))
                 .build();
@@ -474,6 +508,50 @@ class RealActionsControllerTest {
                 List.of(),
                 List.of(),
                 List.of("Continue guarded draft PR creation.")
+        );
+    }
+
+    private PrOutcomeSummaryResponse prOutcomeSummaryResponse(UUID caseId) {
+        return new PrOutcomeSummaryResponse(
+                caseId,
+                "77",
+                "https://bitbucket/pr/77",
+                "## ReplayLab Summary\n\n### Defect",
+                false,
+                "",
+                false,
+                List.of(),
+                List.of("PREVIEW_ONLY_NO_PR_COMMENT_CREATED"),
+                List.of("Create the ReplayLab PR summary comment after guarded approval."),
+                Instant.now()
+        );
+    }
+
+    private JenkinsValidationResponse jenkinsValidationResponse(UUID caseId) {
+        return new JenkinsValidationResponse(
+                caseId,
+                "FIZZMS-10228",
+                true,
+                false,
+                "MODERNIZATION.BACKEND_BUILD_12",
+                "",
+                "",
+                "Integration/test2/FIZZMS-10228",
+                "Integration/test2/FIZZMS-6686",
+                "11397",
+                Map.of(
+                        "BRANCH", "Integration/test2/FIZZMS-10228",
+                        "PR_ID", "11397",
+                        "DEFECT_KEY", "FIZZMS-10228",
+                        "VALIDATION_MODE", "PR_BUILD",
+                        "REPLAYLAB_CASE_ID", caseId.toString(),
+                        "SKIP_DEPLOY", "true"
+                ),
+                List.of("HUMAN_APPROVAL_REQUIRED", "NO_AUTO_DEPLOY"),
+                List.of(),
+                List.of("PREVIEW_ONLY_NO_JENKINS_TRIGGER"),
+                List.of("Review validation plan and trigger only after human approval."),
+                Instant.now()
         );
     }
 

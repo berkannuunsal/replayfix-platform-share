@@ -2,6 +2,7 @@ package com.etiya.replayfix.service;
 
 import com.etiya.replayfix.api.dto.DefectPrTargetedChangeRequest;
 import com.etiya.replayfix.api.dto.DefectPrTargetedChangeResponse;
+import com.etiya.replayfix.api.dto.PrOutcomeSummaryResponse;
 import com.etiya.replayfix.api.dto.PrRuleReviewResponse;
 import com.etiya.replayfix.config.ReplayFixProperties;
 import com.etiya.replayfix.domain.EvidenceEntity;
@@ -40,6 +41,7 @@ class DefectPrTargetedChangeServiceTest {
     private BitbucketClient bitbucketClient;
     private ReplayFixProperties properties;
     private PrRuleReviewService prRuleReviewService;
+    private BitbucketPrCommentService bitbucketPrCommentService;
     private DefectPrTargetedChangeService service;
 
     @BeforeEach
@@ -49,6 +51,7 @@ class DefectPrTargetedChangeServiceTest {
         evidenceRepository = mock(EvidenceRepository.class);
         bitbucketClient = mock(BitbucketClient.class);
         prRuleReviewService = mock(PrRuleReviewService.class);
+        bitbucketPrCommentService = mock(BitbucketPrCommentService.class);
         properties = new ReplayFixProperties();
         properties.getIntegrations().getBitbucket().getBranchStrategy()
                 .getEnvironmentTargets()
@@ -59,13 +62,16 @@ class DefectPrTargetedChangeServiceTest {
                 bitbucketClient,
                 properties,
                 new ObjectMapper().findAndRegisterModules(),
-                prRuleReviewService
+                prRuleReviewService,
+                bitbucketPrCommentService
         );
         when(caseRepository.findById(caseId)).thenReturn(Optional.of(caseEntity()));
         when(prRuleReviewService.reviewPlannedChange(
                 any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
                 any(), any(), any(), any(), any(), any()
         )).thenReturn(preflightAccept());
+        when(bitbucketPrCommentService.comment(any(), any()))
+                .thenReturn(summaryComment(true));
     }
 
     @Test
@@ -187,6 +193,8 @@ class DefectPrTargetedChangeServiceTest {
 
         assertThat(response.created()).isTrue();
         assertThat(response.pullRequestUrl()).isEqualTo("https://bitbucket/pr/77");
+        assertThat(response.prSummaryCommentCreated()).isTrue();
+        assertThat(response.prSummaryPreview()).contains("## ReplayLab Summary");
         assertThat(response.commitMessage()).isEqualTo("CRM-123: Safe summary");
         verify(bitbucketClient).createBranch("DCE", "backend", "bugfix/CRM-123", "master");
         verify(bitbucketClient).createBranch(
@@ -202,6 +210,7 @@ class DefectPrTargetedChangeServiceTest {
                 eq("DCE"), eq("backend"), eq("Integration/test2/CRM-123"),
                 any(), any(), eq("CRM-123: Safe summary"));
         verify(bitbucketClient, never()).mergeBranches(any(), any(), any(), any());
+        verify(bitbucketPrCommentService).comment(eq(caseId), any());
         verify(evidenceRepository).save(any(EvidenceEntity.class));
     }
 
@@ -225,6 +234,7 @@ class DefectPrTargetedChangeServiceTest {
         verify(bitbucketClient, never()).createBranch(any(), any(), any(), any());
         verify(bitbucketClient, never()).updateFile(any(), any(), any(), any(), any(), any());
         verify(bitbucketClient, never()).createPullRequest(any(), any(), any(), any(), any(), any(), any());
+        verify(bitbucketPrCommentService, never()).comment(any(), any());
     }
 
     @Test
@@ -255,6 +265,7 @@ class DefectPrTargetedChangeServiceTest {
         assertThat(response.warnings())
                 .contains("Use multipart/form-data or form-url-encoded Bitbucket file update request.");
         verify(bitbucketClient, never()).createPullRequest(any(), any(), any(), any(), any(), any(), any());
+        verify(bitbucketPrCommentService, never()).comment(any(), any());
     }
 
     @Test
@@ -302,7 +313,34 @@ class DefectPrTargetedChangeServiceTest {
         assertThat(response.pullRequestUrl()).isEqualTo("https://bitbucket/pr/99");
         assertThat(response.warnings())
                 .contains("BITBUCKET_PULL_REQUEST_ALREADY_EXISTS_REUSED");
+        assertThat(response.prSummaryCommentCreated()).isTrue();
         verify(bitbucketClient, never()).createPullRequest(any(), any(), any(), any(), any(), any(), any());
+        verify(bitbucketPrCommentService).comment(eq(caseId), any());
+    }
+
+    @Test
+    void summaryCommentFailureDoesNotFailCreatedPr() {
+        enableRealActions();
+        mockBranchExists("master", true);
+        mockBranchExists("Integration/test2/FIZZMS-6686", true);
+        mockBranchExists("bugfix/CRM-123", true);
+        mockBranchExists("Integration/test2/CRM-123", true);
+        when(bitbucketClient.updateFile(any(), any(), any(), any(), any(), any()))
+                .thenReturn(new BitbucketFileUpdateResult(
+                        true, "branch", "file", "commit123", List.of()));
+        when(bitbucketClient.createPullRequest(any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(new PullRequestResult(
+                        "77", "https://bitbucket/pr/77",
+                        "[DRAFT] ReplayFix CRM-123 fix proposal"));
+        when(bitbucketPrCommentService.comment(any(), any()))
+                .thenReturn(summaryComment(false));
+
+        DefectPrTargetedChangeResponse response =
+                service.create(caseId, request("CRM-123", true, true));
+
+        assertThat(response.created()).isTrue();
+        assertThat(response.prSummaryCommentCreated()).isFalse();
+        assertThat(response.warnings()).contains("BITBUCKET_PR_SUMMARY_COMMENT_FAILED");
     }
 
     @Test
@@ -376,6 +414,22 @@ class DefectPrTargetedChangeServiceTest {
                 List.of("PR_RULE_REVIEW_BLOCKED"),
                 List.of(),
                 List.of("Fix rule violation R-016 before creating PR.")
+        );
+    }
+
+    private PrOutcomeSummaryResponse summaryComment(boolean created) {
+        return new PrOutcomeSummaryResponse(
+                caseId,
+                created ? "77" : "",
+                created ? "https://bitbucket/pr/77" : "",
+                "## ReplayLab Summary\n\n### Defect\n\n- Defect: CRM-123",
+                created,
+                created ? "https://bitbucket/pr/77/comments/1" : "",
+                false,
+                List.of(),
+                created ? List.of() : List.of("BITBUCKET_PR_SUMMARY_COMMENT_FAILED"),
+                List.of("Review the ReplayLab summary comment on the draft PR."),
+                java.time.Instant.now()
         );
     }
 

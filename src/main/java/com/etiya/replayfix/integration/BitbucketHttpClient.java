@@ -8,6 +8,7 @@ import com.etiya.replayfix.model.IntegrationModels.BitbucketBranchCheckResult;
 import com.etiya.replayfix.model.IntegrationModels.BitbucketBranchCreateResult;
 import com.etiya.replayfix.model.IntegrationModels.BitbucketFileUpdateResult;
 import com.etiya.replayfix.model.IntegrationModels.BitbucketMergeResult;
+import com.etiya.replayfix.model.IntegrationModels.PullRequestCommentResult;
 import com.etiya.replayfix.model.IntegrationModels.PullRequestResult;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.http.HttpStatusCode;
@@ -752,6 +753,59 @@ public class BitbucketHttpClient implements BitbucketClient {
                 node.path("links").path("self").path(0).path("href").asText(),
                 title
         );
+    }
+
+    @Override
+    public PullRequestCommentResult addPullRequestComment(
+            String projectKey,
+            String repositorySlug,
+            String pullRequestId,
+            String text
+    ) {
+        var cfg = properties.getIntegrations().getBitbucket();
+        if (!cfg.isEnabled()) {
+            return new PullRequestCommentResult(
+                    false, "", "", List.of("Bitbucket integration is disabled"));
+        }
+        try {
+            Map<String, Object> body = Map.of("text", safeBitbucketMessage(text));
+            JsonNode node = webClientBuilder
+                    .baseUrl(cfg.getBaseUrl().replaceAll("/+$", ""))
+                    .build()
+                    .post()
+                    .uri("/rest/api/1.0/projects/{project}/repos/{repo}/pull-requests/{prId}/comments",
+                            projectKey, repositorySlug, pullRequestId)
+                    .headers(headers -> headers.addAll(HttpSupport.headers(cfg)))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(body)
+                    .retrieve()
+                    .onStatus(
+                            status -> status.isError(),
+                            clientResponse -> clientResponse.bodyToMono(String.class)
+                                    .defaultIfEmpty("")
+                                    .map(errorBody -> new IllegalStateException(
+                                            "Bitbucket PR comment failed. HTTP "
+                                                    + clientResponse.statusCode().value()
+                                                    + " Response: "
+                                                    + truncate(safeBitbucketMessage(errorBody), 2_000)
+                                    ))
+                    )
+                    .bodyToMono(JsonNode.class)
+                    .block(cfg.getTimeout());
+            String id = node == null ? "" : node.path("id").asText("");
+            String url = "";
+            if (node != null) {
+                url = node.path("links").path("self").path(0).path("href").asText("");
+            }
+            return new PullRequestCommentResult(true, id, url, List.of());
+        } catch (Exception exception) {
+            return new PullRequestCommentResult(
+                    false,
+                    "",
+                    "",
+                    List.of(safeBitbucketMessage(rootCauseMessage(exception)))
+            );
+        }
     }
 
     private String latestCommitForBranch(

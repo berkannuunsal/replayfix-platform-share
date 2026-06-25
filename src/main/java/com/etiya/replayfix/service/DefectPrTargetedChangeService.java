@@ -2,6 +2,8 @@ package com.etiya.replayfix.service;
 
 import com.etiya.replayfix.api.dto.DefectPrTargetedChangeRequest;
 import com.etiya.replayfix.api.dto.DefectPrTargetedChangeResponse;
+import com.etiya.replayfix.api.dto.PrOutcomeSummaryRequest;
+import com.etiya.replayfix.api.dto.PrOutcomeSummaryResponse;
 import com.etiya.replayfix.api.dto.PrRuleReviewResponse;
 import com.etiya.replayfix.config.ReplayFixProperties;
 import com.etiya.replayfix.domain.EvidenceEntity;
@@ -45,6 +47,7 @@ public class DefectPrTargetedChangeService {
     private final ReplayFixProperties properties;
     private final ObjectMapper objectMapper;
     private final PrRuleReviewService prRuleReviewService;
+    private final BitbucketPrCommentService bitbucketPrCommentService;
 
     public DefectPrTargetedChangeService(
             ReplayCaseRepository caseRepository,
@@ -52,7 +55,8 @@ public class DefectPrTargetedChangeService {
             BitbucketClient bitbucketClient,
             ReplayFixProperties properties,
             ObjectMapper objectMapper,
-            PrRuleReviewService prRuleReviewService
+            PrRuleReviewService prRuleReviewService,
+            BitbucketPrCommentService bitbucketPrCommentService
     ) {
         this.caseRepository = caseRepository;
         this.evidenceRepository = evidenceRepository;
@@ -60,6 +64,7 @@ public class DefectPrTargetedChangeService {
         this.properties = properties;
         this.objectMapper = objectMapper;
         this.prRuleReviewService = prRuleReviewService;
+        this.bitbucketPrCommentService = bitbucketPrCommentService;
     }
 
     @Transactional(readOnly = true)
@@ -279,6 +284,23 @@ public class DefectPrTargetedChangeService {
             prUrl = created == null ? "" : nullToBlank(created.url());
         }
 
+        PrOutcomeSummaryResponse summary = bitbucketPrCommentService.comment(
+                replayCase.getId(),
+                prOutcomeRequest(
+                        safeRequest,
+                        normalized,
+                        preflight,
+                        bugfixUpdate.commitSha(),
+                        integrationUpdate.commitSha(),
+                        prId,
+                        prUrl
+                )
+        );
+        warnings.addAll(sanitize(summary.warnings()));
+        if (!summary.prCommentCreated()) {
+            warnings.add("BITBUCKET_PR_SUMMARY_COMMENT_FAILED");
+        }
+
         DefectPrTargetedChangeResponse response = response(
                 replayCase,
                 normalized,
@@ -290,7 +312,15 @@ public class DefectPrTargetedChangeService {
                 prUrl,
                 List.of(),
                 unique(warnings),
-                List.of("Review draft PR. Do not merge or trigger Jenkins automatically.")
+                summary.prCommentCreated(),
+                summary.prSummaryCommentUrl(),
+                summary.summaryPreview(),
+                List.of(
+                        "Review draft PR.",
+                        "Trigger Jenkins validation preview.",
+                        "Trigger Jenkins validation only after human approval.",
+                        "Do not merge or deploy automatically."
+                )
         );
         replayCase.setGeneratedBranch(normalized.integrationBranch());
         replayCase.setPullRequestUrl(response.pullRequestUrl());
@@ -411,6 +441,40 @@ public class DefectPrTargetedChangeService {
             List<String> warnings,
             List<String> nextActions
     ) {
+        return response(
+                replayCase,
+                request,
+                created,
+                previewOnly,
+                bugfixCommitSha,
+                integrationCommitSha,
+                pullRequestId,
+                pullRequestUrl,
+                blockers,
+                warnings,
+                false,
+                "",
+                "",
+                nextActions
+        );
+    }
+
+    private DefectPrTargetedChangeResponse response(
+            ReplayCaseEntity replayCase,
+            NormalizedTargetedChange request,
+            boolean created,
+            boolean previewOnly,
+            String bugfixCommitSha,
+            String integrationCommitSha,
+            String pullRequestId,
+            String pullRequestUrl,
+            List<String> blockers,
+            List<String> warnings,
+            boolean prSummaryCommentCreated,
+            String prSummaryCommentUrl,
+            String prSummaryPreview,
+            List<String> nextActions
+    ) {
         return new DefectPrTargetedChangeResponse(
                 replayCase.getId(),
                 request.defectKey(),
@@ -436,8 +500,44 @@ public class DefectPrTargetedChangeService {
                 unique(blockers),
                 sanitize(unique(warnings)),
                 branchLookupDiagnostics(warnings),
+                prSummaryCommentCreated,
+                nullToBlank(prSummaryCommentUrl),
+                nullToBlank(prSummaryPreview),
                 unique(nextActions),
                 Instant.now()
+        );
+    }
+
+    private PrOutcomeSummaryRequest prOutcomeRequest(
+            DefectPrTargetedChangeRequest request,
+            NormalizedTargetedChange normalized,
+            PrRuleReviewResponse preflight,
+            String bugfixCommitSha,
+            String integrationCommitSha,
+            String pullRequestId,
+            String pullRequestUrl
+    ) {
+        return new PrOutcomeSummaryRequest(
+                request.requestedBy(),
+                normalized.projectKey(),
+                normalized.repositorySlug(),
+                pullRequestId,
+                pullRequestUrl,
+                normalized.defectKey(),
+                normalized.defectSummary(),
+                normalized.sourceBaseBranch(),
+                normalized.targetBaseBranch(),
+                normalized.bugfixBranch(),
+                normalized.integrationBranch(),
+                normalized.changeMode(),
+                normalized.filePath(),
+                nullToBlank(bugfixCommitSha),
+                nullToBlank(integrationCommitSha),
+                preflight.reviewStatus(),
+                preflight.blockerViolationCount(),
+                preflight.rulesLoaded(),
+                true,
+                true
         );
     }
 

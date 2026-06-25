@@ -100,6 +100,7 @@ replayfix:
     bitbucket-merge-enabled: ${REPLAYFIX_BITBUCKET_MERGE_ENABLED:false}
     bitbucket-pr-create-enabled: ${REPLAYFIX_BITBUCKET_PR_CREATE_ENABLED:false}
     bitbucket-push-enabled: ${REPLAYFIX_BITBUCKET_PUSH_ENABLED:false}
+    jenkins-validation-trigger-enabled: ${REPLAYFIX_JENKINS_VALIDATION_TRIGGER_ENABLED:false}
     require-confirmation: true
     require-guardrails-accepted: true
     draft-pr-title-prefix: "[DRAFT] ReplayFix"
@@ -113,6 +114,12 @@ replayfix:
       - test2
       - preprod
       - prod
+  jenkins:
+    validation:
+      backend:
+        default-job-name: ${REPLAYFIX_BACKEND_VALIDATION_JOB:MODERNIZATION.BACKEND_BUILD_12}
+      frontend:
+        default-job-name: ${REPLAYFIX_FRONTEND_VALIDATION_JOB:}
   notifications:
     webhook:
       enabled: ${REPLAYFIX_NOTIFICATION_WEBHOOK_ENABLED:false}

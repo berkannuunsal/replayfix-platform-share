@@ -2,6 +2,9 @@ package com.etiya.replayfix.integration;
 
 import com.etiya.replayfix.config.ReplayFixProperties;
 import com.etiya.replayfix.model.IntegrationModels.BuildResult;
+import com.etiya.replayfix.model.IntegrationModels.JenkinsBuildStatus;
+import com.etiya.replayfix.model.IntegrationModels.JenkinsQueueItem;
+import com.etiya.replayfix.model.IntegrationModels.JenkinsTriggerResult;
 import com.etiya.replayfix.model.JenkinsBuildSnapshot;
 import com.etiya.replayfix.model.JenkinsConnectionTestResult;
 import com.etiya.replayfix.model.JenkinsJobSnapshot;
@@ -130,6 +133,152 @@ public class JenkinsHttpClient implements JenkinsClient {
         }
 
         return new BuildResult("TIMEOUT", buildUrl, 0, 0, "{}");
+    }
+
+    @Override
+    public JenkinsTriggerResult triggerValidation(
+            String jobName,
+            Map<String, String> parameters
+    ) {
+        var cfg = properties.getIntegrations().getJenkins();
+        if (!cfg.isEnabled()) {
+            return new JenkinsTriggerResult(
+                    false,
+                    "",
+                    "",
+                    "JENKINS_INTEGRATION_DISABLED",
+                    List.of("Jenkins integration is disabled.")
+            );
+        }
+        if (jobName == null || jobName.isBlank()) {
+            return new JenkinsTriggerResult(
+                    false,
+                    "",
+                    "",
+                    "JENKINS_VALIDATION_JOB_NOT_CONFIGURED",
+                    List.of("Jenkins validation job is not configured.")
+            );
+        }
+        try {
+            UriComponentsBuilder uri = UriComponentsBuilder
+                    .fromPath("/job/" + jobName + "/buildWithParameters");
+            parameters.forEach(uri::queryParam);
+
+            var response = webClientBuilder
+                    .baseUrl(cfg.getBaseUrl())
+                    .build()
+                    .post()
+                    .uri(uri.build().toUriString())
+                    .headers(h -> h.addAll(HttpSupport.headers(cfg)))
+                    .retrieve()
+                    .toBodilessEntity()
+                    .block(cfg.getTimeout());
+            String queueUrl = response == null
+                    || response.getHeaders().getLocation() == null
+                    ? ""
+                    : response.getHeaders().getLocation().toString();
+            return new JenkinsTriggerResult(
+                    true,
+                    queueUrl,
+                    "",
+                    "QUEUED",
+                    List.of()
+            );
+        } catch (Exception exception) {
+            return new JenkinsTriggerResult(
+                    false,
+                    "",
+                    "",
+                    "FAILED",
+                    List.of(safeJenkinsMessage(rootCauseMessage(exception)))
+            );
+        }
+    }
+
+    @Override
+    public JenkinsQueueItem getQueueItem(String queueUrl) {
+        if (queueUrl == null || queueUrl.isBlank()) {
+            return new JenkinsQueueItem("", false, "", "", List.of("JENKINS_QUEUE_URL_REQUIRED"));
+        }
+        try {
+            JsonNode node = getJson(normalizeUrl(queueUrl) + "/api/json");
+            JsonNode executable = node.path("executable");
+            String buildUrl = executable.path("url").asText("");
+            String buildNumber = executable.path("number").isMissingNode()
+                    ? ""
+                    : executable.path("number").asText("");
+            return new JenkinsQueueItem(
+                    safeJenkinsMessage(queueUrl),
+                    !buildUrl.isBlank(),
+                    safeJenkinsMessage(buildUrl),
+                    buildNumber,
+                    List.of()
+            );
+        } catch (Exception exception) {
+            return new JenkinsQueueItem(
+                    safeJenkinsMessage(queueUrl),
+                    false,
+                    "",
+                    "",
+                    List.of(safeJenkinsMessage(rootCauseMessage(exception)))
+            );
+        }
+    }
+
+    @Override
+    public JenkinsBuildStatus getBuildStatus(String jobName, String buildNumber) {
+        var cfg = properties.getIntegrations().getJenkins();
+        if (jobName == null || jobName.isBlank() || buildNumber == null || buildNumber.isBlank()) {
+            return new JenkinsBuildStatus("UNKNOWN", false, safeJenkinsMessage(buildNumber), "",
+                    0, 0, List.of("JENKINS_BUILD_REFERENCE_REQUIRED"));
+        }
+        return getBuildStatusByUrl(normalizeUrl(cfg.getBaseUrl()) + "/job/" + jobName + "/" + buildNumber);
+    }
+
+    @Override
+    public JenkinsBuildStatus getBuildStatusByUrl(String buildUrl) {
+        if (buildUrl == null || buildUrl.isBlank()) {
+            return new JenkinsBuildStatus("UNKNOWN", false, "", "",
+                    0, 0, List.of("JENKINS_BUILD_URL_REQUIRED"));
+        }
+        try {
+            JsonNode node = getJson(normalizeUrl(buildUrl) + "/api/json");
+            boolean building = node.path("building").asBoolean(false);
+            String result = node.path("result").asText("");
+            String status = building ? "RUNNING" : normalizeBuildResult(result);
+            return new JenkinsBuildStatus(
+                    status,
+                    building,
+                    node.path("number").asText(""),
+                    safeJenkinsMessage(node.path("url").asText(buildUrl)),
+                    node.path("duration").asLong(0),
+                    node.path("timestamp").asLong(0),
+                    List.of()
+            );
+        } catch (Exception exception) {
+            return new JenkinsBuildStatus(
+                    "UNKNOWN",
+                    false,
+                    "",
+                    safeJenkinsMessage(buildUrl),
+                    0,
+                    0,
+                    List.of(safeJenkinsMessage(rootCauseMessage(exception)))
+            );
+        }
+    }
+
+    private String normalizeBuildResult(String result) {
+        if (result == null || result.isBlank()) {
+            return "UNKNOWN";
+        }
+        return switch (result.trim().toUpperCase()) {
+            case "SUCCESS" -> "SUCCESS";
+            case "FAILURE", "FAILED" -> "FAILURE";
+            case "UNSTABLE" -> "UNSTABLE";
+            case "ABORTED" -> "ABORTED";
+            default -> "UNKNOWN";
+        };
     }
 
     @Override
@@ -811,6 +960,20 @@ public class JenkinsHttpClient implements JenkinsClient {
         return response == null
                 ? ""
                 : response;
+    }
+
+    private String safeJenkinsMessage(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value
+                .replaceAll("(?i)authorization[^\\s,;]*", "[redacted]")
+                .replaceAll("(?i)bearer[^\\s,;]*", "[redacted]")
+                .replaceAll("(?i)cookie[^\\s,;]*", "[redacted]")
+                .replaceAll("(?i)token[^\\s,;]*", "[redacted]")
+                .replaceAll("(?i)password[^\\s,;]*", "[redacted]")
+                .replaceAll("(?i)secret[^\\s,;]*", "[redacted]")
+                .replaceAll("https?://[^\\s]*@[^\\s]+", "[redacted-url]");
     }
 
     private void sleep(Duration duration) {

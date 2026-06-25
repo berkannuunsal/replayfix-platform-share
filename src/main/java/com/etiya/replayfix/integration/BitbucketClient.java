@@ -7,6 +7,7 @@ import com.etiya.replayfix.model.IntegrationModels.BitbucketBranchCheckResult;
 import com.etiya.replayfix.model.IntegrationModels.BitbucketBranchCreateResult;
 import com.etiya.replayfix.model.IntegrationModels.BitbucketFileUpdateResult;
 import com.etiya.replayfix.model.IntegrationModels.BitbucketMergeResult;
+import com.etiya.replayfix.model.IntegrationModels.PullRequestCommentResult;
 import com.etiya.replayfix.model.IntegrationModels.PullRequestResult;
 
 import java.util.List;
@@ -73,4 +74,13 @@ public interface BitbucketClient {
             String description,
             List<String> reviewers
     );
+
+    default PullRequestCommentResult addPullRequestComment(
+            String projectKey,
+            String repositorySlug,
+            String pullRequestId,
+            String text
+    ) {
+        return new PullRequestCommentResult(false, "", "", List.of("BITBUCKET_PR_COMMENT_NOT_IMPLEMENTED"));
+    }
 }

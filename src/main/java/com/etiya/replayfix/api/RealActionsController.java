@@ -18,8 +18,17 @@ import com.etiya.replayfix.api.dto.DefectPrTargetedChangeRequest;
 import com.etiya.replayfix.api.dto.DefectPrTargetedChangeResponse;
 import com.etiya.replayfix.api.dto.JiraTestTaskRequest;
 import com.etiya.replayfix.api.dto.JiraTestTaskResponse;
+import com.etiya.replayfix.api.dto.JenkinsValidationRequest;
+import com.etiya.replayfix.api.dto.JenkinsValidationResultRefreshRequest;
+import com.etiya.replayfix.api.dto.JenkinsValidationResponse;
+import com.etiya.replayfix.api.dto.JenkinsValidationStatusResponse;
+import com.etiya.replayfix.api.dto.JenkinsValidationSummaryCommentRequest;
+import com.etiya.replayfix.api.dto.JenkinsValidationSummaryRequest;
+import com.etiya.replayfix.api.dto.JenkinsValidationSummaryResponse;
 import com.etiya.replayfix.api.dto.PrRuleReviewRequest;
 import com.etiya.replayfix.api.dto.PrRuleReviewResponse;
+import com.etiya.replayfix.api.dto.PrOutcomeSummaryRequest;
+import com.etiya.replayfix.api.dto.PrOutcomeSummaryResponse;
 import com.etiya.replayfix.api.dto.RealActionsSummaryResponse;
 import com.etiya.replayfix.service.BitbucketBackendDemoPrService;
 import com.etiya.replayfix.service.BitbucketBranchFlowService;
@@ -28,7 +37,9 @@ import com.etiya.replayfix.service.BitbucketPullRequestRealActionService;
 import com.etiya.replayfix.service.BitbucketSingleFileDefectPrFlowService;
 import com.etiya.replayfix.service.BitbucketTest2DemoPrService;
 import com.etiya.replayfix.service.BitbucketWorkspacePushService;
+import com.etiya.replayfix.service.BitbucketPrCommentService;
 import com.etiya.replayfix.service.DefectPrTargetedChangeService;
+import com.etiya.replayfix.service.JenkinsValidationService;
 import com.etiya.replayfix.service.JiraRealActionService;
 import com.etiya.replayfix.service.PrRuleReviewService;
 import com.etiya.replayfix.service.RealActionsSummaryService;
@@ -55,6 +66,8 @@ public class RealActionsController {
     private final BitbucketSingleFileDefectPrFlowService singleFileDefectPrFlowService;
     private final DefectPrTargetedChangeService targetedChangeService;
     private final PrRuleReviewService prRuleReviewService;
+    private final BitbucketPrCommentService bitbucketPrCommentService;
+    private final JenkinsValidationService jenkinsValidationService;
     private final RealActionsSummaryService summaryService;
 
     public RealActionsController(
@@ -68,6 +81,8 @@ public class RealActionsController {
             BitbucketSingleFileDefectPrFlowService singleFileDefectPrFlowService,
             DefectPrTargetedChangeService targetedChangeService,
             PrRuleReviewService prRuleReviewService,
+            BitbucketPrCommentService bitbucketPrCommentService,
+            JenkinsValidationService jenkinsValidationService,
             RealActionsSummaryService summaryService
     ) {
         this.jiraRealActionService = jiraRealActionService;
@@ -80,6 +95,8 @@ public class RealActionsController {
         this.singleFileDefectPrFlowService = singleFileDefectPrFlowService;
         this.targetedChangeService = targetedChangeService;
         this.prRuleReviewService = prRuleReviewService;
+        this.bitbucketPrCommentService = bitbucketPrCommentService;
+        this.jenkinsValidationService = jenkinsValidationService;
         this.summaryService = summaryService;
     }
 
@@ -225,6 +242,69 @@ public class RealActionsController {
             @RequestBody(required = false) PrRuleReviewRequest request
     ) {
         return prRuleReviewService.preview(caseId, request);
+    }
+
+    @PostMapping("/cases/{caseId}/bitbucket/pr-outcome-summary/preview")
+    public PrOutcomeSummaryResponse prOutcomeSummaryPreview(
+            @PathVariable UUID caseId,
+            @RequestBody(required = false) PrOutcomeSummaryRequest request
+    ) {
+        return bitbucketPrCommentService.preview(caseId, request);
+    }
+
+    @PostMapping("/cases/{caseId}/bitbucket/pr-outcome-summary/comment")
+    public PrOutcomeSummaryResponse prOutcomeSummaryComment(
+            @PathVariable UUID caseId,
+            @RequestBody PrOutcomeSummaryRequest request
+    ) {
+        return bitbucketPrCommentService.comment(caseId, request);
+    }
+
+    @PostMapping("/cases/{caseId}/jenkins/validation/preview")
+    public JenkinsValidationResponse jenkinsValidationPreview(
+            @PathVariable UUID caseId,
+            @RequestBody(required = false) JenkinsValidationRequest request
+    ) {
+        return jenkinsValidationService.preview(caseId, request);
+    }
+
+    @PostMapping("/cases/{caseId}/jenkins/validation/trigger")
+    public JenkinsValidationResponse jenkinsValidationTrigger(
+            @PathVariable UUID caseId,
+            @RequestBody JenkinsValidationRequest request
+    ) {
+        return jenkinsValidationService.trigger(caseId, request);
+    }
+
+    @GetMapping("/cases/{caseId}/jenkins/validation/status")
+    public JenkinsValidationStatusResponse jenkinsValidationStatus(
+            @PathVariable UUID caseId
+    ) {
+        return jenkinsValidationService.status(caseId);
+    }
+
+    @PostMapping("/cases/{caseId}/jenkins/validation/result/refresh")
+    public JenkinsValidationStatusResponse jenkinsValidationResultRefresh(
+            @PathVariable UUID caseId,
+            @RequestBody(required = false) JenkinsValidationResultRefreshRequest request
+    ) {
+        return jenkinsValidationService.refresh(caseId, request);
+    }
+
+    @PostMapping("/cases/{caseId}/jenkins/validation/summary/preview")
+    public JenkinsValidationSummaryResponse jenkinsValidationSummaryPreview(
+            @PathVariable UUID caseId,
+            @RequestBody(required = false) JenkinsValidationSummaryRequest request
+    ) {
+        return jenkinsValidationService.summaryPreview(caseId, request);
+    }
+
+    @PostMapping("/cases/{caseId}/jenkins/validation/summary/comment")
+    public JenkinsValidationSummaryResponse jenkinsValidationSummaryComment(
+            @PathVariable UUID caseId,
+            @RequestBody(required = false) JenkinsValidationSummaryCommentRequest request
+    ) {
+        return jenkinsValidationService.summaryComment(caseId, request);
     }
 
     /** @deprecated use /bitbucket/defect-pr-flow/targeted-change/preview */

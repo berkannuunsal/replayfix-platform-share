@@ -21,8 +21,18 @@ public final class IntegrationModels {
     public record GeneratedFile(String path, String content) {}
     public record GenerationResult(List<GeneratedFile> files, String explanation, String rawJson) {}
     public record BuildResult(String status, String buildUrl, int totalTests, int failedTests, String rawJson) {}
+    public record JenkinsTriggerResult(boolean triggered, String queueUrl, String buildUrl,
+                                       String status, List<String> warnings) {}
+    public record JenkinsQueueItem(String queueUrl, boolean executableAvailable,
+                                   String buildUrl, String buildNumber,
+                                   List<String> warnings) {}
+    public record JenkinsBuildStatus(String status, boolean building, String buildNumber,
+                                     String url, long durationMillis,
+                                     long timestampMillis, List<String> warnings) {}
     public record GitPublishResult(String branch, String commitSha, Path workspace) {}
     public record PullRequestResult(String id, String url, String title) {}
+    public record PullRequestCommentResult(boolean created, String commentId, String url,
+                                           List<String> warnings) {}
     public record JiraIssueCreateResult(boolean success, String issueKey, String issueUrl, int httpStatus,
                                         List<String> warnings) {}
     public record BitbucketBranchCheckResult(boolean exists, String branchName, List<String> warnings) {}

@@ -25,6 +25,7 @@ public class ReplayFixProperties {
     private Llm llm = new Llm();
     private ArgoCd argocd = new ArgoCd();
     private RealActions realActions = new RealActions();
+    private JenkinsSettings jenkins = new JenkinsSettings();
     private Demo demo = new Demo();
     private DbEvidence dbEvidence = new DbEvidence();
     private Map<String, Target> targets = new LinkedHashMap<>();
@@ -56,6 +57,10 @@ public class ReplayFixProperties {
     public RealActions getRealActions() { return realActions; }
     public void setRealActions(RealActions value) {
         this.realActions = value == null ? new RealActions() : value;
+    }
+    public JenkinsSettings getJenkins() { return jenkins; }
+    public void setJenkins(JenkinsSettings value) {
+        this.jenkins = value == null ? new JenkinsSettings() : value;
     }
     public Demo getDemo() { return demo; }
     public void setDemo(Demo demo) { this.demo = demo; }
@@ -279,6 +284,49 @@ public class ReplayFixProperties {
         public void setRealProvisioningEnabled(boolean value) { this.realProvisioningEnabled = value; }
     }
 
+    public static class JenkinsSettings {
+        private JenkinsValidation validation = new JenkinsValidation();
+
+        public JenkinsValidation getValidation() { return validation; }
+        public void setValidation(JenkinsValidation value) {
+            this.validation = value == null ? new JenkinsValidation() : value;
+        }
+    }
+
+    public static class JenkinsValidation {
+        private JenkinsValidationTarget backend = new JenkinsValidationTarget(
+                "MODERNIZATION.BACKEND_BUILD_12"
+        );
+        private JenkinsValidationTarget frontend = new JenkinsValidationTarget("");
+
+        public JenkinsValidationTarget getBackend() { return backend; }
+        public void setBackend(JenkinsValidationTarget value) {
+            this.backend = value == null
+                    ? new JenkinsValidationTarget("MODERNIZATION.BACKEND_BUILD_12")
+                    : value;
+        }
+        public JenkinsValidationTarget getFrontend() { return frontend; }
+        public void setFrontend(JenkinsValidationTarget value) {
+            this.frontend = value == null ? new JenkinsValidationTarget("") : value;
+        }
+    }
+
+    public static class JenkinsValidationTarget {
+        private String defaultJobName = "";
+
+        public JenkinsValidationTarget() {
+        }
+
+        public JenkinsValidationTarget(String defaultJobName) {
+            this.defaultJobName = defaultJobName == null ? "" : defaultJobName;
+        }
+
+        public String getDefaultJobName() { return defaultJobName; }
+        public void setDefaultJobName(String value) {
+            this.defaultJobName = value == null ? "" : value;
+        }
+    }
+
     public static class BranchStrategy {
         private String sourceBaseBranch = "master";
         private String integrationBranchPattern = "Integration/{environment}/{defectKey}";
@@ -304,6 +352,7 @@ public class ReplayFixProperties {
         private boolean bitbucketMergeEnabled;
         private boolean bitbucketPrCreateEnabled;
         private boolean bitbucketPushEnabled;
+        private boolean jenkinsValidationTriggerEnabled;
         private boolean requireConfirmation = true;
         private boolean requireGuardrailsAccepted = true;
         private String draftPrTitlePrefix = "[DRAFT] ReplayFix";
@@ -328,6 +377,10 @@ public class ReplayFixProperties {
         public void setBitbucketPrCreateEnabled(boolean value) { this.bitbucketPrCreateEnabled = value; }
         public boolean isBitbucketPushEnabled() { return bitbucketPushEnabled; }
         public void setBitbucketPushEnabled(boolean value) { this.bitbucketPushEnabled = value; }
+        public boolean isJenkinsValidationTriggerEnabled() { return jenkinsValidationTriggerEnabled; }
+        public void setJenkinsValidationTriggerEnabled(boolean value) {
+            this.jenkinsValidationTriggerEnabled = value;
+        }
         public boolean isRequireConfirmation() { return requireConfirmation; }
         public void setRequireConfirmation(boolean value) { this.requireConfirmation = value; }
         public boolean isRequireGuardrailsAccepted() { return requireGuardrailsAccepted; }
