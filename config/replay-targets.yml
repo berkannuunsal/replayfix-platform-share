@@ -1,6 +1,6 @@
 # Per-application replay definitions.
 
-replayfix:
+replaylab:
   targets:
     sample-order-service:
       repository: sample-order-service
@@ -15,7 +15,7 @@ replayfix:
       datasource-password-env: SPRING_DATASOURCE_PASSWORD
 
       environment:
-        SPRING_PROFILES_ACTIVE: replayfix
+        SPRING_PROFILES_ACTIVE: replaylab
         LOGGING_LEVEL_ROOT: INFO
 
       dependencies:
@@ -35,7 +35,7 @@ replayfix:
         request-file: ./replay-packages/sample-null-order/request.json
         headers:
           Content-Type: application/json
-          X-ReplayFix-Case: sample-null-order
+          X-ReplayLab-Case: sample-null-order
         expected-status: 500
         expected-body-regex: ".*"
         expected-log-regex: "(NullPointerException|IllegalStateException|ORDER_VALIDATION_ERROR)"
@@ -43,7 +43,7 @@ replayfix:
 
       git:
         source-branch: main
-        branch-prefix: replayfix/
+        branch-prefix: replaylab/
         reviewer-users: []
 
     backend:
@@ -53,7 +53,7 @@ replayfix:
 
       git:
         source-branch: test2
-        branch-prefix: replayfix/
+        branch-prefix: replaylab/
         reviewer-users: []
 
     bss-monolith:

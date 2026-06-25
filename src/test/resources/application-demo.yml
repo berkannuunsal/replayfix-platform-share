@@ -1,0 +1,7 @@
+replaylab:
+  demo:
+    enabled: true
+    allow-reset: true
+  notifications:
+    webhook:
+      secret: demo-secret-key

@@ -1,0 +1,57 @@
+openapi: 3.0.3
+info:
+  title: ReplayLab API
+  version: 0.1.0
+paths:
+  /api/v1/cases:
+    get:
+      summary: List replay cases
+      responses:
+        "200":
+          description: OK
+    post:
+      summary: Create a replay case
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - jiraKey
+                - targetKey
+              properties:
+                jiraKey:
+                  type: string
+                targetKey:
+                  type: string
+                orderId:
+                  type: string
+                traceId:
+                  type: string
+                incidentTime:
+                  type: string
+                  format: date-time
+                sourceBranch:
+                  type: string
+                sourceCommit:
+                  type: string
+                imageTag:
+                  type: string
+      responses:
+        "201":
+          description: Created
+
+  /api/v1/cases/{id}/run-all:
+    post:
+      summary: Run the complete ReplayLab workflow
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Workflow result

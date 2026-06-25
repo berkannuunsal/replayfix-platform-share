@@ -1,0 +1,34 @@
+image:
+  repository: registry.internal.example/replaylab-platform
+  tag: 0.1.0
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+imagePullSecrets: []
+
+service:
+  port: 8088
+
+database:
+  url: jdbc:postgresql://replaylab-control-db:5432/replaylab
+  usernameSecret:
+    name: replaylab-control-db
+    key: username
+  passwordSecret:
+    name: replaylab-control-db
+    key: password
+
+configMapName: replaylab-config
+secretName: replaylab-integrations
+
+serviceAccount:
+  create: true
+  name: replaylab
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: "1"
+    memory: 2Gi

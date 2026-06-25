@@ -1,6 +1,6 @@
 spring:
   application:
-    name: replayfix-platform
+    name: replaylab-platform
   config:
     import:
       - optional:file:./config/external-services.yml
@@ -9,9 +9,9 @@ spring:
       - optional:file:./config/replay-components.yml
       - optional:file:./config/log-parsers.yml
   datasource:
-    url: ${REPLAYFIX_DB_URL:jdbc:postgresql://localhost:5433/replayfix}
-    username: ${REPLAYFIX_DB_USERNAME:replayfix}
-    password: ${REPLAYFIX_DB_PASSWORD:replayfix}
+    url: ${REPLAYLAB_DB_URL:jdbc:postgresql://localhost:5433/replaylab}
+    username: ${REPLAYLAB_DB_USERNAME:replaylab}
+    password: ${REPLAYLAB_DB_PASSWORD:replaylab}
   jpa:
     open-in-view: false
     hibernate:
@@ -35,33 +35,33 @@ management:
       probes:
         enabled: true
 
-replayfix:
-  mode: ${REPLAYFIX_MODE:DRY_RUN}
-  workspace-dir: ${REPLAYFIX_WORKSPACE:./work}
-  namespace-prefix: ${REPLAYFIX_NAMESPACE_PREFIX:replayfix}
-  cleanup-after: ${REPLAYFIX_CLEANUP_AFTER:6h}
+replaylab:
+  mode: ${REPLAYLAB_MODE:DRY_RUN}
+  workspace-dir: ${REPLAYLAB_WORKSPACE:./work}
+  namespace-prefix: ${REPLAYLAB_NAMESPACE_PREFIX:replaylab}
+  cleanup-after: ${REPLAYLAB_CLEANUP_AFTER:6h}
   demo:
-    enabled: ${REPLAYFIX_DEMO_ENABLED:false}
-    allow-reset: ${REPLAYFIX_DEMO_ALLOW_RESET:false}
+    enabled: ${REPLAYLAB_DEMO_ENABLED:false}
+    allow-reset: ${REPLAYLAB_DEMO_ALLOW_RESET:false}
   ai:
-    enabled: ${REPLAYFIX_AI_ENABLED:false}
-    provider: ${REPLAYFIX_AI_PROVIDER:DISABLED}
-    model: ${REPLAYFIX_AI_MODEL:mock-replayfix-v1}
-    max-input-chars: ${REPLAYFIX_AI_MAX_INPUT_CHARS:120000}
-    max-output-chars: ${REPLAYFIX_AI_MAX_OUTPUT_CHARS:30000}
-    temperature: ${REPLAYFIX_AI_TEMPERATURE:0.1}
-    include-source-code: ${REPLAYFIX_AI_INCLUDE_SOURCE_CODE:false}
+    enabled: ${REPLAYLAB_AI_ENABLED:false}
+    provider: ${REPLAYLAB_AI_PROVIDER:DISABLED}
+    model: ${REPLAYLAB_AI_MODEL:mock-replaylab-v1}
+    max-input-chars: ${REPLAYLAB_AI_MAX_INPUT_CHARS:120000}
+    max-output-chars: ${REPLAYLAB_AI_MAX_OUTPUT_CHARS:30000}
+    temperature: ${REPLAYLAB_AI_TEMPERATURE:0.1}
+    include-source-code: ${REPLAYLAB_AI_INCLUDE_SOURCE_CODE:false}
     company:
-      base-url: ${REPLAYFIX_AI_COMPANY_BASE_URL:}
-      endpoint: ${REPLAYFIX_AI_COMPANY_ENDPOINT:/v1/chat/completions}
-      model: ${REPLAYFIX_AI_COMPANY_MODEL:${REPLAYFIX_AI_MODEL:}}
-      auth-type: ${REPLAYFIX_AI_COMPANY_AUTH_TYPE:BEARER}
-      token: ${REPLAYFIX_AI_COMPANY_TOKEN:}
-      timeout-ms: ${REPLAYFIX_AI_COMPANY_TIMEOUT_MS:30000}
-      max-input-chars: ${REPLAYFIX_AI_COMPANY_MAX_INPUT_CHARS:${REPLAYFIX_AI_MAX_INPUT_CHARS:120000}}
-      max-output-chars: ${REPLAYFIX_AI_COMPANY_MAX_OUTPUT_CHARS:${REPLAYFIX_AI_MAX_OUTPUT_CHARS:30000}}
+      base-url: ${REPLAYLAB_AI_COMPANY_BASE_URL:}
+      endpoint: ${REPLAYLAB_AI_COMPANY_ENDPOINT:/v1/chat/completions}
+      model: ${REPLAYLAB_AI_COMPANY_MODEL:${REPLAYLAB_AI_MODEL:}}
+      auth-type: ${REPLAYLAB_AI_COMPANY_AUTH_TYPE:BEARER}
+      token: ${REPLAYLAB_AI_COMPANY_TOKEN:}
+      timeout-ms: ${REPLAYLAB_AI_COMPANY_TIMEOUT_MS:30000}
+      max-input-chars: ${REPLAYLAB_AI_COMPANY_MAX_INPUT_CHARS:${REPLAYLAB_AI_MAX_INPUT_CHARS:120000}}
+      max-output-chars: ${REPLAYLAB_AI_COMPANY_MAX_OUTPUT_CHARS:${REPLAYLAB_AI_MAX_OUTPUT_CHARS:30000}}
   llm:
-    provider: ${REPLAYFIX_LLM_PROVIDER:DISABLED}
+    provider: ${REPLAYLAB_LLM_PROVIDER:DISABLED}
     base-url: ${COMPANY_LLM_BASE_URL:}
     api-key-env: COMPANY_LLM_API_KEY
     default-model-name: ${COMPANY_LLM_MODEL_NAME:openai/gpt-3.5-turbo}
@@ -94,13 +94,13 @@ replayfix:
         max-prompt-chars: 8000
         max-output-tokens: 1200
   real-actions:
-    enabled: ${REPLAYFIX_REAL_ACTIONS_ENABLED:false}
-    jira-create-enabled: ${REPLAYFIX_JIRA_CREATE_ENABLED:false}
-    bitbucket-branch-create-enabled: ${REPLAYFIX_BITBUCKET_BRANCH_CREATE_ENABLED:false}
-    bitbucket-merge-enabled: ${REPLAYFIX_BITBUCKET_MERGE_ENABLED:false}
-    bitbucket-pr-create-enabled: ${REPLAYFIX_BITBUCKET_PR_CREATE_ENABLED:false}
-    bitbucket-push-enabled: ${REPLAYFIX_BITBUCKET_PUSH_ENABLED:false}
-    jenkins-validation-trigger-enabled: ${REPLAYFIX_JENKINS_VALIDATION_TRIGGER_ENABLED:false}
+    enabled: ${REPLAYLAB_REAL_ACTIONS_ENABLED:false}
+    jira-create-enabled: ${REPLAYLAB_JIRA_CREATE_ENABLED:false}
+    bitbucket-branch-create-enabled: ${REPLAYLAB_BITBUCKET_BRANCH_CREATE_ENABLED:false}
+    bitbucket-merge-enabled: ${REPLAYLAB_BITBUCKET_MERGE_ENABLED:false}
+    bitbucket-pr-create-enabled: ${REPLAYLAB_BITBUCKET_PR_CREATE_ENABLED:false}
+    bitbucket-push-enabled: ${REPLAYLAB_BITBUCKET_PUSH_ENABLED:false}
+    jenkins-validation-trigger-enabled: ${REPLAYLAB_JENKINS_VALIDATION_TRIGGER_ENABLED:false}
     require-confirmation: true
     require-guardrails-accepted: true
     draft-pr-title-prefix: "[DRAFT] ReplayLab"
@@ -117,79 +117,79 @@ replayfix:
   jenkins:
     validation:
       backend:
-        default-job-name: ${REPLAYFIX_BACKEND_VALIDATION_JOB:MODERNIZATION.BACKEND_BUILD_12}
+        default-job-name: ${REPLAYLAB_BACKEND_VALIDATION_JOB:MODERNIZATION.BACKEND_BUILD_12}
       frontend:
-        default-job-name: ${REPLAYFIX_FRONTEND_VALIDATION_JOB:}
+        default-job-name: ${REPLAYLAB_FRONTEND_VALIDATION_JOB:}
   notifications:
     webhook:
-      enabled: ${REPLAYFIX_NOTIFICATION_WEBHOOK_ENABLED:false}
-      url: ${REPLAYFIX_NOTIFICATION_WEBHOOK_URL:}
-      secret: ${REPLAYFIX_NOTIFICATION_WEBHOOK_SECRET:}
+      enabled: ${REPLAYLAB_NOTIFICATION_WEBHOOK_ENABLED:false}
+      url: ${REPLAYLAB_NOTIFICATION_WEBHOOK_URL:}
+      secret: ${REPLAYLAB_NOTIFICATION_WEBHOOK_SECRET:}
       connect-timeout-seconds: 10
       read-timeout-seconds: 20
       max-attempts: 3
   policy:
-    allow-production-read: ${REPLAYFIX_ALLOW_PRODUCTION_READ:false}
-    allow-source-checkout: ${REPLAYFIX_ALLOW_SOURCE_CHECKOUT:false}
-    source-history-depth: ${REPLAYFIX_SOURCE_HISTORY_DEPTH:500}
-    allow-generated-code-write: ${REPLAYFIX_ALLOW_GENERATED_CODE_WRITE:false}
-    allow-git-push: ${REPLAYFIX_ALLOW_GIT_PUSH:false}
-    allow-pull-request-creation: ${REPLAYFIX_ALLOW_PR_CREATION:false}
+    allow-production-read: ${REPLAYLAB_ALLOW_PRODUCTION_READ:false}
+    allow-source-checkout: ${REPLAYLAB_ALLOW_SOURCE_CHECKOUT:false}
+    source-history-depth: ${REPLAYLAB_SOURCE_HISTORY_DEPTH:500}
+    allow-generated-code-write: ${REPLAYLAB_ALLOW_GENERATED_CODE_WRITE:false}
+    allow-git-push: ${REPLAYLAB_ALLOW_GIT_PUSH:false}
+    allow-pull-request-creation: ${REPLAYLAB_ALLOW_PR_CREATION:false}
     require-human-approval: true
-    allow-ai-source-code: ${REPLAYFIX_ALLOW_AI_SOURCE_CODE:false}
+    allow-ai-source-code: ${REPLAYLAB_ALLOW_AI_SOURCE_CODE:false}
     max-log-lines: 1000
     max-ai-input-characters: 100000
-    ai-bundle-max-chars: ${REPLAYFIX_AI_BUNDLE_MAX_CHARS:120000}
-    ai-bundle-max-loki-chars: ${REPLAYFIX_AI_BUNDLE_MAX_LOKI_CHARS:40000}
-    ai-bundle-max-source-chars: ${REPLAYFIX_AI_BUNDLE_MAX_SOURCE_CHARS:40000}
-    ai-bundle-max-tempo-chars: ${REPLAYFIX_AI_BUNDLE_MAX_TEMPO_CHARS:15000}
-    ai-bundle-max-jira-chars: ${REPLAYFIX_AI_BUNDLE_MAX_JIRA_CHARS:15000}
-    allow-test-execution: ${REPLAYFIX_ALLOW_TEST_EXECUTION:false}
-    allow-jira-comment-write: ${REPLAYFIX_ALLOW_JIRA_COMMENT_WRITE:false}
-    maven-executable: ${REPLAYFIX_MAVEN_EXECUTABLE:mvn}
-    local-test-timeout-seconds: ${REPLAYFIX_LOCAL_TEST_TIMEOUT_SECONDS:600}
-    local-test-max-output-chars: ${REPLAYFIX_LOCAL_TEST_MAX_OUTPUT_CHARS:100000}
-    pattern-test-min-confidence: ${REPLAYFIX_PATTERN_TEST_MIN_CONFIDENCE:0.65}
-    kubectl-executable: ${REPLAYFIX_KUBECTL_EXECUTABLE:kubectl}
-    kubernetes-timeout-seconds: ${REPLAYFIX_KUBERNETES_TIMEOUT_SECONDS:30}
+    ai-bundle-max-chars: ${REPLAYLAB_AI_BUNDLE_MAX_CHARS:120000}
+    ai-bundle-max-loki-chars: ${REPLAYLAB_AI_BUNDLE_MAX_LOKI_CHARS:40000}
+    ai-bundle-max-source-chars: ${REPLAYLAB_AI_BUNDLE_MAX_SOURCE_CHARS:40000}
+    ai-bundle-max-tempo-chars: ${REPLAYLAB_AI_BUNDLE_MAX_TEMPO_CHARS:15000}
+    ai-bundle-max-jira-chars: ${REPLAYLAB_AI_BUNDLE_MAX_JIRA_CHARS:15000}
+    allow-test-execution: ${REPLAYLAB_ALLOW_TEST_EXECUTION:false}
+    allow-jira-comment-write: ${REPLAYLAB_ALLOW_JIRA_COMMENT_WRITE:false}
+    maven-executable: ${REPLAYLAB_MAVEN_EXECUTABLE:mvn}
+    local-test-timeout-seconds: ${REPLAYLAB_LOCAL_TEST_TIMEOUT_SECONDS:600}
+    local-test-max-output-chars: ${REPLAYLAB_LOCAL_TEST_MAX_OUTPUT_CHARS:100000}
+    pattern-test-min-confidence: ${REPLAYLAB_PATTERN_TEST_MIN_CONFIDENCE:0.65}
+    kubectl-executable: ${REPLAYLAB_KUBECTL_EXECUTABLE:kubectl}
+    kubernetes-timeout-seconds: ${REPLAYLAB_KUBERNETES_TIMEOUT_SECONDS:30}
   integrations:
     tempo:
-      enabled: ${REPLAYFIX_TEMPO_ENABLED:true}
-      access-mode: ${REPLAYFIX_TEMPO_ACCESS_MODE:GRAFANA_PROXY}
-      base-url: ${REPLAYFIX_TEMPO_BASE_URL:}
-      datasource-uid: ${REPLAYFIX_TEMPO_DATASOURCE_UID:}
+      enabled: ${REPLAYLAB_TEMPO_ENABLED:true}
+      access-mode: ${REPLAYLAB_TEMPO_ACCESS_MODE:GRAFANA_PROXY}
+      base-url: ${REPLAYLAB_TEMPO_BASE_URL:}
+      datasource-uid: ${REPLAYLAB_TEMPO_DATASOURCE_UID:}
       token: ${TEMPO_TOKEN:}
-      auth-type: ${REPLAYFIX_TEMPO_AUTH_TYPE:BEARER}
-      timeout: ${REPLAYFIX_TEMPO_TIMEOUT:30s}
-      max-traces-per-case: ${REPLAYFIX_TEMPO_MAX_TRACES_PER_CASE:5}
-      max-spans-per-trace: ${REPLAYFIX_TEMPO_MAX_SPANS_PER_TRACE:5000}
-      max-response-chars: ${REPLAYFIX_TEMPO_MAX_RESPONSE_CHARS:2000000}
+      auth-type: ${REPLAYLAB_TEMPO_AUTH_TYPE:BEARER}
+      timeout: ${REPLAYLAB_TEMPO_TIMEOUT:30s}
+      max-traces-per-case: ${REPLAYLAB_TEMPO_MAX_TRACES_PER_CASE:5}
+      max-spans-per-trace: ${REPLAYLAB_TEMPO_MAX_SPANS_PER_TRACE:5000}
+      max-response-chars: ${REPLAYLAB_TEMPO_MAX_RESPONSE_CHARS:2000000}
     confluence:
-      enabled: ${REPLAYFIX_CONFLUENCE_ENABLED:false}
-      base-url: ${REPLAYFIX_CONFLUENCE_BASE_URL:}
-      username: ${REPLAYFIX_CONFLUENCE_USERNAME:}
+      enabled: ${REPLAYLAB_CONFLUENCE_ENABLED:false}
+      base-url: ${REPLAYLAB_CONFLUENCE_BASE_URL:}
+      username: ${REPLAYLAB_CONFLUENCE_USERNAME:}
       token: ${CONFLUENCE_TOKEN:}
-      auth-type: ${REPLAYFIX_CONFLUENCE_AUTH_TYPE:BASIC}
-      timeout: ${REPLAYFIX_CONFLUENCE_TIMEOUT:30s}
-      max-search-results: ${REPLAYFIX_CONFLUENCE_MAX_SEARCH_RESULTS:15}
-      max-pages-per-case: ${REPLAYFIX_CONFLUENCE_MAX_PAGES_PER_CASE:5}
-      max-page-chars: ${REPLAYFIX_CONFLUENCE_MAX_PAGE_CHARS:30000}
-      max-total-chars: ${REPLAYFIX_CONFLUENCE_MAX_TOTAL_CHARS:80000}
-      allowed-space-keys: ${REPLAYFIX_CONFLUENCE_ALLOWED_SPACE_KEYS:}
+      auth-type: ${REPLAYLAB_CONFLUENCE_AUTH_TYPE:BASIC}
+      timeout: ${REPLAYLAB_CONFLUENCE_TIMEOUT:30s}
+      max-search-results: ${REPLAYLAB_CONFLUENCE_MAX_SEARCH_RESULTS:15}
+      max-pages-per-case: ${REPLAYLAB_CONFLUENCE_MAX_PAGES_PER_CASE:5}
+      max-page-chars: ${REPLAYLAB_CONFLUENCE_MAX_PAGE_CHARS:30000}
+      max-total-chars: ${REPLAYLAB_CONFLUENCE_MAX_TOTAL_CHARS:80000}
+      allowed-space-keys: ${REPLAYLAB_CONFLUENCE_ALLOWED_SPACE_KEYS:}
     jira-webhook:
-      enabled: ${REPLAYFIX_JIRA_WEBHOOK_ENABLED:false}
+      enabled: ${REPLAYLAB_JIRA_WEBHOOK_ENABLED:false}
       secret: ${JIRA_WEBHOOK_SECRET:}
       allowed-event-types:
         - jira:issue_created
         - jira:issue_updated
-      allowed-project-keys: ${REPLAYFIX_JIRA_WEBHOOK_ALLOWED_PROJECTS:FIZZMS}
-      allowed-issue-types: ${REPLAYFIX_JIRA_WEBHOOK_ALLOWED_ISSUE_TYPES:Bug,Defect}
-      allowed-statuses: ${REPLAYFIX_JIRA_WEBHOOK_ALLOWED_STATUSES:Open,To Do,In Progress}
-      max-body-chars: ${REPLAYFIX_JIRA_WEBHOOK_MAX_BODY_CHARS:1000000}
-      replay-window-seconds: ${REPLAYFIX_JIRA_WEBHOOK_REPLAY_WINDOW_SECONDS:300}
-      auto-preview-enabled: ${REPLAYFIX_JIRA_AUTO_PREVIEW_ENABLED:true}
+      allowed-project-keys: ${REPLAYLAB_JIRA_WEBHOOK_ALLOWED_PROJECTS:FIZZMS}
+      allowed-issue-types: ${REPLAYLAB_JIRA_WEBHOOK_ALLOWED_ISSUE_TYPES:Bug,Defect}
+      allowed-statuses: ${REPLAYLAB_JIRA_WEBHOOK_ALLOWED_STATUSES:Open,To Do,In Progress}
+      max-body-chars: ${REPLAYLAB_JIRA_WEBHOOK_MAX_BODY_CHARS:1000000}
+      replay-window-seconds: ${REPLAYLAB_JIRA_WEBHOOK_REPLAY_WINDOW_SECONDS:300}
+      auto-preview-enabled: ${REPLAYLAB_JIRA_AUTO_PREVIEW_ENABLED:true}
   targets:
     fizzms-backend:
       repository: fizzms-api
-      clone-url: ${REPLAYFIX_FIZZMS_CLONE_URL:}
-      local-source-path: ${REPLAYFIX_FIZZMS_LOCAL_SOURCE_PATH:}
+      clone-url: ${REPLAYLAB_FIZZMS_CLONE_URL:}
+      local-source-path: ${REPLAYLAB_FIZZMS_LOCAL_SOURCE_PATH:}

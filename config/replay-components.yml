@@ -1,4 +1,4 @@
-replayfix:
+replaylab:
   components:
     backend:
       componentKey: backend

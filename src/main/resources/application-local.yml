@@ -1,6 +1,6 @@
 spring:
   datasource:
-    url: "jdbc:h2:file:C:/Users/berkan.unsal/Desktop/Discipline_Huddle/ReplayFix/replayfix-platform/replayfix-platform/data/replayfix;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;AUTO_SERVER=TRUE"
+    url: "jdbc:h2:file:C:/Users/berkan.unsal/Desktop/Discipline_Huddle/ReplayLab/replaylab-platform/replaylab-platform/data/replaylab;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;AUTO_SERVER=TRUE"
     driver-class-name: org.h2.Driver
     username: sa
     password:
@@ -13,7 +13,7 @@ spring:
   flyway:
     enabled: false
 
-replayfix:
+replaylab:
   mode: DRY_RUN
   workspace-dir: ./work
 

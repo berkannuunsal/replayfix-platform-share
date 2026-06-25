@@ -48,12 +48,12 @@ Gerçek token ve parolaları YAML içine yazmayın. `.env`, Kubernetes Secret ve
 ## Proje yapısı
 
 ```text
-replayfix-platform
+replaylab-platform
 ├── config
 │   ├── external-services.yml
 │   ├── replay-targets.yml
 │   └── log-parsers.yml
-├── deploy/helm/replayfix
+├── deploy/helm/replaylab
 ├── openapi
 ├── replay-packages
 │   └── sample-null-order
@@ -61,7 +61,7 @@ replayfix-platform
 │       ├── seed.sql
 │       └── request.json
 ├── scripts
-├── src/main/java/com/etiya/replayfix
+├── src/main/java/com/etiya/replaylab
 │   ├── api
 │   ├── config
 │   ├── domain
@@ -146,17 +146,17 @@ POST /api/v1/cases/{id}/run-all
 Her case için aşağıdaki gibi bir namespace oluşturulur:
 
 ```text
-replayfix-drwp-1234-a1b2c3
+replaylab-drwp-1234-a1b2c3
 ```
 
 Namespace içerisinde:
 
 ```text
 app
-replayfix-postgres
+replaylab-postgres
 replay-runner
 replay-request ConfigMap
-replayfix-db-secret
+replaylab-db-secret
 ```
 
 oluşturulur.
@@ -172,7 +172,7 @@ datasource-password-env: SPRING_DATASOURCE_PASSWORD
 Uygulamaya verilen URL:
 
 ```text
-jdbc:postgresql://replayfix-postgres:5432/replaydb
+jdbc:postgresql://replaylab-postgres:5432/replaydb
 ```
 
 Böylece production image kullanılsa bile production DB'ye bağlanmaz.
@@ -182,7 +182,7 @@ Böylece production image kullanılsa bile production DB'ye bağlanmaz.
 `config/replay-targets.yml` içine yeni bir target ekleyin:
 
 ```yaml
-replayfix:
+replaylab:
   targets:
     customer-order-service:
       repository: customer-order-service
@@ -211,7 +211,7 @@ replayfix:
 
       git:
         source-branch: develop
-        branch-prefix: replayfix/
+        branch-prefix: replaylab/
         reviewer-users:
           - reviewer-user-name
 ```
@@ -283,16 +283,16 @@ Test ve patch cevabı:
 Aşağıdaki ayarlar varsayılan olarak kapalıdır:
 
 ```text
-REPLAYFIX_MODE=LIVE
-REPLAYFIX_ALLOW_GENERATED_CODE_WRITE=true
-REPLAYFIX_ALLOW_GIT_PUSH=true
-REPLAYFIX_ALLOW_PR_CREATION=true
+REPLAYLAB_MODE=LIVE
+REPLAYLAB_ALLOW_GENERATED_CODE_WRITE=true
+REPLAYLAB_ALLOW_GIT_PUSH=true
+REPLAYLAB_ALLOW_PR_CREATION=true
 ```
 
 Production DB okuması ayrıca:
 
 ```text
-REPLAYFIX_ALLOW_PRODUCTION_READ=true
+REPLAYLAB_ALLOW_PRODUCTION_READ=true
 ```
 
 gerektirir.

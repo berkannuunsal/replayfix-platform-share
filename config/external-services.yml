@@ -1,10 +1,10 @@
 # All external systems are isolated in this file.
 # Put real secrets in environment variables or a secret manager.
 
-replayfix:
+replaylab:
   integrations:
     jira:
-      enabled: ${JIRA_ENABLED}
+      enabled: ${JIRA_ENABLED:false}
       base-url: ${JIRA_BASE_URL}
       auth-type: ${JIRA_AUTH_TYPE}
       username: ${JIRA_USERNAME}
@@ -39,11 +39,11 @@ replayfix:
       git-executable: ${BITBUCKET_GIT_EXECUTABLE:git}
       timeout: 60s
       branch-strategy:
-        source-base-branch: ${REPLAYFIX_BRANCH_SOURCE_BASE:master}
-        bugfix-branch-pattern: ${REPLAYFIX_BUGFIX_BRANCH_PATTERN:bugfix/{defectKey}}
-        integration-branch-pattern: ${REPLAYFIX_INTEGRATION_BRANCH_PATTERN:Integration/{environment}/{defectKey}}
+        source-base-branch: ${REPLAYLAB_BRANCH_SOURCE_BASE:master}
+        bugfix-branch-pattern: ${REPLAYLAB_BUGFIX_BRANCH_PATTERN:bugfix/{defectKey}}
+        integration-branch-pattern: ${REPLAYLAB_INTEGRATION_BRANCH_PATTERN:Integration/{environment}/{defectKey}}
         environment-targets:
-          test2: ${REPLAYFIX_TEST2_TARGET_BRANCH:Integration/test2/FIZZMS-6686}
+          test2: ${REPLAYLAB_TEST2_TARGET_BRANCH:Integration/test2/FIZZMS-6686}
 
     confluence:
       enabled: ${CONFLUENCE_ENABLED:false}

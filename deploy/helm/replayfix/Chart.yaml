@@ -1,5 +1,0 @@
-apiVersion: v2
-name: replayfix
-version: 0.1.0
-appVersion: "0.1.0"
-description: ReplayFix incident reproduction and remediation platform

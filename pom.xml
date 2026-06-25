@@ -11,9 +11,10 @@
     </parent>
 
     <groupId>com.etiya.innovation</groupId>
-    <artifactId>replayfix-platform</artifactId>
+    <artifactId>replaylab-platform</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <name>ReplayLab Platform</name>
+    <description>AI-driven defect replay, remediation and validation platform</description>
 
     <properties>
         <java.version>17</java.version>
