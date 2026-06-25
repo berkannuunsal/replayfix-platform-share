@@ -151,7 +151,7 @@ class RovoRcaNormalizationTest {
                   "probableRootCause": "NPE",
                   "evidenceMatrix": {
                     "loki": {
-                      "references": "ReplayFix Snapshot"
+                      "references": "ReplayLab Snapshot"
                     }
                   }
                 }

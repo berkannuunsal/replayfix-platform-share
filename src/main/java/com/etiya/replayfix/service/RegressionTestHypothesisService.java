@@ -201,7 +201,7 @@ public class RegressionTestHypothesisService {
 
     private List<String> buildPreconditions(RovoRcaAnalysis analysis) {
         List<String> values = new ArrayList<>();
-        values.add("Use the ReplayFix incident version verified for this case.");
+        values.add("Use the ReplayLab incident version verified for this case.");
         values.add("Use sanitized Jira/Rovo RCA evidence only; do not replay production secrets.");
 
         if (analysis.impactedComponent() != null && !analysis.impactedComponent().isBlank()) {

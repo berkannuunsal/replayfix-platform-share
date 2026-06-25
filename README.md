@@ -1,6 +1,6 @@
-# ReplayFix Platform
+# ReplayLab Platform
 
-ReplayFix; Jira defect/incident kaydını, log ve trace verisini, kaynak kodu, Confluence/Rovo bilgisini ve uygulama deployment tanımını bir araya getirerek:
+ReplayLab; Jira defect/incident kaydını, log ve trace verisini, kaynak kodu, Confluence/Rovo bilgisini ve uygulama deployment tanımını bir araya getirerek:
 
 1. Incident bağlamını toplar.
 2. Geçici ve izole bir Kubernetes namespace'i oluşturur.

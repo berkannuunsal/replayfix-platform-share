@@ -103,7 +103,7 @@ replayfix:
     jenkins-validation-trigger-enabled: ${REPLAYFIX_JENKINS_VALIDATION_TRIGGER_ENABLED:false}
     require-confirmation: true
     require-guardrails-accepted: true
-    draft-pr-title-prefix: "[DRAFT] ReplayFix"
+    draft-pr-title-prefix: "[DRAFT] ReplayLab"
     default-development-base-branch: master
     default-environment-target-branch: test2
     bugfix-branch-prefix: bugfix/

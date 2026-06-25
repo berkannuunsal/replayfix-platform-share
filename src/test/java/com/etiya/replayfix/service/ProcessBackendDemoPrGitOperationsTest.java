@@ -41,7 +41,7 @@ class ProcessBackendDemoPrGitOperationsTest {
                         "Integration/test2/FIZZMS-10228",
                         false,
                         false,
-                        "ControllerBackend/src/test/java/com/company/replayfix/generated/FIZZMS10228ReplayFixDemoRegressionTest.java",
+                        "ControllerBackend/src/test/java/com/company/replayfix/generated/FIZZMS10228ReplayLabDemoRegressionTest.java",
                         "safe test",
                         "FIZZMS-10228: safe demo"
                 );

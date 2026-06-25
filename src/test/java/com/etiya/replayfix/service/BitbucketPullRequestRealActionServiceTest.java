@@ -68,7 +68,7 @@ class BitbucketPullRequestRealActionServiceTest {
                 service.preview(caseId, request(false, false));
 
         assertThat(response.previewOnly()).isTrue();
-        assertThat(response.title()).contains("[DRAFT]", "ReplayFix");
+        assertThat(response.title()).contains("[DRAFT]", "ReplayLab");
         verify(bitbucketClient, never()).createPullRequest(
                 any(),
                 any(),
@@ -137,7 +137,7 @@ class BitbucketPullRequestRealActionServiceTest {
         )).thenReturn(new PullRequestResult(
                 "42",
                 "https://bitbucket/pr/42",
-                "[DRAFT] ReplayFix FIZZMS-10228"
+                "[DRAFT] ReplayLab FIZZMS-10228"
         ));
 
         BitbucketPullRequestResponse response =
@@ -170,7 +170,7 @@ class BitbucketPullRequestRealActionServiceTest {
                 "backend",
                 "integration/test2/FIZZMS-10228",
                 "test2",
-                "[DRAFT] ReplayFix",
+                "[DRAFT] ReplayLab",
                 false,
                 true,
                 false,

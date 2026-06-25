@@ -343,7 +343,7 @@ public class ReplayEnvironmentLlmAdvisoryService {
                     "recommendedMitigation",
                     "Resolve blockers and rerun provision readiness.",
                     "ownerTeam",
-                    "ReplayFix"
+                    "ReplayLab"
             ));
         }
         if (plan.runtimeDependencies() != null) {
@@ -372,11 +372,11 @@ public class ReplayEnvironmentLlmAdvisoryService {
                     "severity",
                     "MEDIUM",
                     "whyItMatters",
-                    "ReplayFix has not executed ArgoCD sync or replay execution.",
+                    "ReplayLab has not executed ArgoCD sync or replay execution.",
                     "recommendedMitigation",
                     "Keep status as advisory until replay execution reproduces the issue.",
                     "ownerTeam",
-                    "ReplayFix"
+                    "ReplayLab"
             ));
         }
         List<Map<String, Object>> recommendedSteps = new ArrayList<>();
@@ -393,7 +393,7 @@ public class ReplayEnvironmentLlmAdvisoryService {
                     "reason",
                     "Required before moving from advisory planning to real provisioning.",
                     "ownerTeam",
-                    "ReplayFix"
+                    "ReplayLab"
             ));
         }
         Map<String, Object> advisory = new LinkedHashMap<>();
@@ -518,7 +518,7 @@ public class ReplayEnvironmentLlmAdvisoryService {
 
     private String systemPrompt() {
         return """
-                You are advising ReplayFix about a dry-run replay environment.
+                You are advising ReplayLab about a dry-run replay environment.
                 Return one valid JSON object only. No markdown. No reasoning.
                 Use HYPOTHESIS or ADVISORY language. Never say CONFIRMED
                 unless supplied replay execution evidence says the issue reproduced.
@@ -540,7 +540,7 @@ public class ReplayEnvironmentLlmAdvisoryService {
                       "severity": "LOW|MEDIUM|HIGH|CRITICAL",
                       "whyItMatters": "",
                       "recommendedMitigation": "",
-                      "ownerTeam": "Infra|Security|DBA|Backend|Frontend|ReplayFix|Unknown"
+                      "ownerTeam": "Infra|Security|DBA|Backend|Frontend|ReplayLab|Unknown"
                     }
                   ],
                   "questionsForTeams": {

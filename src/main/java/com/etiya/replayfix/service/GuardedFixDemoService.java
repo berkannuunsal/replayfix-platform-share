@@ -491,7 +491,7 @@ public class GuardedFixDemoService {
                 safe.repositorySlug(),
                 safe.integrationBranch(),
                 safe.targetPrBranch(),
-                "[DRAFT] ReplayFix " + safe.jiraKey()
+                "[DRAFT] ReplayLab " + safe.jiraKey()
                         + " demo regression test",
                 prDescription(replayCase, safe, generatedRelativePath),
                 List.of()
@@ -651,7 +651,7 @@ public class GuardedFixDemoService {
                 request.environmentTargetBranch(),
                 request.bugfixBranch(),
                 request.integrationBranch(),
-                "ReplayFix: " + request.jiraKey()
+                "ReplayLab: " + request.jiraKey()
                         + " guarded draft fix",
                 confirm,
                 guardrails
@@ -669,7 +669,7 @@ public class GuardedFixDemoService {
                 request.repositorySlug(),
                 request.integrationBranch(),
                 request.targetPrBranch(),
-                "[DRAFT] ReplayFix",
+                "[DRAFT] ReplayLab",
                 true,
                 true,
                 true,
@@ -714,13 +714,13 @@ public class GuardedFixDemoService {
     private String generatedTestRelativePath(String jiraKey) {
         return "ControllerBackend/src/test/java/com/company/replayfix/generated/"
                 + jiraCompact(jiraKey)
-                + "ReplayFixDemoRegressionTest.java";
+                + "ReplayLabDemoRegressionTest.java";
     }
 
     private String generatedTestContent(String jiraKey) {
         String safeJira = firstNonBlank(jiraKey, "UNKNOWN");
         String className = jiraCompact(safeJira)
-                + "ReplayFixDemoRegressionTest";
+                + "ReplayLabDemoRegressionTest";
         return """
                 package com.company.replayfix.generated;
 
@@ -732,9 +732,9 @@ public class GuardedFixDemoService {
                 class %s {
 
                     @Test
-                    @Disabled("ReplayFix generated demo regression placeholder; requires domain-specific assertions before enabling.")
+                    @Disabled("ReplayLab generated demo regression placeholder; requires domain-specific assertions before enabling.")
                     void replayfix_generated_regression_scenario_for_%s() {
-                        assertTrue(true, "ReplayFix demo placeholder for %s");
+                        assertTrue(true, "ReplayLab demo placeholder for %s");
                     }
                 }
                 """.formatted(
@@ -751,12 +751,12 @@ public class GuardedFixDemoService {
     ) {
         return sanitize(String.join(
                 "\n",
-                "ReplayFix Draft PR",
+                "ReplayLab Draft PR",
                 "",
                 "Source Jira:",
                 "- " + request.jiraKey(),
                 "",
-                "ReplayFix Case:",
+                "ReplayLab Case:",
                 "- " + replayCase.getId(),
                 "",
                 "Generated file:",
@@ -917,7 +917,7 @@ public class GuardedFixDemoService {
                 ),
                 firstNonBlank(
                         safe.commitMessage(),
-                        "ReplayFix: " + jiraKey + " demo regression test"
+                        "ReplayLab: " + jiraKey + " demo regression test"
                 ),
                 safe.testOnly(),
                 safe.confirmExecute(),

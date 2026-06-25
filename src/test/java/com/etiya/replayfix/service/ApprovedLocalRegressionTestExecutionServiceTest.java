@@ -302,7 +302,7 @@ class ApprovedLocalRegressionTestExecutionServiceTest {
                 5000,
                 1,
                 false,
-                "UnsupportedOperationException: ReplayFix regression scaffold"
+                "UnsupportedOperationException: ReplayLab regression scaffold"
         );
 
         when(testRunner.runSingleTest(any(), eq("TestFile"), eq("testMethod")))
@@ -347,7 +347,7 @@ class ApprovedLocalRegressionTestExecutionServiceTest {
                 3000,
                 1,
                 false,
-                "UnsupportedOperationException: ReplayFix regression scaffold"
+                "UnsupportedOperationException: ReplayLab regression scaffold"
         );
 
         when(testRunner.runSingleTest(any(), any(), any())).thenReturn(processResult);

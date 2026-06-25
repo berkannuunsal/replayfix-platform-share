@@ -104,17 +104,17 @@ public class ReplayFixNotificationService {
             case SUCCESS -> {
                 type = NotificationType.WORKFLOW_SUCCESS;
                 severity = "SUCCESS";
-                title = "ReplayFix analysis completed successfully";
+                title = "ReplayLab analysis completed successfully";
             }
             case PARTIAL_SUCCESS -> {
                 type = NotificationType.WORKFLOW_PARTIAL_SUCCESS;
                 severity = "WARNING";
-                title = "ReplayFix analysis completed with warnings";
+                title = "ReplayLab analysis completed with warnings";
             }
             case FAILED -> {
                 type = NotificationType.WORKFLOW_FAILED;
                 severity = "ERROR";
-                title = "ReplayFix analysis failed";
+                title = "ReplayLab analysis failed";
             }
             default -> {
                 log.warn("Unexpected workflow status: {}", workflow.getStatus());
@@ -160,7 +160,7 @@ public class ReplayFixNotificationService {
                 jiraKey,
                 NotificationType.JIRA_COMMENT_PUBLISHED,
                 "Jira Evidence Snapshot published",
-                "ReplayFix evidence has been published to " + jiraKey,
+                "ReplayLab evidence has been published to " + jiraKey,
                 "SUCCESS",
                 targetUrl
         ));

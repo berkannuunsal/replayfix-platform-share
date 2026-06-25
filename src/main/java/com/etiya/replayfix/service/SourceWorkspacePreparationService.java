@@ -487,7 +487,7 @@ public class SourceWorkspacePreparationService {
         Path normalizedWorkspace = workspace.toAbsolutePath().normalize();
         if (!normalizedWorkspace.startsWith(expectedParent)) {
             throw new IllegalArgumentException(
-                    "Workspace path is outside ReplayFix workspace."
+                    "Workspace path is outside ReplayLab workspace."
             );
         }
         try (Stream<Path> paths = Files.walk(normalizedWorkspace)) {

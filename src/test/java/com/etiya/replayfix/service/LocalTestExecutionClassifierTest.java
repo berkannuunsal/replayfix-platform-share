@@ -112,7 +112,7 @@ class LocalTestExecutionClassifierTest {
                 4000,
                 1,
                 false,
-                "java.lang.UnsupportedOperationException: ReplayFix regression scaffold"
+                "java.lang.UnsupportedOperationException: ReplayLab regression scaffold"
         );
 
         RegressionTestPlan plan = createTestPlan();

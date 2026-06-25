@@ -327,7 +327,7 @@ class SourceSuspectChangeAnalysisControllerTest {
                                 .SOURCE_CHANGE_ANALYSIS_TIMEOUT
                 ))
                 .andExpect(content().string(not(containsString(
-                        "ReplayFix operation failed"
+                        "ReplayLab operation failed"
                 ))))
                 .andExpect(content().string(not(containsString(
                         "AsyncRequestTimeoutException"

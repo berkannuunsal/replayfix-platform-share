@@ -241,12 +241,12 @@ class ExistingTestPatternDiscoveryServiceTest {
     }
 
     @Test
-    void shouldNotSelectReplayFixGeneratedFile() throws Exception {
+    void shouldNotSelectReplayLabGeneratedFile() throws Exception {
         UUID caseId = UUID.randomUUID();
 
         createTestFile(
-                "src/test/java/com/example/NotificationServiceReplayFixRegressionTest.java",
-                createJUnit5TestContent("com.example", "NotificationServiceReplayFixRegressionTest",
+                "src/test/java/com/example/NotificationServiceReplayLabRegressionTest.java",
+                createJUnit5TestContent("com.example", "NotificationServiceReplayLabRegressionTest",
                         List.of("shouldReproduceIncident"))
         );
 
@@ -261,7 +261,7 @@ class ExistingTestPatternDiscoveryServiceTest {
 
         TestPatternCandidate selected = result.selection().selected();
 
-        assertFalse(selected.className().contains("ReplayFix"));
+        assertFalse(selected.className().contains("ReplayLab"));
     }
 
     @Test
@@ -476,10 +476,10 @@ class ExistingTestPatternDiscoveryServiceTest {
                 "test-repo",
                 "abc123",
                 tempWorkspace.toString(),
-                "src/test/java/" + targetPackage.replace('.', '/') + "/" + targetClass + "ReplayFixRegressionTest.java",
+                "src/test/java/" + targetPackage.replace('.', '/') + "/" + targetClass + "ReplayLabRegressionTest.java",
                 tempWorkspace.resolve("src/test/java/" + targetPackage.replace('.', '/') +
-                        "/" + targetClass + "ReplayFixRegressionTest.java").toString(),
-                targetClass + "ReplayFixRegressionTest",
+                        "/" + targetClass + "ReplayLabRegressionTest.java").toString(),
+                targetClass + "ReplayLabRegressionTest",
                 "shouldReproduceIncident",
                 "hash123",
                 100,

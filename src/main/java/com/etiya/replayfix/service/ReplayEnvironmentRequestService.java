@@ -410,7 +410,7 @@ public class ReplayEnvironmentRequestService {
             ReplayEnvironmentProvisionReadinessResponse readiness,
             boolean sanitizedInputAttached
     ) {
-        return "ReplayFix has prepared a dry-run replay environment plan for "
+        return "ReplayLab has prepared a dry-run replay environment plan for "
                 + entity.getJiraKey()
                 + " on "
                 + entity.getTargetKey()

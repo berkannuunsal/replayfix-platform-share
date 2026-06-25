@@ -705,7 +705,7 @@ public class CompanyLlmProviderClient implements AiProviderClient {
         List<String> recommendedActions =
                 toStrings(content.path("recommendedActions"));
         String nextAction = recommendedActions.isEmpty()
-                ? "Review supplied ReplayFix evidence before approving next action."
+                ? "Review supplied ReplayLab evidence before approving next action."
                 : recommendedActions.get(0);
 
         return new StructuredAiRootCauseAnalysis(
@@ -714,7 +714,7 @@ public class CompanyLlmProviderClient implements AiProviderClient {
                 firstNonBlank(
                         content.path("executiveSummary").asText(null),
                         content.path("summary").asText(null),
-                        "Company LLM analysis generated from ReplayFix evidence."
+                        "Company LLM analysis generated from ReplayLab evidence."
                 ),
                 content.path("probableRootCause").asText("Analysis pending"),
                 content.path("impactedComponent").asText("unknown"),
@@ -756,7 +756,7 @@ public class CompanyLlmProviderClient implements AiProviderClient {
             String evidenceBundle
     ) {
         return """
-                Analyze this ReplayFix AI_INPUT_BUNDLE.
+                Analyze this ReplayLab AI_INPUT_BUNDLE.
 
                 Return valid JSON only:
                 {
@@ -772,7 +772,7 @@ public class CompanyLlmProviderClient implements AiProviderClient {
                 }
 
                 Rules:
-                - Use only supplied ReplayFix evidence.
+                - Use only supplied ReplayLab evidence.
                 - Separate FACT / INFERENCE / UNKNOWN.
                 - Do not invent logs, traces, files, commits or methods.
                 - If evidence is weak, keep status HYPOTHESIS.
@@ -783,14 +783,14 @@ public class CompanyLlmProviderClient implements AiProviderClient {
                 Request metadata:
                 %s
 
-                ReplayFix evidence:
+                ReplayLab evidence:
                 %s
                 """.formatted(request.metadata(), evidenceBundle);
     }
 
     private String systemPrompt() {
         return """
-                You are ReplayFix AI. Produce evidence-driven RCA JSON.
+                You are ReplayLab AI. Produce evidence-driven RCA JSON.
                 Use only the supplied evidence. Human approval is mandatory for
                 any test write, source change, branch, PR, merge or deployment.
                 """;

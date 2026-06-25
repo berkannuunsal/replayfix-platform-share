@@ -627,7 +627,7 @@ public class PrRuleReviewService {
                     .replace("@for", "*ngFor");
             if (repaired.toLowerCase(Locale.ROOT).contains("<button")
                     && !repaired.toLowerCase(Locale.ROOT).contains("aria-label")) {
-                repaired = repaired.replaceFirst("(?i)<button", "<button aria-label=\"ReplayFix review required\"");
+                repaired = repaired.replaceFirst("(?i)<button", "<button aria-label=\"ReplayLab review required\"");
             }
         }
         return repaired;

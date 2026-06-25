@@ -133,7 +133,7 @@ class IncidentDashboardEvidenceConsistencyTest {
         assertEquals("PROBABLE", card(dashboard, "Loki").status());
         assertEquals("PROBABLE", card(dashboard, "Tempo").status());
         assertEquals("PROBABLE", card(dashboard, "Source Context").status());
-        assertEquals("CONFIRMED", card(dashboard, "ReplayFix").status());
+        assertEquals("CONFIRMED", card(dashboard, "ReplayLab").status());
     }
 
     @Test
@@ -197,7 +197,7 @@ class IncidentDashboardEvidenceConsistencyTest {
         assertEquals("Deterministic fallback",
                 dashboard.rootCause().probableRootCause());
         assertEquals(0.55, dashboard.rootCause().confidence());
-        assertEquals("ReplayFix deterministic RCA",
+        assertEquals("ReplayLab deterministic RCA",
                 dashboard.rootCause().analysisType());
         assertFalse(dashboard.rootCause().probableRootCause()
                 .contains("Deterministic analysis pending"));

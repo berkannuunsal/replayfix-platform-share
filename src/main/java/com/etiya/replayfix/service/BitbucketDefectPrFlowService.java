@@ -378,7 +378,7 @@ public class BitbucketDefectPrFlowService {
         );
         String title = titlePrefix + " " + defectKey + " fix proposal";
         if (!title.startsWith("[DRAFT]")) title = "[DRAFT] " + title;
-        if (!title.contains("ReplayFix")) title = title.replace("[DRAFT]", "[DRAFT] ReplayFix");
+        if (!title.contains("ReplayLab")) title = title.replace("[DRAFT]", "[DRAFT] ReplayLab");
         boolean sourceFix = safe.applyApprovedFix();
         boolean regressionTest = safe.applyApprovedRegressionTest();
         boolean configChange = safe.applyApprovedConfigChange();
@@ -418,7 +418,7 @@ public class BitbucketDefectPrFlowService {
         if (regressionTest) {
             return "ControllerBackend/src/test/java/com/company/replayfix/generated/"
                     + compact(defectKey)
-                    + "ReplayFixRegressionTest.java";
+                    + "ReplayLabRegressionTest.java";
         }
         String suffix = configChange ? "CONFIG_CHANGE_PLAN.md" : "SOURCE_FIX_PLAN.md";
         return ".replayfix/approved-changes/" + defectKey + "/" + suffix;
@@ -434,18 +434,18 @@ public class BitbucketDefectPrFlowService {
 
                     import static org.junit.jupiter.api.Assertions.assertTrue;
 
-                    class %sReplayFixRegressionTest {
+                    class %sReplayLabRegressionTest {
 
                         @Test
-                        @Disabled("ReplayFix approved regression draft; requires review before enabling.")
+                        @Disabled("ReplayLab approved regression draft; requires review before enabling.")
                         void replayfix_regression_scenario_for_%s() {
-                            assertTrue(true, "ReplayFix placeholder for %s");
+                            assertTrue(true, "ReplayLab placeholder for %s");
                         }
                     }
                     """.formatted(compact(request.defectKey()), compact(request.defectKey()), request.defectKey());
         }
         return String.join("\n",
-                "# ReplayFix Approved Change",
+                "# ReplayLab Approved Change",
                 "",
                 "Defect: " + request.defectKey() + ": " + request.defectSummary(),
                 "Approved source fix: " + request.appliedSourceFix(),
@@ -457,12 +457,12 @@ public class BitbucketDefectPrFlowService {
 
     private String prDescription(ReplayCaseEntity replayCase, NormalizedDefectPrFlow request) {
         return sanitize(String.join("\n",
-                "ReplayFix Draft PR",
+                "ReplayLab Draft PR",
                 "",
                 "Defect:",
                 "- " + request.defectKey() + ": " + request.defectSummary(),
                 "",
-                "ReplayFix Case:",
+                "ReplayLab Case:",
                 "- " + replayCase.getId(),
                 "",
                 "Branch Flow:",

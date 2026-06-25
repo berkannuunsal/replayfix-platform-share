@@ -401,7 +401,7 @@ public class BitbucketWorkspacePushService {
                 ),
                 firstNonBlank(
                         safe.commitMessage(),
-                        "ReplayFix: " + jiraKey + " guarded draft fix"
+                        "ReplayLab: " + jiraKey + " guarded draft fix"
                 )
         );
     }

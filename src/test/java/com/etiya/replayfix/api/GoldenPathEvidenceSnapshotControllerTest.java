@@ -59,7 +59,7 @@ class GoldenPathEvidenceSnapshotControllerTest {
                 new GoldenPathEvidenceSnapshotJiraPreviewResponse(
                         caseId,
                         "FIZZMS-8346",
-                        "ReplayFix Evidence Snapshot",
+                        "ReplayLab Evidence Snapshot",
                         true,
                         List.of(),
                         List.of()
@@ -75,7 +75,7 @@ class GoldenPathEvidenceSnapshotControllerTest {
                 ))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.safeToPost").value(true))
-                .andExpect(jsonPath("$.preview").value("ReplayFix Evidence Snapshot"));
+                .andExpect(jsonPath("$.preview").value("ReplayLab Evidence Snapshot"));
     }
 
     private GoldenPathEvidenceSnapshotResponse snapshot(UUID caseId) {
@@ -131,7 +131,7 @@ class GoldenPathEvidenceSnapshotControllerTest {
                         List.of(),
                         List.of()
                 ),
-                "ReplayFix Evidence Snapshot",
+                "ReplayLab Evidence Snapshot",
                 "REPLAYFIX_ROVO_RCA_V1\n{}",
                 List.of(),
                 List.of(),

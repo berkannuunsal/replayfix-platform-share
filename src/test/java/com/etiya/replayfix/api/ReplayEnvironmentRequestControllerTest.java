@@ -191,7 +191,7 @@ class ReplayEnvironmentRequestControllerTest {
                         List.of("dry-run first"),
                         List.of(ReplayEnvironmentRequestService
                                 .PROVISIONING_DISABLED_NEXT_ACTION),
-                        "ReplayFix has prepared a dry-run replay environment plan."
+                        "ReplayLab has prepared a dry-run replay environment plan."
                 )
         );
         MockMvc mockMvc = MockMvcBuilders
@@ -216,7 +216,7 @@ class ReplayEnvironmentRequestControllerTest {
                 .andExpect(jsonPath("$.blockers[0]")
                         .value("REAL_PROVISIONING_DISABLED"))
                 .andExpect(jsonPath("$.demoNarrative")
-                        .value("ReplayFix has prepared a dry-run replay environment plan."));
+                        .value("ReplayLab has prepared a dry-run replay environment plan."));
     }
 
     @Test

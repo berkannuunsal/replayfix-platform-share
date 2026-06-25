@@ -62,7 +62,7 @@ class JiraRealActionServiceTest {
 
         assertThat(response.previewOnly()).isTrue();
         assertThat(response.created()).isFalse();
-        assertThat(response.summary()).contains("ReplayFix", "FIZZMS-8346");
+        assertThat(response.summary()).contains("ReplayLab", "FIZZMS-8346");
         verify(jiraClient, never()).createIssue(any());
     }
 
@@ -113,7 +113,7 @@ class JiraRealActionServiceTest {
                 "FIZZMS-8346",
                 "Task",
                 false,
-                "ReplayFix Test Execution",
+                "ReplayLab Test Execution",
                 false,
                 false,
                 false,

@@ -51,7 +51,7 @@ public class GlobalExceptionHandler {
         ProblemDetail detail = ProblemDetail.forStatus(
                 HttpStatus.INTERNAL_SERVER_ERROR
         );
-        detail.setTitle("ReplayFix operation failed");
+        detail.setTitle("ReplayLab operation failed");
         detail.setDetail(exception.getMessage());
         return detail;
     }

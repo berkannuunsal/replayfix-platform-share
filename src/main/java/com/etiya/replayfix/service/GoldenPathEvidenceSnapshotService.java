@@ -451,7 +451,7 @@ public class GoldenPathEvidenceSnapshotService {
             GoldenPathEvidenceSnapshotResponse.DeterministicRca rca
     ) {
         return """
-                ReplayFix Evidence Snapshot
+                ReplayLab Evidence Snapshot
 
                 Jira:
                 - Key: %s

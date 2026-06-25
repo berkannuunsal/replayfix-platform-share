@@ -132,10 +132,10 @@ public class JiraRealActionService {
                 : firstNonBlank(request.issueType(), "Task");
         String summary = firstNonBlank(
                 request.summaryPrefix(),
-                "ReplayFix Test Execution"
+                "ReplayLab Test Execution"
         ) + " - " + sourceJira;
-        if (!summary.contains("ReplayFix")) {
-            summary = "ReplayFix " + summary;
+        if (!summary.contains("ReplayLab")) {
+            summary = "ReplayLab " + summary;
         }
 
         TestExecutionPlanResponse testPlan = null;
@@ -221,12 +221,12 @@ public class JiraRealActionService {
             TestExecutionPlanResponse testPlan
     ) {
         List<String> lines = new ArrayList<>();
-        lines.add("ReplayFix Generated Test Task");
+        lines.add("ReplayLab Generated Test Task");
         lines.add("");
         lines.add("Source Jira:");
         lines.add("- " + sourceJira);
         lines.add("");
-        lines.add("ReplayFix Case:");
+        lines.add("ReplayLab Case:");
         lines.add("- " + replayCase.getId());
         lines.add("");
         lines.add("Evidence:");
@@ -246,7 +246,7 @@ public class JiraRealActionService {
         lines.add("");
         lines.add("Planned Test Steps:");
         if (testPlan == null || testPlan.testCommands().isEmpty()) {
-            lines.add("1. Review ReplayFix test execution plan.");
+            lines.add("1. Review ReplayLab test execution plan.");
             lines.add("2. Prepare sanitized replay data.");
             lines.add("3. Execute approved tests manually.");
         } else {
@@ -402,7 +402,7 @@ public class JiraRealActionService {
                         "",
                         "Task",
                         false,
-                        "ReplayFix Test Execution",
+                        "ReplayLab Test Execution",
                         true,
                         true,
                         true,

@@ -32,7 +32,7 @@ class BitbucketSingleFileDefectPrFlowServiceTest {
                         "berkan", "DCE", "backend", "CRM-123", "Safe summary",
                         "test2", "master", "Integration/test2/FIZZMS-6686",
                         "", "", "", "GENERATED_TEST_ONLY",
-                        "[DRAFT] ReplayFix", true, false, false));
+                        "[DRAFT] ReplayLab", true, false, false));
 
         assertThat(response.filePath())
                 .isEqualTo("ControllerBackend/src/test/java/com/etiya/replayfix/generated/CRM123RegressionTest.java");
@@ -58,7 +58,7 @@ class BitbucketSingleFileDefectPrFlowServiceTest {
                 "",
                 "",
                 "",
-                "[DRAFT] ReplayFix CRM-123 fix proposal",
+                "[DRAFT] ReplayLab CRM-123 fix proposal",
                 false,
                 true,
                 false,

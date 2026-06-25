@@ -178,7 +178,7 @@ class GoldenPathEvidenceSnapshotServiceTest {
                 service.snapshot(caseId, false, true, true, true);
 
         assertThat(response.jiraMarkdownPreview())
-                .contains("ReplayFix Evidence Snapshot")
+                .contains("ReplayLab Evidence Snapshot")
                 .contains("Repository:")
                 .contains("Jenkins:")
                 .contains("Incident Version:")
@@ -204,7 +204,7 @@ class GoldenPathEvidenceSnapshotServiceTest {
                 service.jiraPreview(caseId);
 
         assertThat(response.safeToPost()).isTrue();
-        assertThat(response.preview()).contains("ReplayFix Evidence Snapshot");
+        assertThat(response.preview()).contains("ReplayLab Evidence Snapshot");
         verify(evidenceRepository, never()).save(org.mockito.ArgumentMatchers.any());
     }
 

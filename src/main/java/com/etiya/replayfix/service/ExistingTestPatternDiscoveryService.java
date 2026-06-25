@@ -157,7 +157,7 @@ public class ExistingTestPatternDiscoveryService {
             paths.filter(Files::isRegularFile)
                     .filter(p -> p.toString().endsWith(".java"))
                     .filter(p -> !isExcluded(p, workspace))
-                    .filter(p -> !isReplayFixGenerated(p, writeResult))
+                    .filter(p -> !isReplayLabGenerated(p, writeResult))
                     .limit(MAX_FILES)
                     .forEach(path -> {
                         try {
@@ -530,12 +530,12 @@ public class ExistingTestPatternDiscoveryService {
         return false;
     }
 
-    private boolean isReplayFixGenerated(Path path, GeneratedTestWriteResult writeResult) {
+    private boolean isReplayLabGenerated(Path path, GeneratedTestWriteResult writeResult) {
         String pathStr = path.toString().replace('\\', '/');
         String generatedPath = writeResult.relativePath().replace('\\', '/');
 
         return pathStr.endsWith(generatedPath)
-                || pathStr.contains("ReplayFixRegressionTest");
+                || pathStr.contains("ReplayLabRegressionTest");
     }
 
     private TestPatternCandidate createFallbackCandidate(RegressionTestPlan plan) {

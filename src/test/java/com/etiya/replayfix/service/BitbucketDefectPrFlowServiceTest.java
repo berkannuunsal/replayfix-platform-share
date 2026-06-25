@@ -106,7 +106,7 @@ class BitbucketDefectPrFlowServiceTest {
                 new BitbucketDefectPrFlowRequest(
                         "berkan", "DCE", "backend", "CRM-123", "Safe summary",
                         "test2", "master", "Integration/test2/FIZZMS-6686",
-                        "", "", "[DRAFT] ReplayFix", true,
+                        "", "", "[DRAFT] ReplayLab", true,
                         false, false, false, false, false);
 
         BitbucketDefectPrFlowResponse response =
@@ -127,7 +127,7 @@ class BitbucketDefectPrFlowServiceTest {
                         "berkan", "DCE", "backend", "FIZZMS-10228",
                         "FIZZMS-10228 : FMS-170772//Region mismatch",
                         "test2", "master", "Integration/test2/FIZZMS-6686",
-                        "", "", "[DRAFT] ReplayFix", true,
+                        "", "", "[DRAFT] ReplayLab", true,
                         false, true, false, false, false);
 
         BitbucketDefectPrFlowResponse response =
@@ -163,7 +163,7 @@ class BitbucketDefectPrFlowServiceTest {
         when(bitbucketClient.createPullRequest(any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new PullRequestResult(
                         "88", "https://bitbucket/pr/88",
-                        "[DRAFT] ReplayFix CRM-123 fix proposal"));
+                        "[DRAFT] ReplayLab CRM-123 fix proposal"));
 
         BitbucketDefectPrFlowResponse response =
                 service.create(caseId, request("CRM-123", true, true));
@@ -178,7 +178,7 @@ class BitbucketDefectPrFlowServiceTest {
         verify(bitbucketClient).createPullRequest(
                 eq("DCE"), eq("backend"), eq("Integration/test2/CRM-123"),
                 eq("Integration/test2/FIZZMS-6686"),
-                eq("[DRAFT] ReplayFix CRM-123 fix proposal"), any(), eq(List.of()));
+                eq("[DRAFT] ReplayLab CRM-123 fix proposal"), any(), eq(List.of()));
         verify(evidenceRepository).save(any(EvidenceEntity.class));
     }
 
@@ -227,7 +227,7 @@ class BitbucketDefectPrFlowServiceTest {
     ) {
         return new BitbucketDefectPrFlowRequest(
                 "berkan", "DCE", "backend", defectKey, "Safe summary",
-                "test2", "master", "", "", "", "[DRAFT] ReplayFix",
+                "test2", "master", "", "", "", "[DRAFT] ReplayLab",
                 true, false, true, false, confirm, guardrails);
     }
 

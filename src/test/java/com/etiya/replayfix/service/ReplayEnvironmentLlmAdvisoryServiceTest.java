@@ -411,7 +411,7 @@ class ReplayEnvironmentLlmAdvisoryServiceTest {
                 List.of("dry-run first", "no secret value exposure"),
                 List.of(ReplayEnvironmentRequestService
                         .PROVISIONING_DISABLED_NEXT_ACTION),
-                "ReplayFix has prepared a dry-run replay environment plan."
+                "ReplayLab has prepared a dry-run replay environment plan."
         );
     }
 }

@@ -196,8 +196,8 @@ public class BitbucketPullRequestRealActionService {
         if (!title.startsWith("[DRAFT]")) {
             title = "[DRAFT] " + title;
         }
-        if (!title.contains("ReplayFix")) {
-            title = title.replace("[DRAFT]", "[DRAFT] ReplayFix");
+        if (!title.contains("ReplayLab")) {
+            title = title.replace("[DRAFT]", "[DRAFT] ReplayLab");
         }
         String description = description(replayCase, request, safeRequest);
         Map<String, Object> payload = new LinkedHashMap<>();
@@ -240,12 +240,12 @@ public class BitbucketPullRequestRealActionService {
             BitbucketPullRequestRequest flags
     ) {
         List<String> lines = new ArrayList<>();
-        lines.add("ReplayFix Draft PR");
+        lines.add("ReplayLab Draft PR");
         lines.add("");
         lines.add("Source Jira:");
         lines.add("- " + request.jiraKey());
         lines.add("");
-        lines.add("ReplayFix Case:");
+        lines.add("ReplayLab Case:");
         lines.add("- " + replayCase.getId());
         lines.add("");
         lines.add("Branch Flow:");

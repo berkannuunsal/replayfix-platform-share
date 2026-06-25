@@ -115,7 +115,7 @@ class DefectPrTargetedChangeServiceTest {
                 .endsWith("CRM123RegressionTest.java")
                 .doesNotContainIgnoringCase("demo");
         assertThat(response.title())
-                .isEqualTo("[DRAFT] ReplayFix CRM-123 fix proposal")
+                .isEqualTo("[DRAFT] ReplayLab CRM-123 fix proposal")
                 .doesNotContainIgnoringCase("demo");
     }
 
@@ -142,7 +142,7 @@ class DefectPrTargetedChangeServiceTest {
                         "test2", "master", "Integration/test2/FIZZMS-6686",
                         "", "",
                         "ControllerBackend/src/main/java/com/company/UserService.java",
-                        "APPROVED_REGRESSION_TEST", "[DRAFT] ReplayFix", true,
+                        "APPROVED_REGRESSION_TEST", "[DRAFT] ReplayLab", true,
                         false, false);
 
         DefectPrTargetedChangeResponse response =
@@ -161,7 +161,7 @@ class DefectPrTargetedChangeServiceTest {
                         "test2", "master", "Integration/test2/FIZZMS-6686",
                         "", "",
                         "ControllerBackend/src/main/java/com/company/UserService.java",
-                        "APPROVED_SOURCE_FIX", "[DRAFT] ReplayFix", true,
+                        "APPROVED_SOURCE_FIX", "[DRAFT] ReplayLab", true,
                         false, false);
 
         DefectPrTargetedChangeResponse response =
@@ -186,7 +186,7 @@ class DefectPrTargetedChangeServiceTest {
         when(bitbucketClient.createPullRequest(any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new PullRequestResult(
                         "77", "https://bitbucket/pr/77",
-                        "[DRAFT] ReplayFix CRM-123 fix proposal"));
+                        "[DRAFT] ReplayLab CRM-123 fix proposal"));
 
         DefectPrTargetedChangeResponse response =
                 service.create(caseId, request("CRM-123", true, true));
@@ -204,7 +204,7 @@ class DefectPrTargetedChangeServiceTest {
                 eq("DCE"), eq("backend"), eq("bugfix/CRM-123"),
                 eq("ControllerBackend/src/test/java/com/etiya/replayfix/generated/CRM123RegressionTest.java"),
                 org.mockito.ArgumentMatchers.contains(
-                        "ReplayFix generated regression test requires business-specific assertions before enabling"),
+                        "ReplayLab generated regression test requires business-specific assertions before enabling"),
                 eq("CRM-123: Safe summary"));
         verify(bitbucketClient).updateFile(
                 eq("DCE"), eq("backend"), eq("Integration/test2/CRM-123"),
@@ -280,7 +280,7 @@ class DefectPrTargetedChangeServiceTest {
                         "FIZZMS-10228 : FMS-170772//Region mismatch",
                         "test2", "master", "Integration/test2/FIZZMS-6686",
                         "", "", "", "APPROVED_REGRESSION_TEST",
-                        "[DRAFT] ReplayFix", true, false, false);
+                        "[DRAFT] ReplayLab", true, false, false);
 
         DefectPrTargetedChangeResponse response =
                 service.preview(caseId, request);
@@ -304,7 +304,7 @@ class DefectPrTargetedChangeServiceTest {
                 "Integration/test2/FIZZMS-6686"))
                 .thenReturn(new PullRequestResult(
                         "99", "https://bitbucket/pr/99",
-                        "[DRAFT] ReplayFix CRM-123 fix proposal"));
+                        "[DRAFT] ReplayLab CRM-123 fix proposal"));
 
         DefectPrTargetedChangeResponse response =
                 service.create(caseId, request("CRM-123", true, true));
@@ -331,7 +331,7 @@ class DefectPrTargetedChangeServiceTest {
         when(bitbucketClient.createPullRequest(any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new PullRequestResult(
                         "77", "https://bitbucket/pr/77",
-                        "[DRAFT] ReplayFix CRM-123 fix proposal"));
+                        "[DRAFT] ReplayLab CRM-123 fix proposal"));
         when(bitbucketPrCommentService.comment(any(), any()))
                 .thenReturn(summaryComment(false));
 
@@ -441,7 +441,7 @@ class DefectPrTargetedChangeServiceTest {
         return new DefectPrTargetedChangeRequest(
                 "berkan", "DCE", "backend", defectKey, "Safe summary",
                 "test2", "master", "", "", "", "",
-                "APPROVED_REGRESSION_TEST", "[DRAFT] ReplayFix", true,
+                "APPROVED_REGRESSION_TEST", "[DRAFT] ReplayLab", true,
                 confirm, guardrails);
     }
 

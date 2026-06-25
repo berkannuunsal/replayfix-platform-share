@@ -83,7 +83,7 @@ public class LokiHttpClient implements LokiClient {
                 .toUri();
 
         log.debug(
-                "ReplayFix Loki query_range request. endpoint={}, uri={}",
+                "ReplayLab Loki query_range request. endpoint={}, uri={}",
                 endpoint,
                 requestUri
         );

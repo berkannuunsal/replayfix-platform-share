@@ -68,7 +68,7 @@ class CompanyLlmProviderClientTest {
         assertThat(payloadText).doesNotContain("raw-token");
         assertThat(payloadText).doesNotContain("password\":\"abc");
         assertThat(payloadText).contains("[REDACTED]");
-        assertThat(payloadText).contains("Use only supplied ReplayFix evidence");
+        assertThat(payloadText).contains("Use only supplied ReplayLab evidence");
     }
 
     @Test

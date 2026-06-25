@@ -174,7 +174,7 @@ class BitbucketTest2DemoPrServiceTest {
                         "FIZZMS-10228",
                         "test2",
                         "feature/FIZZMS-10228",
-                        "[DRAFT] ReplayFix",
+                        "[DRAFT] ReplayLab",
                         true,
                         true,
                         false,
@@ -197,7 +197,7 @@ class BitbucketTest2DemoPrServiceTest {
                         "FIZZMS-10228",
                         "test2",
                         "test2",
-                        "[DRAFT] ReplayFix",
+                        "[DRAFT] ReplayLab",
                         true,
                         true,
                         false,
@@ -242,9 +242,9 @@ class BitbucketTest2DemoPrServiceTest {
                 eq("backend"),
                 eq("test2"),
                 eq("integration/test2/FIZZMS-10228"),
-                eq("ControllerBackend/src/test/java/com/company/replayfix/generated/FIZZMS10228ReplayFixDemoRegressionTest.java"),
+                eq("ControllerBackend/src/test/java/com/company/replayfix/generated/FIZZMS10228ReplayLabDemoRegressionTest.java"),
                 any(),
-                eq("ReplayFix: FIZZMS-10228 demo regression test")
+                eq("ReplayLab: FIZZMS-10228 demo regression test")
         )).thenReturn(new Test2DemoPrGitOperations.Test2DemoPrGitResult(
                 true,
                 "abc123",
@@ -262,7 +262,7 @@ class BitbucketTest2DemoPrServiceTest {
         )).thenReturn(new PullRequestResult(
                 "42",
                 "https://bitbucket/pr/42",
-                "[DRAFT] ReplayFix FIZZMS-10228 demo regression test"
+                "[DRAFT] ReplayLab FIZZMS-10228 demo regression test"
         ));
 
         BitbucketTest2DemoPrResponse response =
@@ -272,7 +272,7 @@ class BitbucketTest2DemoPrServiceTest {
         assertThat(response.commitSha()).isEqualTo("abc123");
         assertThat(response.pullRequestUrl()).isEqualTo("https://bitbucket/pr/42");
         assertThat(response.title())
-                .isEqualTo("[DRAFT] ReplayFix FIZZMS-10228 demo regression test");
+                .isEqualTo("[DRAFT] ReplayLab FIZZMS-10228 demo regression test");
         assertThat(response.generatedFilePath())
                 .contains("FIZZMS10228")
                 .contains("src/test/java")
@@ -282,7 +282,7 @@ class BitbucketTest2DemoPrServiceTest {
                 eq("backend"),
                 eq("integration/test2/FIZZMS-10228"),
                 eq("test2"),
-                eq("[DRAFT] ReplayFix FIZZMS-10228 demo regression test"),
+                eq("[DRAFT] ReplayLab FIZZMS-10228 demo regression test"),
                 any(),
                 eq(List.of())
         );
@@ -344,7 +344,7 @@ class BitbucketTest2DemoPrServiceTest {
         )).thenReturn(new PullRequestResult(
                 "42",
                 "https://bitbucket/pr/42",
-                "[DRAFT] ReplayFix FIZZMS-10228 demo regression test"
+                "[DRAFT] ReplayLab FIZZMS-10228 demo regression test"
         ));
 
         BitbucketTest2DemoPrResponse response =
@@ -434,7 +434,7 @@ class BitbucketTest2DemoPrServiceTest {
                         "FIZZMS-10228",
                         "test2",
                         "integration/test2/FIZZMS-10228",
-                        "[DRAFT] ReplayFix",
+                        "[DRAFT] ReplayLab",
                         true,
                         false,
                         true,
@@ -488,7 +488,7 @@ class BitbucketTest2DemoPrServiceTest {
                 "FIZZMS-10228",
                 "test2",
                 "integration/test2/FIZZMS-10228",
-                "[DRAFT] ReplayFix",
+                "[DRAFT] ReplayLab",
                 true,
                 true,
                 confirm,

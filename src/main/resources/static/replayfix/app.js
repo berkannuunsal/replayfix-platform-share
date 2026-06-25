@@ -1,4 +1,4 @@
-// ReplayFix Incident Dashboard - Main Application
+// ReplayLab Incident Dashboard - Main Application
 (function() {
     'use strict';
 

@@ -64,7 +64,7 @@ class GuardedFixDemoControllerTest {
                         "FIZZMS-10228",
                         true,
                         true,
-                        "ControllerBackend/src/test/java/com/company/replayfix/generated/FIZZMS10228ReplayFixDemoRegressionTest.java",
+                        "ControllerBackend/src/test/java/com/company/replayfix/generated/FIZZMS10228ReplayLabDemoRegressionTest.java",
                         "bugfix/FIZZMS-10228",
                         "integration/test2/FIZZMS-10228",
                         "abc123",

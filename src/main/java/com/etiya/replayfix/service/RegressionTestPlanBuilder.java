@@ -109,7 +109,7 @@ public class RegressionTestPlanBuilder {
         String proposedTestClass =
                 sanitizeJavaIdentifier(
                         targetClass
-                ) + "ReplayFixRegressionTest";
+                ) + "ReplayLabRegressionTest";
 
         String proposedTestMethod =
                 "shouldReproduce"

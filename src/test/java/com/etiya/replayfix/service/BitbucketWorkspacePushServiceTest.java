@@ -121,7 +121,7 @@ class BitbucketWorkspacePushServiceTest {
                 "test2",
                 "master",
                 "integration/test2/FIZZMS-10228",
-                "ReplayFix: FIZZMS-10228 guarded draft fix",
+                "ReplayLab: FIZZMS-10228 guarded draft fix",
                 false,
                 false
         );
@@ -145,7 +145,7 @@ class BitbucketWorkspacePushServiceTest {
                 "test2",
                 "feature/FIZZMS-10228",
                 "feature/test2/FIZZMS-10228",
-                "ReplayFix: FIZZMS-10228 guarded draft fix",
+                "ReplayLab: FIZZMS-10228 guarded draft fix",
                 false,
                 false
         );
@@ -211,7 +211,7 @@ class BitbucketWorkspacePushServiceTest {
                 "test2",
                 "bugfix/FIZZMS-10228",
                 "integration/test2/FIZZMS-10228",
-                "ReplayFix: FIZZMS-10228 guarded draft fix"
+                "ReplayLab: FIZZMS-10228 guarded draft fix"
         )).thenReturn(new WorkspaceGitOperations.WorkspaceGitPushResult(
                 true,
                 true,
@@ -327,7 +327,7 @@ class BitbucketWorkspacePushServiceTest {
                 "test2",
                 "bugfix/FIZZMS-10228",
                 "integration/test2/FIZZMS-10228",
-                "ReplayFix: FIZZMS-10228 guarded draft fix",
+                "ReplayLab: FIZZMS-10228 guarded draft fix",
                 confirm,
                 guardrails
         );

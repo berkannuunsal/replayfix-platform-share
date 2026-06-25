@@ -144,7 +144,7 @@ public class ProcessWorkspaceGitOperations implements WorkspaceGitOperations {
                 "--no-ff",
                 bugfixBranch,
                 "-m",
-                "ReplayFix merge " + bugfixBranch + " into " + integrationBranch
+                "ReplayLab merge " + bugfixBranch + " into " + integrationBranch
         );
         if (merge.exitCode() != 0) {
             boolean conflict = merge.output().toLowerCase().contains("conflict");

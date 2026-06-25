@@ -93,7 +93,7 @@ public class RovoSnapshotPublisherService {
         ArrayNode content = doc.putArray("content");
 
         // Header
-        content.add(heading(3, "ReplayFix Evidence Snapshot v" + snapshot.schemaVersion()));
+        content.add(heading(3, "ReplayLab Evidence Snapshot v" + snapshot.schemaVersion()));
 
         // Case section
         content.add(heading(4, "Vaka (Case)"));

@@ -71,7 +71,7 @@ public class BitbucketBackendDemoPrService {
         if (response.appliedRegressionTest()) {
             return "ControllerBackend/src/test/java/com/company/replayfix/generated/"
                     + compact(response.defectKey())
-                    + "ReplayFixRegressionTest.java";
+                    + "ReplayLabRegressionTest.java";
         }
         if (response.appliedConfigChange()) {
             return ".replayfix/approved-changes/" + response.defectKey() + "/CONFIG_CHANGE_PLAN.md";

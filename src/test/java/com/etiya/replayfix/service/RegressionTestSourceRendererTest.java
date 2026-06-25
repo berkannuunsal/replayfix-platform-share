@@ -105,7 +105,7 @@ class RegressionTestSourceRendererTest {
         String source = renderer.render(plan);
 
         assertTrue(source.contains("UnsupportedOperationException"));
-        assertTrue(source.contains("ReplayFix regression scaffold"));
+        assertTrue(source.contains("ReplayLab regression scaffold"));
     }
 
     @Test

@@ -142,7 +142,7 @@ class JiraEvidenceSnapshotBuilderTest {
 
         String preview = renderer.renderPlainText(snapshot);
 
-        assertTrue(preview.contains("ReplayFix Evidence Snapshot"));
+        assertTrue(preview.contains("ReplayLab Evidence Snapshot"));
         assertTrue(preview.contains("Executive Incident Brief"));
         assertTrue(preview.contains("* Jira: FIZZMS-10228"));
         assertTrue(preview.contains("* Target: backend"));

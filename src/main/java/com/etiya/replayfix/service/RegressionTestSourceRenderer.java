@@ -23,7 +23,7 @@ public class RegressionTestSourceRenderer {
         String className =
                 sanitizeJavaIdentifier(
                         plan.proposedTestClass(),
-                        "ReplayFixRegressionTest"
+                        "ReplayLabRegressionTest"
                 );
 
         String methodName =
@@ -89,7 +89,7 @@ public class RegressionTestSourceRenderer {
                 .append("() {\n");
 
         source.append(
-                "        // ReplayFix generated regression test scaffold.\n"
+                "        // ReplayLab generated regression test scaffold.\n"
         );
 
         source.append(
@@ -143,7 +143,7 @@ public class RegressionTestSourceRenderer {
         );
 
         source.append(
-                "                \"ReplayFix regression scaffold: implement project-specific arrange/act/assert before execution.\"\n"
+                "                \"ReplayLab regression scaffold: implement project-specific arrange/act/assert before execution.\"\n"
         );
 
         source.append("        );\n");

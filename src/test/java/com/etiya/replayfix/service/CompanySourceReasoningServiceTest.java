@@ -290,7 +290,7 @@ class CompanySourceReasoningServiceTest {
                 .contains("No text before or after JSON")
                 .contains("Never return CONFIRMED");
         assertThat(request.getValue().userPrompt())
-                .contains("Given this small ReplayFix evidence packet")
+                .contains("Given this small ReplayLab evidence packet")
                 .contains("\"status\": \"HYPOTHESIS\"");
     }
 

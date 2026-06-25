@@ -355,7 +355,7 @@ public class ReplayFixProperties {
         private boolean jenkinsValidationTriggerEnabled;
         private boolean requireConfirmation = true;
         private boolean requireGuardrailsAccepted = true;
-        private String draftPrTitlePrefix = "[DRAFT] ReplayFix";
+        private String draftPrTitlePrefix = "[DRAFT] ReplayLab";
         private String defaultDevelopmentBaseBranch = "master";
         private String defaultEnvironmentTargetBranch = "test2";
         private String bugfixBranchPrefix = "bugfix/";

@@ -232,7 +232,7 @@ class GuardedFixDemoServiceTest {
                         "master",
                         "integration/test2/FIZZMS-10228",
                         "test2",
-                        "ReplayFix: FIZZMS-10228 demo regression test",
+                        "ReplayLab: FIZZMS-10228 demo regression test",
                         true,
                         true,
                         true
@@ -264,7 +264,7 @@ class GuardedFixDemoServiceTest {
                 eq("test2"),
                 eq("bugfix/FIZZMS-10228"),
                 eq("integration/test2/FIZZMS-10228"),
-                eq("ReplayFix: FIZZMS-10228 demo regression test")
+                eq("ReplayLab: FIZZMS-10228 demo regression test")
         )).thenReturn(new WorkspaceGitOperations.WorkspaceGitPushResult(
                 true,
                 true,
@@ -299,7 +299,7 @@ class GuardedFixDemoServiceTest {
         )).thenReturn(new PullRequestResult(
                 "42",
                 "https://bitbucket/pr/42",
-                "[DRAFT] ReplayFix FIZZMS-10228 demo regression test"
+                "[DRAFT] ReplayLab FIZZMS-10228 demo regression test"
         ));
 
         GuardedFixDemoTestOnlyPrResponse response =
@@ -328,7 +328,7 @@ class GuardedFixDemoServiceTest {
                 eq("backend"),
                 eq("integration/test2/FIZZMS-10228"),
                 eq("test2"),
-                eq("[DRAFT] ReplayFix FIZZMS-10228 demo regression test"),
+                eq("[DRAFT] ReplayLab FIZZMS-10228 demo regression test"),
                 any(),
                 eq(List.of())
         );
@@ -500,7 +500,7 @@ class GuardedFixDemoServiceTest {
                 "backend",
                 "integration/test2/FIZZMS-10228",
                 "test2",
-                "[DRAFT] ReplayFix FIZZMS-10228 replay fix plan",
+                "[DRAFT] ReplayLab FIZZMS-10228 replay fix plan",
                 "safe description",
                 Map.of(),
                 blockers,
@@ -546,7 +546,7 @@ class GuardedFixDemoServiceTest {
                 "bugfix/FIZZMS-10228",
                 "integration/test2/FIZZMS-10228",
                 "test2",
-                "ReplayFix: FIZZMS-10228 demo regression test",
+                "ReplayLab: FIZZMS-10228 demo regression test",
                 true,
                 confirm,
                 guardrails

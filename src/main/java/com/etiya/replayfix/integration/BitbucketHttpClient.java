@@ -444,7 +444,7 @@ public class BitbucketHttpClient implements BitbucketClient {
             Map<String, Object> body = Map.of(
                     "fromRef", Map.of("id", "refs/heads/" + sourceBranch),
                     "toRef", Map.of("id", "refs/heads/" + targetBranch),
-                    "message", "ReplayFix guarded branch merge"
+                    "message", "ReplayLab guarded branch merge"
             );
             webClientBuilder
                     .baseUrl(cfg.getBaseUrl().replaceAll("/+$", ""))

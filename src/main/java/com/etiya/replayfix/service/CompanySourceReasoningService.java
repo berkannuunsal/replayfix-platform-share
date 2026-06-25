@@ -449,7 +449,7 @@ public class CompanySourceReasoningService {
                     """;
         }
         return """
-                You are ReplayFix source reasoning AI. Return valid JSON only.
+                You are ReplayLab source reasoning AI. Return valid JSON only.
                 Use only supplied evidence. Separate FACT, INFERENCE and UNKNOWN.
                 Do not invent files, methods, commits or logs. Status must remain
                 HYPOTHESIS unless supplied replay/test/log evidence confirms.
@@ -459,7 +459,7 @@ public class CompanySourceReasoningService {
     private String userPrompt(String contextJson, String contextMode) {
         if ("MINIMAL".equalsIgnoreCase(contextMode)) {
             return """
-                    Given this small ReplayFix evidence packet, produce only:
+                    Given this small ReplayLab evidence packet, produce only:
                     {
                       "status": "HYPOTHESIS",
                       "confidence": 0.0,
@@ -476,7 +476,7 @@ public class CompanySourceReasoningService {
                     """.formatted(contextJson);
         }
         return """
-                Analyze this bounded ReplayFix source reasoning context.
+                Analyze this bounded ReplayLab source reasoning context.
 
                 Return valid JSON only:
                 {

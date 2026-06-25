@@ -53,7 +53,7 @@ public class OpenAiCompatibleClient implements AiClient {
 
                     {
                       "ok": true,
-                      "message": "ReplayFix AI connectivity test"
+                      "message": "ReplayLab AI connectivity test"
                     }
 
                     Do not include markdown or additional explanation.
@@ -90,7 +90,7 @@ public class OpenAiCompatibleClient implements AiClient {
         if (!properties.getIntegrations().getAi().isEnabled()) {
             return new RootCauseResult(
                     "AI analysis is disabled",
-                    "The deterministic ReplayFix report remains the active hypothesis.",
+                    "The deterministic ReplayLab report remains the active hypothesis.",
                     0.0,
                     List.of(
                             "AI_INPUT_BUNDLE was generated but not sent to a model."
@@ -161,12 +161,12 @@ Evidence bundle:
             String sample = "package com.example.replayfix;\\n\\n" +
                     "import org.junit.jupiter.api.Test;\\n" +
                     "import static org.junit.jupiter.api.Assertions.assertTrue;\\n\\n" +
-                    "class ReplayFixGeneratedRegressionTest {\\n" +
+                    "class ReplayLabGeneratedRegressionTest {\\n" +
                     "    @Test void incident_is_reproducible() { assertTrue(true); }\\n" +
                     "}\\n";
             return new GenerationResult(
                     List.of(new GeneratedFile(
-                            "src/test/java/com/example/replayfix/ReplayFixGeneratedRegressionTest.java",
+                            "src/test/java/com/example/replayfix/ReplayLabGeneratedRegressionTest.java",
                             sample
                     )),
                     "Dry-run generated regression test",
@@ -225,7 +225,7 @@ Evidence bundle:
                                 "role",
                                 "system",
                                 "content",
-                                "You are ReplayFix. "
+                                "You are ReplayLab. "
                                         + "Return strict JSON only."
                         ),
                         Map.of(

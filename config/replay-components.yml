@@ -127,7 +127,7 @@ replayfix:
       defaultNamespace: project-replay-sandbox
       healthPath: /__admin/health
       servicePort: 8080
-      ownerTeam: ReplayFix
+      ownerTeam: ReplayLab
       dependencyModes:
         - MOCK
         - REPLAY_COPY

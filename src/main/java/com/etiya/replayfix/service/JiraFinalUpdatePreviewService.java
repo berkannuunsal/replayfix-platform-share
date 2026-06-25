@@ -65,7 +65,7 @@ public class JiraFinalUpdatePreviewService {
         List<JiraFinalUpdateCommentSection> sections = new ArrayList<>();
         sections.add(section(
                 "Summary",
-                "ReplayFix generated a hypothesis-only final update preview. No production change, PR, Jenkins run, or ArgoCD action was performed.",
+                "ReplayLab generated a hypothesis-only final update preview. No production change, PR, Jenkins run, or ArgoCD action was performed.",
                 List.of(
                         "Case: " + replayCase.getJiraKey(),
                         "Target: " + replayCase.getTargetKey(),
@@ -126,7 +126,7 @@ public class JiraFinalUpdatePreviewService {
         }
         sections.add(section(
                 "Workspace write status",
-                "Workspace draft files may exist under ReplayFix work directory only.",
+                "Workspace draft files may exist under ReplayLab work directory only.",
                 List.of("Workspace: " + workspacePath(replayCase.getId()))
         ));
         sections.add(section(
@@ -166,7 +166,7 @@ public class JiraFinalUpdatePreviewService {
         ));
         sections.add(section(
                 "Human approval required",
-                "ReplayFix will not publish Jira comments, run tests, create branches, open PRs, or trigger Jenkins from this preview.",
+                "ReplayLab will not publish Jira comments, run tests, create branches, open PRs, or trigger Jenkins from this preview.",
                 List.of("requiresHumanApproval=true", "shouldPublish=false")
         ));
 

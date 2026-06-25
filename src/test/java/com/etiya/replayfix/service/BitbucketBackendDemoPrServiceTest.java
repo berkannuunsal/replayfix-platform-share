@@ -133,7 +133,7 @@ class BitbucketBackendDemoPrServiceTest {
                         "test2",
                         "bugfix/project-10228",
                         "Integration/test2/project-10228",
-                        "[DRAFT] ReplayFix",
+                        "[DRAFT] ReplayLab",
                         true,
                         true,
                         true,
@@ -187,7 +187,7 @@ class BitbucketBackendDemoPrServiceTest {
                 eq("Integration/test2/project-10228"),
                 eq(false),
                 eq(false),
-                eq("ControllerBackend/src/test/java/com/company/replayfix/generated/project10228ReplayFixRegressionTest.java"),
+                eq("ControllerBackend/src/test/java/com/company/replayfix/generated/project10228ReplayLabRegressionTest.java"),
                 any(),
                 eq("project-10228: Fix agent category access regression demo")
         )).thenReturn(new BackendDemoPrGitOperations.BackendDemoPrGitResult(
@@ -211,7 +211,7 @@ class BitbucketBackendDemoPrServiceTest {
         )).thenReturn(new PullRequestResult(
                 "77",
                 "https://bitbucket/pr/77",
-                "[DRAFT] ReplayFix project-10228 fix proposal"
+                "[DRAFT] ReplayLab project-10228 fix proposal"
         ));
 
         BitbucketBackendDemoPrResponse response =
@@ -222,7 +222,7 @@ class BitbucketBackendDemoPrServiceTest {
         assertThat(response.integrationCommitSha()).isEqualTo("integration456");
         assertThat(response.pullRequestUrl()).isEqualTo("https://bitbucket/pr/77");
         assertThat(response.title())
-                .isEqualTo("[DRAFT] ReplayFix project-10228 fix proposal");
+                .isEqualTo("[DRAFT] ReplayLab project-10228 fix proposal");
         verify(bitbucketClient).createBranch(
                 "DCE",
                 "backend",
@@ -240,7 +240,7 @@ class BitbucketBackendDemoPrServiceTest {
                 eq("backend"),
                 eq("Integration/test2/project-10228"),
                 eq("test2"),
-                eq("[DRAFT] ReplayFix project-10228 fix proposal"),
+                eq("[DRAFT] ReplayLab project-10228 fix proposal"),
                 any(),
                 eq(List.of())
         );
@@ -265,7 +265,7 @@ class BitbucketBackendDemoPrServiceTest {
                         "test2",
                         "bugfix/project-10228",
                         "Integration/test2/project-10228",
-                        "[DRAFT] ReplayFix",
+                        "[DRAFT] ReplayLab",
                         true,
                         false,
                         true,
@@ -353,7 +353,7 @@ class BitbucketBackendDemoPrServiceTest {
                         "test2",
                         "master",
                         "Integration/test2/project-10228",
-                        "[DRAFT] ReplayFix",
+                        "[DRAFT] ReplayLab",
                         true,
                         true,
                         false,
@@ -439,7 +439,7 @@ class BitbucketBackendDemoPrServiceTest {
                 "test2",
                 "bugfix/project-10228",
                 "Integration/test2/project-10228",
-                "[DRAFT] ReplayFix",
+                "[DRAFT] ReplayLab",
                 true,
                 true,
                 confirm,

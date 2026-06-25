@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ReplayFix Incident Commander</title>
+    <title>ReplayLab Incident Commander</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -11,7 +11,7 @@
         <!-- Top Navigation -->
         <nav class="top-nav">
             <div class="nav-brand">
-                <h1>⚡ ReplayFix Incident Commander</h1>
+                <h1>⚡ ReplayLab Incident Commander</h1>
                 <span class="env-badge" id="envBadge">LIVE</span>
             </div>
             <div class="nav-info" id="navInfo">
@@ -144,7 +144,7 @@
             <section id="rovoRcaSection" class="card hidden">
                 <div class="card-header">
                     <div>
-                        <h2>Rovo RCA - Jira + ReplayFix Evidence ile Zenginleştirilmiş Analiz</h2>
+                        <h2>Rovo RCA - Jira + ReplayLab Evidence ile Zenginleştirilmiş Analiz</h2>
                         <p class="section-subtitle">Bu bölüm Rovo’nun Jira comment olarak ürettiği RCA raporundan import edilmiştir.</p>
                     </div>
                 </div>
@@ -172,8 +172,8 @@
                         </div>
                     </div>
                     <p class="section-subtitle">
-                        ReplayFix Deterministic RCA = evidence-only runtime/Jenkins/Loki/Tempo/source-context hypothesis.
-                        Rovo RCA = Jira + ReplayFix Evidence Snapshot + Confluence/EtiyaWiki enriched analysis.
+                        ReplayLab Deterministic RCA = evidence-only runtime/Jenkins/Loki/Tempo/source-context hypothesis.
+                        Rovo RCA = Jira + ReplayLab Evidence Snapshot + Confluence/EtiyaWiki enriched analysis.
                     </p>
                     <div class="rca-item">
                         <label>Probable Root Cause</label>
@@ -203,7 +203,7 @@
                 <div class="card-header">
                     <div>
                         <h2>Regression Test Hypothesis</h2>
-                        <p class="section-subtitle">Rovo RCA ve ReplayFix evidence uzerinden uretilen test hipotezi.</p>
+                        <p class="section-subtitle">Rovo RCA ve ReplayLab evidence uzerinden uretilen test hipotezi.</p>
                     </div>
                 </div>
                 <div class="card-body compact-panel">
@@ -341,7 +341,7 @@
             <!-- Rovo Handoff Panel -->
             <section id="rovoPanel" class="card">
                 <div class="card-header">
-                    <h2>🤖 Continue in ReplayFix Incident Commander</h2>
+                    <h2>🤖 Continue in ReplayLab Incident Commander</h2>
                 </div>
                 <div class="card-body">
                     <div class="rovo-status">
@@ -351,15 +351,15 @@
                         <label>Rovo Agent Prompt</label>
                         <textarea id="rovoPromptText" readonly rows="8">Analyze the current Jira issue.
 
-A comment titled "ReplayFix Evidence Snapshot" contains sanitized runtime evidence collected by ReplayFix. Treat only that comment as ReplayFix runtime evidence.
+A comment titled "ReplayLab Evidence Snapshot" contains sanitized runtime evidence collected by ReplayLab. Treat only that comment as ReplayLab runtime evidence.
 
 Use Jira and Confluence to find similar incidents and RCA documentation. Separate facts, inferences, and unknowns. Produce an executive brief, evidence matrix, probable failure chain, root-cause hypotheses, regression-test hypothesis, missing evidence, and one recommended next action.
 
-Do not invent runtime evidence beyond the ReplayFix Evidence Snapshot comment.</textarea>
+Do not invent runtime evidence beyond the ReplayLab Evidence Snapshot comment.</textarea>
                         <button id="copyPromptBtn" class="btn btn-secondary">📋 Copy Prompt</button>
                     </div>
                     <div id="rovoWarning" class="alert alert-warning hidden">
-                        ⚠️ Publish the approved ReplayFix Evidence Snapshot before using Rovo.
+                        ⚠️ Publish the approved ReplayLab Evidence Snapshot before using Rovo.
                     </div>
                 </div>
             </section>

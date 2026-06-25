@@ -207,10 +207,10 @@ public record RovoRcaDashboardView(
         }
 
         if (hasWeakEvidence) {
-            return "ReplayFix incident version is verified, but Loki, Tempo and source-context evidence are weak. Rovo RCA is a hypothesis and requires human validation.";
+            return "ReplayLab incident version is verified, but Loki, Tempo and source-context evidence are weak. Rovo RCA is a hypothesis and requires human validation.";
         }
 
-        return "Rovo RCA is enriched with Jira context and organizational knowledge. ReplayFix deterministic RCA is based solely on runtime evidence.";
+        return "Rovo RCA is enriched with Jira context and organizational knowledge. ReplayLab deterministic RCA is based solely on runtime evidence.";
     }
 
     private static boolean isWeak(RovoRcaAnalysis.EvidenceMatrixEntry entry) {

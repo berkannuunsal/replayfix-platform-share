@@ -622,7 +622,7 @@ public class DefectPrTargetedChangeService {
                 class %sRegressionTest {
 
                     private static final String REVIEW_REQUIRED_REASON =
-                            "ReplayFix generated regression test requires business-specific assertions before enabling";
+                            "ReplayLab generated regression test requires business-specific assertions before enabling";
 
                     @Test
                     @Disabled(REVIEW_REQUIRED_REASON)
@@ -639,12 +639,12 @@ public class DefectPrTargetedChangeService {
             PrRuleReviewResponse preflight
     ) {
         return sanitize(String.join("\n",
-                "ReplayFix Draft PR",
+                "ReplayLab Draft PR",
                 "",
                 "Defect:",
                 "- " + request.defectKey() + ": " + request.defectSummary(),
                 "",
-                "ReplayFix Case:",
+                "ReplayLab Case:",
                 "- " + replayCase.getId(),
                 "",
                 "Branch Flow:",

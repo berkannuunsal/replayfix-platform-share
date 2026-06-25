@@ -579,7 +579,7 @@ public class IncidentDashboardService {
                 buildEvidenceRootCauseSummary(
                         caseId,
                         EvidenceType.DETERMINISTIC_ROOT_CAUSE,
-                        "ReplayFix deterministic RCA"
+                        "ReplayLab deterministic RCA"
                 );
         if (deterministicRootCause.isPresent()) {
             return deterministicRootCause.get().toView();
@@ -1061,7 +1061,7 @@ public class IncidentDashboardService {
                         Set.of(EvidenceType.SOURCE_CONTEXT)
                 ),
                 new EvidenceSourceGroup(
-                        "ReplayFix",
+                        "ReplayLab",
                         Set.of(
                                 EvidenceType.AI_INPUT_BUNDLE,
                                 EvidenceType.DETERMINISTIC_ROOT_CAUSE,

@@ -1,10 +1,10 @@
-# ReplayFix Architecture
+# ReplayLab Architecture
 
 ```text
 Jira / Manual API
         |
         v
-ReplayFix Orchestrator
+ReplayLab Orchestrator
         |
         +--> Loki / Tempo
         +--> Confluence / Rovo

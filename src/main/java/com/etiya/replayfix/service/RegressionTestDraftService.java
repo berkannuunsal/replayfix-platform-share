@@ -343,7 +343,7 @@ public class RegressionTestDraftService {
                 endpoint,
                 targetClass,
                 targetMethod,
-                List.of("ReplayFix source reasoning selected a candidate path."),
+                List.of("ReplayLab source reasoning selected a candidate path."),
                 "Exercise the selected endpoint or service method with sanitized evidence.",
                 "The application should handle the suspected defect path according to the expected business rule.",
                 List.of(),
@@ -364,7 +364,7 @@ public class RegressionTestDraftService {
                     "sanitized request body sample",
                     "Sanitized input for the selected candidate behavior.",
                     true,
-                    "ReplayFix evidence"
+                    "ReplayLab evidence"
             ));
         }
         return List.of(
@@ -402,7 +402,7 @@ public class RegressionTestDraftService {
                         "sanitized request body sample",
                         "Sanitized UpdateAplUserPrefPrvncRequest sample without secrets or raw logs.",
                         true,
-                        "ReplayFix evidence"
+                        "ReplayLab evidence"
                 )
         );
     }
@@ -420,7 +420,7 @@ public class RegressionTestDraftService {
                 ),
                 new RegressionTestMockRequirement(
                         "external CRM/customer services",
-                        "Mock external services if the selected path calls outside ReplayFix-controlled code.",
+                        "Mock external services if the selected path calls outside ReplayLab-controlled code.",
                         false
                 ),
                 new RegressionTestMockRequirement(

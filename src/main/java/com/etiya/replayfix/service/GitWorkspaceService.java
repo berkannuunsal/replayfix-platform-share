@@ -131,7 +131,7 @@ public class GitWorkspaceService {
                 "git",
                 "commit",
                 "-m",
-                "ReplayFix: verified remediation for "
+                "ReplayLab: verified remediation for "
                         + replayCase.getJiraKey()
         ));
 

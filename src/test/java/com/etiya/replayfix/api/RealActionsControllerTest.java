@@ -144,7 +144,7 @@ class RealActionsControllerTest {
                 ).contentType("application/json").content("{}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.title")
-                        .value("[DRAFT] ReplayFix FIZZMS-10228"));
+                        .value("[DRAFT] ReplayLab FIZZMS-10228"));
 
         mockMvc.perform(post(
                         "/api/v1/cases/{caseId}/bitbucket/workspace-push/preview",
@@ -283,7 +283,7 @@ class RealActionsControllerTest {
                 "",
                 "FIZZMS-10228",
                 "Task",
-                "ReplayFix Test Execution - FIZZMS-10228",
+                "ReplayLab Test Execution - FIZZMS-10228",
                 "safe",
                 Map.of(),
                 List.of(),
@@ -329,7 +329,7 @@ class RealActionsControllerTest {
                 "backend",
                 "integration/test2/FIZZMS-10228",
                 "test2",
-                "[DRAFT] ReplayFix FIZZMS-10228",
+                "[DRAFT] ReplayLab FIZZMS-10228",
                 "safe",
                 Map.of(),
                 List.of(),
@@ -376,7 +376,7 @@ class RealActionsControllerTest {
                 "",
                 "",
                 "",
-                "[DRAFT] ReplayFix FIZZMS-10228 fix proposal",
+                "[DRAFT] ReplayLab FIZZMS-10228 fix proposal",
                 List.of(),
                 List.of(),
                 List.of(),
@@ -395,13 +395,13 @@ class RealActionsControllerTest {
                 "test2",
                 "bugfix/project-10228",
                 "Integration/test2/project-10228",
-                "ControllerBackend/src/test/java/com/company/replayfix/generated/project10228ReplayFixDemoRegressionTest.java",
+                "ControllerBackend/src/test/java/com/company/replayfix/generated/project10228ReplayLabDemoRegressionTest.java",
                 "project-10228: Fix agent category access regression demo",
                 "",
                 "",
                 "",
                 "",
-                "[DRAFT] ReplayFix project-10228 fix proposal",
+                "[DRAFT] ReplayLab project-10228 fix proposal",
                 List.of(),
                 List.of(),
                 Map.of(),
@@ -426,7 +426,7 @@ class RealActionsControllerTest {
                 "",
                 "",
                 "",
-                "[DRAFT] ReplayFix FIZZMS-10228 fix proposal",
+                "[DRAFT] ReplayLab FIZZMS-10228 fix proposal",
                 false,
                 true,
                 false,
@@ -457,7 +457,7 @@ class RealActionsControllerTest {
                 "",
                 "",
                 "",
-                "[DRAFT] ReplayFix FIZZMS-10228 fix proposal",
+                "[DRAFT] ReplayLab FIZZMS-10228 fix proposal",
                 List.of(),
                 List.of(),
                 List.of(),
@@ -483,7 +483,7 @@ class RealActionsControllerTest {
                 "",
                 "",
                 "",
-                "[DRAFT] ReplayFix FIZZMS-10228 fix proposal",
+                "[DRAFT] ReplayLab FIZZMS-10228 fix proposal",
                 false,
                 true,
                 false,

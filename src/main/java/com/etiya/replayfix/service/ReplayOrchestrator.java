@@ -682,11 +682,11 @@ public class ReplayOrchestrator {
             jiraClient.addComment(
                     replayCase.getJiraKey(),
                     result.reproduced()
-                            ? "ReplayFix reproduced the incident in namespace "
+                            ? "ReplayLab reproduced the incident in namespace "
                                 + replayCase.getNamespace()
                                 + ". Failure signature: "
                                 + result.failureSignature()
-                            : "ReplayFix could not reproduce the incident. "
+                            : "ReplayLab could not reproduce the incident. "
                                 + "Review replay data and dependencies."
             );
 
@@ -909,7 +909,7 @@ public class ReplayOrchestrator {
                         target,
                         publish.branch(),
                         target.getGit().getSourceBranch(),
-                        "[ReplayFix][REVIEW REQUIRED] "
+                        "[ReplayLab][REVIEW REQUIRED] "
                                 + replayCase.getJiraKey(),
                         pullRequestDescription(replayCase, build),
                         target.getGit().getReviewerUsers()
@@ -938,7 +938,7 @@ public class ReplayOrchestrator {
 
                 jiraClient.addComment(
                         replayCase.getJiraKey(),
-                        "ReplayFix validation succeeded. Pull request: "
+                        "ReplayLab validation succeeded. Pull request: "
                                 + pullRequest.url()
                 );
 
@@ -1116,7 +1116,7 @@ public class ReplayOrchestrator {
             ReplayCaseEntity replayCase,
             IntegrationModels.BuildResult build
     ) {
-        return "## ReplayFix Analysis\n\n"
+        return "## ReplayLab Analysis\n\n"
                 + "Jira: "
                 + replayCase.getJiraKey()
                 + "\n\n"

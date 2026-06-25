@@ -313,7 +313,7 @@ public class FixPlanService {
         List<FixPlanEvidenceReference> values = new ArrayList<>();
         values.add(new FixPlanEvidenceReference(
                 "SOURCE_REASONING",
-                "ReplayFix",
+                "ReplayLab",
                 sourceAnalysis.caseId().toString(),
                 "HYPOTHESIS",
                 "Deterministic source suspect analysis."

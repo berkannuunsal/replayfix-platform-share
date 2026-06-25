@@ -187,7 +187,7 @@ public class FailingRegressionTestDraftService {
         source.append("import static org.junit.jupiter.api.Assertions.fail;\n\n");
         source.append("class ").append(className).append(" {\n\n");
         source.append("    @Test\n");
-        source.append("    @Disabled(\"ReplayFix draft: requires human completion before execution\")\n");
+        source.append("    @Disabled(\"ReplayLab draft: requires human completion before execution\")\n");
         source.append("    @DisplayName(\"")
                 .append(escapeJava(truncate(hypothesis.targetFlow(), 140)))
                 .append("\")\n");
@@ -282,7 +282,7 @@ public class FailingRegressionTestDraftService {
         String flow = sanitizeJavaIdentifier(toPascalCase(hypothesis.targetFlow()));
         String base = flow.isBlank() ? token : flow;
         if (base.isBlank()) {
-            base = "ReplayFixIncident";
+            base = "ReplayLabIncident";
         }
         return truncateIdentifier(base, 70) + "FailingRegressionTest";
     }

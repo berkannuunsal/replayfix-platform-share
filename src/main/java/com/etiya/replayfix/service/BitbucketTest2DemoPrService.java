@@ -202,7 +202,7 @@ public class BitbucketTest2DemoPrService {
                         normalized.integrationBranch(),
                         normalized.generatedFilePath(),
                         generatedTestContent(normalized.jiraKey()),
-                        "ReplayFix: "
+                        "ReplayLab: "
                                 + normalized.jiraKey()
                                 + " demo regression test"
                 );
@@ -402,8 +402,8 @@ public class BitbucketTest2DemoPrService {
         if (!title.startsWith("[DRAFT]")) {
             title = "[DRAFT] " + title;
         }
-        if (!title.contains("ReplayFix")) {
-            title = title.replace("[DRAFT]", "[DRAFT] ReplayFix");
+        if (!title.contains("ReplayLab")) {
+            title = title.replace("[DRAFT]", "[DRAFT] ReplayLab");
         }
         return new NormalizedDemoPr(
                 firstNonBlank(safe.projectKey(), "DCE"),
@@ -448,7 +448,7 @@ public class BitbucketTest2DemoPrService {
     private String generatedTestRelativePath(String jiraKey) {
         return "ControllerBackend/src/test/java/com/company/replayfix/generated/"
                 + jiraCompact(jiraKey)
-                + "ReplayFixDemoRegressionTest.java";
+                + "ReplayLabDemoRegressionTest.java";
     }
 
     private String generatedTestContent(String jiraKey) {
@@ -461,12 +461,12 @@ public class BitbucketTest2DemoPrService {
 
                 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-                class %sReplayFixDemoRegressionTest {
+                class %sReplayLabDemoRegressionTest {
 
                     @Test
-                    @Disabled("ReplayFix generated demo regression placeholder; requires review before enabling.")
+                    @Disabled("ReplayLab generated demo regression placeholder; requires review before enabling.")
                     void replayfix_generated_regression_scenario_for_%s() {
-                        assertTrue(true, "ReplayFix demo placeholder for %s");
+                        assertTrue(true, "ReplayLab demo placeholder for %s");
                     }
                 }
                 """.formatted(
@@ -482,12 +482,12 @@ public class BitbucketTest2DemoPrService {
     ) {
         return sanitize(String.join(
                 "\n",
-                "ReplayFix Draft Demo PR",
+                "ReplayLab Draft Demo PR",
                 "",
                 "Source Jira:",
                 "- " + request.jiraKey(),
                 "",
-                "ReplayFix Case:",
+                "ReplayLab Case:",
                 "- " + replayCase.getId(),
                 "",
                 "Branch Flow:",
