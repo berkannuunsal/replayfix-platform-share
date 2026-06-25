@@ -18,6 +18,8 @@ import com.etiya.replayfix.api.dto.DefectPrTargetedChangeRequest;
 import com.etiya.replayfix.api.dto.DefectPrTargetedChangeResponse;
 import com.etiya.replayfix.api.dto.JiraTestTaskRequest;
 import com.etiya.replayfix.api.dto.JiraTestTaskResponse;
+import com.etiya.replayfix.api.dto.PrRuleReviewRequest;
+import com.etiya.replayfix.api.dto.PrRuleReviewResponse;
 import com.etiya.replayfix.api.dto.RealActionsSummaryResponse;
 import com.etiya.replayfix.service.BitbucketBackendDemoPrService;
 import com.etiya.replayfix.service.BitbucketBranchFlowService;
@@ -28,6 +30,7 @@ import com.etiya.replayfix.service.BitbucketTest2DemoPrService;
 import com.etiya.replayfix.service.BitbucketWorkspacePushService;
 import com.etiya.replayfix.service.DefectPrTargetedChangeService;
 import com.etiya.replayfix.service.JiraRealActionService;
+import com.etiya.replayfix.service.PrRuleReviewService;
 import com.etiya.replayfix.service.RealActionsSummaryService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -51,6 +54,7 @@ public class RealActionsController {
     private final BitbucketDefectPrFlowService defectPrFlowService;
     private final BitbucketSingleFileDefectPrFlowService singleFileDefectPrFlowService;
     private final DefectPrTargetedChangeService targetedChangeService;
+    private final PrRuleReviewService prRuleReviewService;
     private final RealActionsSummaryService summaryService;
 
     public RealActionsController(
@@ -63,6 +67,7 @@ public class RealActionsController {
             BitbucketDefectPrFlowService defectPrFlowService,
             BitbucketSingleFileDefectPrFlowService singleFileDefectPrFlowService,
             DefectPrTargetedChangeService targetedChangeService,
+            PrRuleReviewService prRuleReviewService,
             RealActionsSummaryService summaryService
     ) {
         this.jiraRealActionService = jiraRealActionService;
@@ -74,6 +79,7 @@ public class RealActionsController {
         this.defectPrFlowService = defectPrFlowService;
         this.singleFileDefectPrFlowService = singleFileDefectPrFlowService;
         this.targetedChangeService = targetedChangeService;
+        this.prRuleReviewService = prRuleReviewService;
         this.summaryService = summaryService;
     }
 
@@ -211,6 +217,14 @@ public class RealActionsController {
             @RequestBody DefectPrTargetedChangeRequest request
     ) {
         return targetedChangeService.create(caseId, request);
+    }
+
+    @PostMapping("/cases/{caseId}/pr-rule-review/preview")
+    public PrRuleReviewResponse prRuleReviewPreview(
+            @PathVariable UUID caseId,
+            @RequestBody(required = false) PrRuleReviewRequest request
+    ) {
+        return prRuleReviewService.preview(caseId, request);
     }
 
     /** @deprecated use /bitbucket/defect-pr-flow/targeted-change/preview */

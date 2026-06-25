@@ -2,6 +2,7 @@ package com.etiya.replayfix.service;
 
 import com.etiya.replayfix.api.dto.DefectPrTargetedChangeRequest;
 import com.etiya.replayfix.api.dto.DefectPrTargetedChangeResponse;
+import com.etiya.replayfix.api.dto.PrRuleReviewResponse;
 import com.etiya.replayfix.config.ReplayFixProperties;
 import com.etiya.replayfix.domain.EvidenceEntity;
 import com.etiya.replayfix.domain.ReplayCaseEntity;
@@ -38,6 +39,7 @@ class DefectPrTargetedChangeServiceTest {
     private EvidenceRepository evidenceRepository;
     private BitbucketClient bitbucketClient;
     private ReplayFixProperties properties;
+    private PrRuleReviewService prRuleReviewService;
     private DefectPrTargetedChangeService service;
 
     @BeforeEach
@@ -46,6 +48,7 @@ class DefectPrTargetedChangeServiceTest {
         caseRepository = mock(ReplayCaseRepository.class);
         evidenceRepository = mock(EvidenceRepository.class);
         bitbucketClient = mock(BitbucketClient.class);
+        prRuleReviewService = mock(PrRuleReviewService.class);
         properties = new ReplayFixProperties();
         properties.getIntegrations().getBitbucket().getBranchStrategy()
                 .getEnvironmentTargets()
@@ -55,9 +58,14 @@ class DefectPrTargetedChangeServiceTest {
                 evidenceRepository,
                 bitbucketClient,
                 properties,
-                new ObjectMapper().findAndRegisterModules()
+                new ObjectMapper().findAndRegisterModules(),
+                prRuleReviewService
         );
         when(caseRepository.findById(caseId)).thenReturn(Optional.of(caseEntity()));
+        when(prRuleReviewService.reviewPlannedChange(
+                any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
+                any(), any(), any(), any(), any(), any()
+        )).thenReturn(preflightAccept());
     }
 
     @Test
@@ -187,13 +195,66 @@ class DefectPrTargetedChangeServiceTest {
         verify(bitbucketClient).updateFile(
                 eq("DCE"), eq("backend"), eq("bugfix/CRM-123"),
                 eq("ControllerBackend/src/test/java/com/etiya/replayfix/generated/CRM123RegressionTest.java"),
-                org.mockito.ArgumentMatchers.contains("ReplayFix generated regression placeholder for CRM-123"),
+                org.mockito.ArgumentMatchers.contains(
+                        "ReplayFix generated regression test requires business-specific assertions before enabling"),
                 eq("CRM-123: Safe summary"));
         verify(bitbucketClient).updateFile(
                 eq("DCE"), eq("backend"), eq("Integration/test2/CRM-123"),
                 any(), any(), eq("CRM-123: Safe summary"));
         verify(bitbucketClient, never()).mergeBranches(any(), any(), any(), any());
         verify(evidenceRepository).save(any(EvidenceEntity.class));
+    }
+
+    @Test
+    void preflightBlockerStopsBeforeBranchCreationAndPr() {
+        enableRealActions();
+        mockBranchExists("master", true);
+        mockBranchExists("Integration/test2/FIZZMS-6686", true);
+        mockBranchExists("bugfix/CRM-123", false);
+        mockBranchExists("Integration/test2/CRM-123", false);
+        when(prRuleReviewService.reviewPlannedChange(
+                any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
+                any(), any(), any(), any(), any(), any()
+        )).thenReturn(preflightReject());
+
+        DefectPrTargetedChangeResponse response =
+                service.create(caseId, request("CRM-123", true, true));
+
+        assertThat(response.created()).isFalse();
+        assertThat(response.blockers()).contains("PR_RULE_REVIEW_BLOCKED");
+        verify(bitbucketClient, never()).createBranch(any(), any(), any(), any());
+        verify(bitbucketClient, never()).updateFile(any(), any(), any(), any(), any(), any());
+        verify(bitbucketClient, never()).createPullRequest(any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void mediaTypeFailureReturnsSpecificFileUpdateBlockerAndDoesNotCreatePr() {
+        enableRealActions();
+        mockBranchExists("master", true);
+        mockBranchExists("Integration/test2/FIZZMS-6686", true);
+        mockBranchExists("bugfix/CRM-123", true);
+        mockBranchExists("Integration/test2/CRM-123", true);
+        when(bitbucketClient.updateFile(any(), any(), any(), any(), any(), any()))
+                .thenReturn(new BitbucketFileUpdateResult(
+                        false,
+                        "branch",
+                        "file",
+                        "",
+                        List.of("BITBUCKET_FILE_UPDATE_MEDIA_TYPE_UNSUPPORTED",
+                                "Use multipart/form-data or form-url-encoded Bitbucket file update request.")
+                ));
+
+        DefectPrTargetedChangeResponse response =
+                service.create(caseId, request("CRM-123", true, true));
+
+        assertThat(response.created()).isFalse();
+        assertThat(response.blockers())
+                .contains("BITBUCKET_BUGFIX_FILE_UPDATE_FAILED",
+                        "BITBUCKET_INTEGRATION_FILE_UPDATE_FAILED",
+                        "BITBUCKET_FILE_UPDATE_MEDIA_TYPE_UNSUPPORTED");
+        assertThat(response.warnings())
+                .contains("Use multipart/form-data or form-url-encoded Bitbucket file update request.");
+        verify(bitbucketClient, never()).createPullRequest(any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -275,6 +336,47 @@ class DefectPrTargetedChangeServiceTest {
     private void mockBranchExists(String branch, boolean exists) {
         when(bitbucketClient.branchExists("DCE", "backend", branch))
                 .thenReturn(new BitbucketBranchCheckResult(exists, branch, List.of()));
+    }
+
+    private PrRuleReviewResponse preflightAccept() {
+        return new PrRuleReviewResponse(
+                caseId,
+                "CRM-123",
+                "BACKEND",
+                "ACCEPT",
+                0,
+                List.of(),
+                "ReviewStatus: ACCEPT\nBlocker violations: 0\n\nViolations of Rules(with rule IDs)\n- None",
+                List.of("AGENTS.md", ".agents/AGENTS-Maintainability.md", ".agents/AGENTS-Unit-test.md"),
+                List.of(),
+                List.of(),
+                List.of("Continue guarded draft PR creation.")
+        );
+    }
+
+    private PrRuleReviewResponse preflightReject() {
+        return new PrRuleReviewResponse(
+                caseId,
+                "CRM-123",
+                "BACKEND",
+                "REJECT",
+                1,
+                List.of(new PrRuleReviewResponse.Violation(
+                        "R-016",
+                        "BLOCKER",
+                        "Unit Test",
+                        "Generated test contains invalid wording",
+                        List.of(new PrRuleReviewResponse.Evidence(
+                                "ControllerBackend/src/test/java/com/etiya/replayfix/generated/CRM123RegressionTest.java",
+                                "Line 7: class CRM123DemoRegressionTest {"
+                        ))
+                )),
+                "ReviewStatus: REJECT\nBlocker violations: 1\n\nViolations of Rules(with rule IDs)",
+                List.of("AGENTS.md"),
+                List.of("PR_RULE_REVIEW_BLOCKED"),
+                List.of(),
+                List.of("Fix rule violation R-016 before creating PR.")
+        );
     }
 
     private DefectPrTargetedChangeRequest request(

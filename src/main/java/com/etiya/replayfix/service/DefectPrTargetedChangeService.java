@@ -2,6 +2,7 @@ package com.etiya.replayfix.service;
 
 import com.etiya.replayfix.api.dto.DefectPrTargetedChangeRequest;
 import com.etiya.replayfix.api.dto.DefectPrTargetedChangeResponse;
+import com.etiya.replayfix.api.dto.PrRuleReviewResponse;
 import com.etiya.replayfix.config.ReplayFixProperties;
 import com.etiya.replayfix.domain.EvidenceEntity;
 import com.etiya.replayfix.domain.EvidenceType;
@@ -43,19 +44,22 @@ public class DefectPrTargetedChangeService {
     private final BitbucketClient bitbucketClient;
     private final ReplayFixProperties properties;
     private final ObjectMapper objectMapper;
+    private final PrRuleReviewService prRuleReviewService;
 
     public DefectPrTargetedChangeService(
             ReplayCaseRepository caseRepository,
             EvidenceRepository evidenceRepository,
             BitbucketClient bitbucketClient,
             ReplayFixProperties properties,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            PrRuleReviewService prRuleReviewService
     ) {
         this.caseRepository = caseRepository;
         this.evidenceRepository = evidenceRepository;
         this.bitbucketClient = bitbucketClient;
         this.properties = properties;
         this.objectMapper = objectMapper;
+        this.prRuleReviewService = prRuleReviewService;
     }
 
     @Transactional(readOnly = true)
@@ -69,6 +73,38 @@ public class DefectPrTargetedChangeService {
         List<String> warnings = new ArrayList<>();
         if (blockers.isEmpty()) {
             blockers.addAll(checkBranches(normalized, warnings).blockers());
+        }
+        if (blockers.isEmpty()) {
+            PrRuleReviewResponse preflight =
+                    prRuleReviewService.reviewPlannedChange(
+                            caseId,
+                            normalized.projectKey(),
+                            normalized.repositorySlug(),
+                            repositoryType(normalized),
+                            normalized.ruleSourceBranch(),
+                            normalized.integrationBranch(),
+                            normalized.bugfixBranch(),
+                            normalized.targetBaseBranch(),
+                            normalized.sourceBaseBranch(),
+                            normalized.targetBaseBranch(),
+                            normalized.integrationBranch(),
+                            normalized.defectKey(),
+                            normalized.defectSummary(),
+                            normalized.filePath(),
+                            fileType(normalized),
+                            language(normalized),
+                            generatedContent(normalized),
+                            normalized.allowRepair()
+                    );
+            warnings.add("PR_RULE_PREFLIGHT_STATUS:" + preflight.reviewStatus());
+            warnings.add("PR_RULE_PREFLIGHT_RULES:" + String.join(",", preflight.rulesLoaded()));
+            warnings.add("PR_RULE_PREFLIGHT_SOURCE_BRANCH:" + preflight.ruleSourceBranch());
+            warnings.add("PR_RULE_PREFLIGHT_BRANCHES_TRIED:"
+                    + String.join(",", preflight.ruleLookupBranchesTried()));
+            if (!preflight.blockers().isEmpty() || preflight.blockerViolationCount() > 0) {
+                blockers.add("PR_RULE_REVIEW_BLOCKED");
+                blockers.addAll(preflight.blockers());
+            }
         }
         warnings.add("PREVIEW_ONLY_NO_BRANCH_CREATED");
         warnings.add("PREVIEW_ONLY_NO_FILE_UPDATED");
@@ -108,6 +144,38 @@ public class DefectPrTargetedChangeService {
         BranchChecks checks = checkBranches(normalized, warnings);
         blockers.addAll(checks.blockers());
         if (!blockers.isEmpty()) {
+            return response(replayCase, normalized, false, false,
+                    "", "", "", "", unique(blockers), unique(warnings), nextActions(blockers));
+        }
+
+        PrRuleReviewResponse preflight = prRuleReviewService.reviewPlannedChange(
+                caseId,
+                normalized.projectKey(),
+                normalized.repositorySlug(),
+                repositoryType(normalized),
+                normalized.ruleSourceBranch(),
+                normalized.integrationBranch(),
+                normalized.bugfixBranch(),
+                normalized.targetBaseBranch(),
+                normalized.sourceBaseBranch(),
+                normalized.targetBaseBranch(),
+                normalized.integrationBranch(),
+                normalized.defectKey(),
+                normalized.defectSummary(),
+                normalized.filePath(),
+                fileType(normalized),
+                language(normalized),
+                generatedContent(normalized),
+                normalized.allowRepair()
+        );
+        warnings.add("PR_RULE_PREFLIGHT_STATUS:" + preflight.reviewStatus());
+        warnings.add("PR_RULE_PREFLIGHT_RULES:" + String.join(",", preflight.rulesLoaded()));
+        warnings.add("PR_RULE_PREFLIGHT_SOURCE_BRANCH:" + preflight.ruleSourceBranch());
+        warnings.add("PR_RULE_PREFLIGHT_BRANCHES_TRIED:"
+                + String.join(",", preflight.ruleLookupBranchesTried()));
+        if (!preflight.blockers().isEmpty() || preflight.blockerViolationCount() > 0) {
+            blockers.add("PR_RULE_REVIEW_BLOCKED");
+            blockers.addAll(preflight.blockers());
             return response(replayCase, normalized, false, false,
                     "", "", "", "", unique(blockers), unique(warnings), nextActions(blockers));
         }
@@ -163,6 +231,7 @@ public class DefectPrTargetedChangeService {
         warnings.addAll(sanitize(bugfixUpdate.warnings()));
         if (!bugfixUpdate.updated()) {
             blockers.add("BITBUCKET_BUGFIX_FILE_UPDATE_FAILED");
+            blockers.addAll(fileUpdateBlockers(bugfixUpdate.warnings()));
         }
 
         BitbucketFileUpdateResult integrationUpdate = bitbucketClient.updateFile(
@@ -176,6 +245,7 @@ public class DefectPrTargetedChangeService {
         warnings.addAll(sanitize(integrationUpdate.warnings()));
         if (!integrationUpdate.updated()) {
             blockers.add("BITBUCKET_INTEGRATION_FILE_UPDATE_FAILED");
+            blockers.addAll(fileUpdateBlockers(integrationUpdate.warnings()));
         }
         if (!blockers.isEmpty()) {
             return response(replayCase, normalized, false, false,
@@ -202,7 +272,7 @@ public class DefectPrTargetedChangeService {
                     normalized.integrationBranch(),
                     normalized.targetBaseBranch(),
                     normalized.title(),
-                    prDescription(replayCase, normalized),
+                    prDescription(replayCase, normalized, preflight),
                     List.of()
             );
             prId = created == null ? "" : nullToBlank(created.id());
@@ -410,11 +480,13 @@ public class DefectPrTargetedChangeService {
                 targetBase,
                 bugfixBranch,
                 integrationBranch,
+                safe.ruleSourceBranch(),
                 normalizePath(filePath),
                 changeMode,
                 defectKey + ": " + summary,
                 titlePrefix + " " + defectKey + " fix proposal",
-                safe.allowReuseExistingBranches()
+                safe.allowReuseExistingBranches(),
+                safe.allowRepair() == null || safe.allowRepair()
         );
     }
 
@@ -423,8 +495,8 @@ public class DefectPrTargetedChangeService {
     ) {
         return request == null
                 ? new DefectPrTargetedChangeRequest(
-                "", "", "", "", "", "", "", "", "", "", "", "",
-                "", true, false, false)
+                "", "", "", "", "", "", "", "", "", "", "", "", "",
+                "", true, true, false, false)
                 : request;
     }
 
@@ -449,16 +521,23 @@ public class DefectPrTargetedChangeService {
 
                 class %sRegressionTest {
 
+                    private static final String REVIEW_REQUIRED_REASON =
+                            "ReplayFix generated regression test requires business-specific assertions before enabling";
+
                     @Test
-                    @Disabled("ReplayFix generated regression test; requires business-specific assertions before enabling.")
-                    void should_cover_%s_regression_scenario() {
-                        assertTrue(true, "ReplayFix generated regression placeholder for %s");
+                    @Disabled(REVIEW_REQUIRED_REASON)
+                    void shouldCover%sRegressionScenario() {
+                        assertTrue(true);
                     }
                 }
-                """.formatted(compact(request.defectKey()), methodSuffix(request.defectKey()), request.defectKey());
+                """.formatted(compact(request.defectKey()), methodSuffix(request.defectKey()));
     }
 
-    private String prDescription(ReplayCaseEntity replayCase, NormalizedTargetedChange request) {
+    private String prDescription(
+            ReplayCaseEntity replayCase,
+            NormalizedTargetedChange request,
+            PrRuleReviewResponse preflight
+    ) {
         return sanitize(String.join("\n",
                 "ReplayFix Draft PR",
                 "",
@@ -483,6 +562,13 @@ public class DefectPrTargetedChangeService {
                         || TARGETED_TEST_CHANGE.equals(request.changeMode())),
                 "- config change applied: " + APPROVED_CONFIG_CHANGE.equals(request.changeMode()),
                 "",
+                "PR Rule Preflight:",
+                "- status: " + preflight.reviewStatus(),
+                "- blocker violations: " + preflight.blockerViolationCount(),
+                "- repository type: " + preflight.repositoryType(),
+                "- rule source branch: " + preflight.ruleSourceBranch(),
+                "- rules loaded: " + String.join(", ", preflight.rulesLoaded()),
+                "",
                 "Guardrails:",
                 "- No direct target branch push",
                 "- No PR merge",
@@ -490,6 +576,39 @@ public class DefectPrTargetedChangeService {
                 "- No deployment trigger",
                 "- Human review required"
         ));
+    }
+
+    private String repositoryType(NormalizedTargetedChange request) {
+        String repo = request.repositorySlug().toLowerCase(Locale.ROOT);
+        if (repo.contains("frontend") || repo.contains("ui")) {
+            return "FRONTEND";
+        }
+        return "BACKEND";
+    }
+
+    private String fileType(NormalizedTargetedChange request) {
+        if (APPROVED_REGRESSION_TEST.equals(request.changeMode())
+                || TARGETED_TEST_CHANGE.equals(request.changeMode())) {
+            return "REGRESSION_TEST";
+        }
+        if (APPROVED_CONFIG_CHANGE.equals(request.changeMode())) {
+            return "CONFIG_CHANGE";
+        }
+        return "SOURCE_FIX";
+    }
+
+    private String language(NormalizedTargetedChange request) {
+        String path = request.filePath().toLowerCase(Locale.ROOT);
+        if (path.endsWith(".java")) {
+            return "JAVA";
+        }
+        if (path.endsWith(".ts") || path.endsWith(".tsx")) {
+            return "TYPESCRIPT";
+        }
+        if (path.endsWith(".html")) {
+            return "HTML";
+        }
+        return "UNKNOWN";
     }
 
     private void saveEvidence(
@@ -598,6 +717,33 @@ public class DefectPrTargetedChangeService {
                 .toList();
     }
 
+    private List<String> fileUpdateBlockers(List<String> warnings) {
+        if (warnings == null || warnings.isEmpty()) {
+            return List.of();
+        }
+        String joined = String.join(" ", warnings);
+        List<String> blockers = new ArrayList<>();
+        if (joined.contains("BITBUCKET_FILE_UPDATE_MEDIA_TYPE_UNSUPPORTED")) {
+            blockers.add("BITBUCKET_FILE_UPDATE_MEDIA_TYPE_UNSUPPORTED");
+        }
+        if (joined.contains("BITBUCKET_FILE_UPDATE_SOURCE_COMMIT_REQUIRED")) {
+            blockers.add("BITBUCKET_FILE_UPDATE_SOURCE_COMMIT_REQUIRED");
+        }
+        if (joined.contains("BITBUCKET_FILE_CREATE_FAILED")) {
+            blockers.add("BITBUCKET_FILE_CREATE_FAILED");
+        }
+        if (joined.contains("BITBUCKET_FILE_UPDATE_FAILED")) {
+            blockers.add("BITBUCKET_FILE_UPDATE_FAILED");
+        }
+        if (joined.contains("BITBUCKET_FILE_CHANGE_COMMIT_NOT_RESOLVED")) {
+            blockers.add("BITBUCKET_FILE_CHANGE_COMMIT_NOT_RESOLVED");
+        }
+        if (joined.contains("BITBUCKET_FILE_READ_FAILED")) {
+            blockers.add("BITBUCKET_FILE_READ_FAILED");
+        }
+        return unique(blockers);
+    }
+
     private Map<String, Object> branchLookupDiagnostics(List<String> warnings) {
         Map<String, Object> diagnostics = new LinkedHashMap<>();
         if (warnings == null) {
@@ -688,11 +834,13 @@ public class DefectPrTargetedChangeService {
             String targetBaseBranch,
             String bugfixBranch,
             String integrationBranch,
+            String ruleSourceBranch,
             String filePath,
             String changeMode,
             String commitMessage,
             String title,
-            boolean allowReuseExistingBranches
+            boolean allowReuseExistingBranches,
+            boolean allowRepair
     ) {
     }
 }

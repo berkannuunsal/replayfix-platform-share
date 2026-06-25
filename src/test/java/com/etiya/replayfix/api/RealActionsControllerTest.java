@@ -12,6 +12,7 @@ import com.etiya.replayfix.api.dto.BitbucketWorkspacePushResponse;
 import com.etiya.replayfix.api.dto.DefectPrTargetedChangeResponse;
 import com.etiya.replayfix.api.dto.JiraTestTaskRequest;
 import com.etiya.replayfix.api.dto.JiraTestTaskResponse;
+import com.etiya.replayfix.api.dto.PrRuleReviewResponse;
 import com.etiya.replayfix.api.dto.RealActionsSummaryResponse;
 import com.etiya.replayfix.service.BitbucketBackendDemoPrService;
 import com.etiya.replayfix.service.BitbucketBranchFlowService;
@@ -22,6 +23,7 @@ import com.etiya.replayfix.service.BitbucketTest2DemoPrService;
 import com.etiya.replayfix.service.BitbucketWorkspacePushService;
 import com.etiya.replayfix.service.DefectPrTargetedChangeService;
 import com.etiya.replayfix.service.JiraRealActionService;
+import com.etiya.replayfix.service.PrRuleReviewService;
 import com.etiya.replayfix.service.RealActionsSummaryService;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -65,6 +67,8 @@ class RealActionsControllerTest {
                 mock(BitbucketSingleFileDefectPrFlowService.class);
         DefectPrTargetedChangeService targetedChangeService =
                 mock(DefectPrTargetedChangeService.class);
+        PrRuleReviewService prRuleReviewService =
+                mock(PrRuleReviewService.class);
         RealActionsSummaryService summaryService =
                 mock(RealActionsSummaryService.class);
         when(jiraService.preview(eq(caseId), any()))
@@ -85,6 +89,8 @@ class RealActionsControllerTest {
                 .thenReturn(singleFileDefectPrFlowResponse(caseId));
         when(targetedChangeService.preview(eq(caseId), any()))
                 .thenReturn(targetedChangeResponse(caseId));
+        when(prRuleReviewService.preview(eq(caseId), any()))
+                .thenReturn(prRuleReviewResponse(caseId));
         when(summaryService.summary(caseId)).thenReturn(summary(caseId));
         MockMvc mockMvc = MockMvcBuilders
                 .standaloneSetup(new RealActionsController(
@@ -97,6 +103,7 @@ class RealActionsControllerTest {
                         defectPrFlowService,
                         singleFileDefectPrFlowService,
                         targetedChangeService,
+                        prRuleReviewService,
                         summaryService
                 ))
                 .build();
@@ -156,6 +163,14 @@ class RealActionsControllerTest {
                 .andExpect(jsonPath("$.previewOnly").value(true));
 
         mockMvc.perform(post(
+                        "/api/v1/cases/{caseId}/pr-rule-review/preview",
+                        caseId
+                ).contentType("application/json").content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reviewStatus").value("ACCEPT"))
+                .andExpect(jsonPath("$.repositoryType").value("BACKEND"));
+
+        mockMvc.perform(post(
                         "/api/v1/cases/{caseId}/bitbucket/defect-pr-flow/single-file/preview",
                         caseId
                 ).contentType("application/json").content("{}"))
@@ -212,6 +227,7 @@ class RealActionsControllerTest {
                         mock(BitbucketDefectPrFlowService.class),
                         mock(BitbucketSingleFileDefectPrFlowService.class),
                         mock(DefectPrTargetedChangeService.class),
+                        mock(PrRuleReviewService.class),
                         mock(RealActionsSummaryService.class)
                 ))
                 .build();
@@ -442,6 +458,22 @@ class RealActionsControllerTest {
                 Map.of(),
                 List.of(),
                 Instant.now()
+        );
+    }
+
+    private PrRuleReviewResponse prRuleReviewResponse(UUID caseId) {
+        return new PrRuleReviewResponse(
+                caseId,
+                "FIZZMS-10228",
+                "BACKEND",
+                "ACCEPT",
+                0,
+                List.of(),
+                "ReviewStatus: ACCEPT\nBlocker violations: 0\n\nViolations of Rules(with rule IDs)\n- None",
+                List.of("AGENTS.md", ".agents/AGENTS-Maintainability.md"),
+                List.of(),
+                List.of(),
+                List.of("Continue guarded draft PR creation.")
         );
     }
 

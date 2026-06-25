@@ -15,6 +15,7 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import java.util.ArrayList;
@@ -499,9 +500,28 @@ public class BitbucketHttpClient implements BitbucketClient {
                     List.of("Bitbucket integration is disabled")
             );
         }
+        boolean fileExists = false;
         try {
-            String latestCommit = latestCommitForBranch(projectKey, repositorySlug, branchName);
-            MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+            FileLookupResult fileLookup = fileExistsOnBranch(
+                    projectKey,
+                    repositorySlug,
+                    branchName,
+                    filePath
+            );
+            if (fileLookup.failed()) {
+                return new BitbucketFileUpdateResult(
+                        false,
+                        branchName,
+                        filePath,
+                        "",
+                        List.of("BITBUCKET_FILE_READ_FAILED")
+                );
+            }
+            fileExists = fileLookup.exists();
+            String latestCommit = fileExists
+                    ? latestCommitForBranch(projectKey, repositorySlug, branchName)
+                    : "";
+            MultiValueMap<String, Object> form = new LinkedMultiValueMap<>();
             form.add("branch", normalizeBranchName(branchName));
             form.add("content", content == null ? "" : content);
             form.add("message", commitMessage == null ? "" : commitMessage);
@@ -518,18 +538,18 @@ public class BitbucketHttpClient implements BitbucketClient {
                             .path(filePath)
                             .build(projectKey, repositorySlug))
                     .headers(headers -> headers.addAll(HttpSupport.headers(cfg)))
-                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                    .bodyValue(form)
+                    .contentType(MediaType.MULTIPART_FORM_DATA)
+                    .body(BodyInserters.fromMultipartData(form))
                     .retrieve()
                     .onStatus(
                             status -> status.isError(),
                             clientResponse -> clientResponse.bodyToMono(String.class)
                                     .defaultIfEmpty("")
                                     .map(errorBody -> new IllegalStateException(
-                                            "Bitbucket file update failed. HTTP "
-                                                    + clientResponse.statusCode()
-                                                    + " Response: "
-                                                    + truncate(errorBody, 2_000)
+                                            fileUpdateErrorMessage(
+                                                    clientResponse.statusCode(),
+                                                    errorBody
+                                            )
                                     ))
                     )
                     .bodyToMono(JsonNode.class)
@@ -543,20 +563,33 @@ public class BitbucketHttpClient implements BitbucketClient {
                         node.path("id").asText("")
                 );
             }
+            if (commitSha.isBlank()) {
+                commitSha = latestCommitForBranch(projectKey, repositorySlug, branchName);
+            }
+            if (commitSha.isBlank()) {
+                return new BitbucketFileUpdateResult(
+                        false,
+                        normalizeBranchName(branchName),
+                        filePath,
+                        "",
+                        List.of("BITBUCKET_FILE_CHANGE_COMMIT_NOT_RESOLVED")
+                );
+            }
             return new BitbucketFileUpdateResult(
                     true,
                     normalizeBranchName(branchName),
                     filePath,
                     commitSha,
-                    List.of()
+                    List.of(fileExists ? "BITBUCKET_FILE_UPDATED" : "BITBUCKET_FILE_CREATED")
             );
         } catch (Exception exception) {
+            String message = safeBitbucketMessage(rootCauseMessage(exception));
             return new BitbucketFileUpdateResult(
                     false,
                     branchName,
                     filePath,
                     "",
-                    List.of(rootCauseMessage(exception))
+                    fileUpdateWarnings(message, fileExists)
             );
         }
     }
@@ -749,6 +782,96 @@ public class BitbucketHttpClient implements BitbucketClient {
         return "";
     }
 
+    private FileLookupResult fileExistsOnBranch(
+            String projectKey,
+            String repositorySlug,
+            String branchName,
+            String filePath
+    ) {
+        var cfg = properties.getIntegrations().getBitbucket();
+        try {
+            Integer status = webClientBuilder
+                    .baseUrl(cfg.getBaseUrl().replaceAll("/+$", ""))
+                    .build()
+                    .get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/rest/api/1.0/projects/{project}/repos/{repo}/raw/")
+                            .path(filePath)
+                            .queryParam("at", "refs/heads/" + normalizeBranchName(branchName))
+                            .build(projectKey, repositorySlug))
+                    .headers(headers -> headers.addAll(HttpSupport.headers(cfg)))
+                    .exchangeToMono(response -> response.releaseBody()
+                            .thenReturn(response.statusCode().value()))
+                    .block(cfg.getTimeout());
+            int code = status == null ? 0 : status;
+            if (code == 200) {
+                return new FileLookupResult(true, false);
+            }
+            if (code == 404) {
+                return new FileLookupResult(false, false);
+            }
+            return new FileLookupResult(false, true);
+        } catch (Exception exception) {
+            return new FileLookupResult(false, true);
+        }
+    }
+
+    private String fileUpdateErrorMessage(
+            HttpStatusCode statusCode,
+            String errorBody
+    ) {
+        int status = statusCode == null ? 0 : statusCode.value();
+        String safeBody = truncate(safeBitbucketMessage(errorBody), 2_000);
+        if (status == 415) {
+            return "BITBUCKET_FILE_UPDATE_MEDIA_TYPE_UNSUPPORTED: "
+                    + "Use multipart/form-data or form-url-encoded Bitbucket file update request.";
+        }
+        if (safeBody.toLowerCase().contains("sourcecommit")
+                || safeBody.toLowerCase().contains("source commit")) {
+            return "BITBUCKET_FILE_UPDATE_SOURCE_COMMIT_REQUIRED";
+        }
+        return "Bitbucket file update failed. HTTP "
+                + status
+                + " Response: "
+                + safeBody;
+    }
+
+    private List<String> fileUpdateWarnings(String message, boolean fileExisted) {
+        String safe = safeBitbucketMessage(message);
+        List<String> warnings = new ArrayList<>();
+        if (safe.contains("BITBUCKET_FILE_UPDATE_MEDIA_TYPE_UNSUPPORTED")
+                || safe.contains("HTTP 415")) {
+            warnings.add("BITBUCKET_FILE_UPDATE_MEDIA_TYPE_UNSUPPORTED");
+            warnings.add("Use multipart/form-data or form-url-encoded Bitbucket file update request.");
+            return warnings;
+        }
+        if (safe.contains("BITBUCKET_FILE_UPDATE_SOURCE_COMMIT_REQUIRED")
+                || safe.toLowerCase().contains("sourcecommit")
+                || safe.toLowerCase().contains("source commit")) {
+            warnings.add("BITBUCKET_FILE_UPDATE_SOURCE_COMMIT_REQUIRED");
+            return warnings;
+        }
+        warnings.add(fileExisted
+                ? "BITBUCKET_FILE_UPDATE_FAILED"
+                : "BITBUCKET_FILE_CREATE_FAILED");
+        warnings.add(safe);
+        return warnings;
+    }
+
+    private String safeBitbucketMessage(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value
+                .replaceAll("(?i)authorization[^\\s,;]*", "[redacted]")
+                .replaceAll("(?i)bearer[^\\s,;]*", "[redacted]")
+                .replaceAll("(?i)cookie[^\\s,;]*", "[redacted]")
+                .replaceAll("(?i)token[^\\s,;]*", "[redacted]")
+                .replaceAll("(?i)password[^\\s,;]*", "[redacted]")
+                .replaceAll("(?i)secret[^\\s,;]*", "[redacted]")
+                .replaceAll("https?://[^\\s]*@[^\\s]+", "[redacted-url]");
+    }
+
     private String firstNonBlank(String... values) {
         if (values == null) {
             return "";
@@ -765,6 +888,12 @@ public class BitbucketHttpClient implements BitbucketClient {
             boolean failed,
             JsonNode branch,
             List<JsonNode> branches
+    ) {
+    }
+
+    record FileLookupResult(
+            boolean exists,
+            boolean failed
     ) {
     }
 
